@@ -46,6 +46,24 @@ export type Message = {
 };
 
 // ============================================================
+// DATE FORMATTER
+// ============================================================
+export function formatJoinDate(input: string | number | Date | null | undefined): string {
+  if (!input) return "";
+  const d = input instanceof Date ? input : new Date(input);
+  if (isNaN(d.getTime())) return "";
+
+  const day = d.getDate();
+  const suffix =
+    day % 10 === 1 && day !== 11 ? "st" :
+    day % 10 === 2 && day !== 12 ? "nd" :
+    day % 10 === 3 && day !== 13 ? "rd" : "th";
+
+  const month = d.toLocaleDateString("en-US", { month: "short" });
+  return `${day}${suffix} ${month} ${d.getFullYear()}`;
+}
+
+// ============================================================
 // CACHE + HYDRATE
 // ============================================================
 let usersCache: User[] = [];
@@ -63,8 +81,6 @@ export function subscribeAuth(fn: () => void): () => void {
 export async function hydrateAuth(): Promise<void> {
   if (typeof window === "undefined" || hydrated) return;
 
-  // Set this BEFORE any await so React StrictMode's double-run can't
-  // try to attach realtime listeners to the same channel twice.
   hydrated = true;
 
   const { data: { session } } = await supabase.auth.getSession();
@@ -97,14 +113,12 @@ export async function hydrateAuth(): Promise<void> {
     notify();
   });
 
-  // Heartbeat: mark this user as online every 20s
   setInterval(() => {
     if (currentUserCache) {
       updateUser({ ...currentUserCache, lastSeen: Date.now() });
     }
   }, 20000);
 
-  // Realtime: profiles
   supabase
     .channel("profiles-realtime")
     .on(
@@ -123,7 +137,6 @@ export async function hydrateAuth(): Promise<void> {
     )
     .subscribe();
 
-  // Realtime: messages
   supabase
     .channel("messages-realtime")
     .on(
@@ -152,7 +165,6 @@ export async function hydrateAuth(): Promise<void> {
     )
     .subscribe();
 
-  // Clean up channels on full unload
   if (typeof window !== "undefined") {
     window.addEventListener("beforeunload", () => {
       supabase.removeAllChannels();
@@ -192,7 +204,8 @@ function rowToUser(row: any): User {
     id: row.id,
     displayId: typeof row.display_id === "number" ? row.display_id : null,
     username: row.username, email: row.email, passwordHash: "",
-    birthday: d.birthday || "", joined: d.joined || "",
+    birthday: d.birthday || "",
+    joined: row.created_at ? formatJoinDate(row.created_at) : (d.joined || ""),
     status: (typeof d.lastSeen === "number" && Date.now() - d.lastSeen < 60000) ? "online" : "offline",
     bio: d.bio || "New Voxelio member!", avatar: d.avatar || "🎨",
     avatarConfig: normalizeAvatarConfig(d.avatarConfig),
@@ -315,8 +328,6 @@ export function updateUser(updatedUser: User): void {
     .then(({ error }) => {
       if (error) {
         console.error("❌ updateUser FAILED:", error.message, error.details, error.hint);
-      } else {
-        console.log("✅ updateUser saved:", updatedUser.username);
       }
     });
   notify();
@@ -327,7 +338,7 @@ export function saveUsers(users: User[]): void {
     .from("profiles")
     .upsert(users.map(userToRow))
     .then(({ error }) => {
-      if (error) console.error("❌ saveUsers FAILED:", error.message, error.details, error.hint);
+      if (error) console.error("❌ saveUsers FAILED:", error.message);
     });
   notify();
 }
@@ -351,7 +362,7 @@ export async function createUser(data: { username: string; email: string; passwo
     id: authData.user.id, displayId: null,
     username: data.username, email: data.email,
     passwordHash: "", birthday: data.birthday,
-    joined: new Date().toLocaleDateString("en-US", { month: "short", year: "numeric" }),
+    joined: formatJoinDate(new Date()),
     status: "online", bio: "New Voxelio member!",
     avatar: avatars[Math.floor(Math.random() * avatars.length)],
     avatarConfig: { ...DEFAULT_AVATAR_CONFIG, bodyParts: { ...DEFAULT_BODY_PARTS }, partColors: {} },
@@ -550,12 +561,7 @@ export function sendMessage(
       : "m_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
 
   const msg: Message = {
-    id,
-    fromId,
-    toId,
-    text: filtered,
-    sentAt: Date.now(),
-    read: false,
+    id, fromId, toId, text: filtered, sentAt: Date.now(), read: false,
   };
 
   messagesCache.push(msg);
@@ -563,15 +569,9 @@ export function sendMessage(
 
   supabase
     .from("messages")
-    .insert({
-      id,
-      from_id: fromId,
-      to_id: toId,
-      text: filtered,
-      read: false,
-    })
+    .insert({ id, from_id: fromId, to_id: toId, text: filtered, read: false })
     .then(({ error }) => {
-      if (error) console.error("❌ sendMessage FAILED:", error.message, error.details, error.hint);
+      if (error) console.error("❌ sendMessage FAILED:", error.message);
     });
 
   return { success: true, message: msg };
