@@ -327,12 +327,12 @@ export default function AvatarEditorPage() {
                   <Section title="😀 Face">
                     {ownedFaces.length === 0 && (
                       <p className="text-xs text-[#888] mb-3 italic">
-                        No faces owned.{" "}
+                        No custom faces owned.{" "}
                         <Link href="/catalog" className="text-[#6C3CE0] hover:underline font-bold">Visit the Catalog →</Link>
                       </p>
                     )}
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-                      {/* Default (None) option */}
+                      {/* Default face — shows the actual /faces/default.png image */}
                       <button
                         onClick={() => update("face", "")}
                         className={`flex flex-col items-center gap-1 p-2 rounded border-2 transition ${
@@ -340,16 +340,22 @@ export default function AvatarEditorPage() {
                             ? "border-[#6C3CE0] bg-[#F5F0FF] shadow-md"
                             : "border-[#C5C8D6] bg-white hover:border-[#6C3CE0] hover:shadow-md"
                         }`}
+                        title="Default"
                       >
-                        <div className="w-full aspect-square rounded bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] flex items-center justify-center">
-                          <span className="text-3xl">🙂</span>
+                        <div className="w-full aspect-square rounded bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] flex items-center justify-center overflow-hidden">
+                          <img
+                            src="/faces/default.png"
+                            alt="Default face"
+                            className="w-full h-full object-contain"
+                            draggable={false}
+                          />
                         </div>
                         <span className="text-[10px] font-bold text-[#1A1A2E] text-center leading-tight">
                           Default
                         </span>
                       </button>
 
-                      {/* Owned faces */}
+                      {/* Owned custom faces */}
                       {ownedFaces.map((face) => (
                         <FaceCard
                           key={face.id}
