@@ -20,7 +20,7 @@ import {
 import { isOwnerAccount } from "../../../lib/badges";
 import AccountBadge from "../../components/AccountBadge";
 import Avatar from "../../components/Avatar";
-import NavLink from "../../components/NavLink";
+import NavLink from "../../../components/NavLink";
 
 export default function ConversationPage() {
   const params = useParams();
@@ -94,7 +94,7 @@ export default function ConversationPage() {
 
   const navTabs: any[] = [
     { name: "Home", href: "/" },
-    { name: "Games", href: "/#discover" },
+    { name: "Games", href: "/games" },
     { name: "Create", href: "/#create" },
     { name: "Catalog", href: "/catalog" },
     ...(isOwner ? [{ name: "Dev", href: "/dev", dev: true }] : []),

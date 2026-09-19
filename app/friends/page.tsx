@@ -121,7 +121,7 @@ export default function FriendsPage() {
 
   const navTabs: any[] = [
     { name: "Home", href: "/" },
-    { name: "Games", href: "/#discover" },
+    { name: "Games", href: "/games" },
     { name: "Create", href: "/#create" },
     { name: "Catalog", href: "/catalog" },
     ...(isOwner ? [{ name: "Dev", href: "/dev", dev: true }] : []),

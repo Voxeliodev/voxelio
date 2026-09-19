@@ -101,7 +101,6 @@ export default function ProfilePage() {
     setTimeout(() => setSavedFlash(false), 2000);
   };
 
-  // ===== Friend actions =====
   const handleAddFriend = () => {
     if (!currentUser || !profileUser) {
       showToast("error", "Sign in to add friends.");
@@ -134,7 +133,6 @@ export default function ProfilePage() {
     refresh();
   };
 
-  // Determine relationship action
   let relationshipAction: React.ReactNode = null;
 
   if (currentUser && profileUser && !isOwnProfile) {
@@ -200,7 +198,7 @@ export default function ProfilePage() {
 
   const navTabs: any[] = [
     { name: "Home", href: "/" },
-    { name: "Games", href: "/#discover" },
+    { name: "Games", href: "/games" },
     { name: "Create", href: "/#create" },
     { name: "Catalog", href: "/catalog" },
     ...(isOwner ? [{ name: "Dev", href: "/dev", dev: true }] : []),

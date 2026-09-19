@@ -116,7 +116,7 @@ export default function CatalogPage() {
 
   const navTabs: any[] = [
     { name: "Home", href: "/" },
-    { name: "Games", href: "/#discover" },
+    { name: "Games", href: "/games" },
     { name: "Create", href: "/#create" },
     { name: "Catalog", href: "/catalog", active: true },
     ...(isOwner ? [{ name: "Dev", href: "/dev", dev: true }] : []),
