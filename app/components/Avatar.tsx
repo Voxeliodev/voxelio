@@ -164,10 +164,9 @@ function Character({ config }: { config: AvatarConfig }) {
   // Does the equipped accessory require the arm raised?
   const isHolding = Boolean(config.accessory && HELD_ACCESSORIES.includes(config.accessory));
 
-  // Right-arm pivot rotation. When holding something, the arm swings
-  // forward and up by 60° around the X axis.
+  // Right-arm pivot rotation. 90° forward = arm points straight ahead.
   const armRotation: [number, number, number] = isHolding
-    ? [-Math.PI / 3, 0, 0]
+    ? [-Math.PI / 2, 0, 0]
     : [0, 0, 0];
 
   return (
@@ -242,7 +241,7 @@ function Character({ config }: { config: AvatarConfig }) {
               in world space even though the arm is tilted forward. */}
           {config.accessory && (
             <group
-              position={[0, -1.15, 0]}
+              position={[0, -1.32, 0]}
               rotation={[-armRotation[0], 0, 0]}
             >
               <Accessory3DGeometry accessoryId={config.accessory} />
