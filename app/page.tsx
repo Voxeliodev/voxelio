@@ -255,19 +255,31 @@ export default function Home() {
               Quick Links
             </div>
             <ul className="p-3 text-sm space-y-1.5">
-              {[
-                { label: "Build a World", href: "#" },
-                { label: "Download Studio", href: "#" },
-                { label: "Report Abuse", href: "#" },
-                { label: "Parental Controls", href: "#" },
-                { label: "Redeem Code", href: "/redeem" },
-              ].map((link) => (
-                <li key={link.label}>
-                  <Link href={link.href} className="text-[#4A1FA8] hover:underline flex items-center gap-1">
-                    ▸ {link.label}
-                  </Link>
-                </li>
-              ))}
+              <li>
+                <Link href="#" className="text-[#4A1FA8] hover:underline flex items-center gap-1">
+                  ▸ Build a World
+                </Link>
+              </li>
+              <li>
+                <Link href="#" className="text-[#4A1FA8] hover:underline flex items-center gap-1">
+                  ▸ Download Studio
+                </Link>
+              </li>
+              <li>
+                <Link href="#" className="text-[#4A1FA8] hover:underline flex items-center gap-1">
+                  ▸ Report Abuse
+                </Link>
+              </li>
+              <li>
+                <Link href="#" className="text-[#4A1FA8] hover:underline flex items-center gap-1">
+                  ▸ Parental Controls
+                </Link>
+              </li>
+              <li>
+                <a href="/redeem" className="text-[#4A1FA8] hover:underline flex items-center gap-1">
+                  ▸ Redeem Code
+                </a>
+              </li>
             </ul>
           </div>
         </aside>
