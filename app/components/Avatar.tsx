@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, Suspense } from "react";
-import * as THREE from "three";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, useGLTF } from "@react-three/drei";
 import type { AvatarConfig } from "../../lib/auth";
@@ -135,66 +134,6 @@ function BodyPart({
   return <>{children}</>;
 }
 
-// ============================================================
-// SHIRT TEXT OVERLAY
-// Renders multi-colored text on the front of the torso.
-// Each segment can have its own colour.
-// ============================================================
-function ShirtTextOverlay({
-  segments,
-}: {
-  segments: { text: string; color: string }[];
-}) {
-  const texture = useMemo(() => {
-    if (typeof document === "undefined") return null;
-
-    const canvas = document.createElement("canvas");
-    canvas.width = 1024;
-    canvas.height = 512;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
-    ctx.font = 'bold 160px "Segoe UI", Arial, sans-serif';
-
-    // Measure all segments first so we can centre the full line
-    const widths = segments.map((s) => ctx.measureText(s.text).width);
-    const totalWidth = widths.reduce((a, b) => a + b, 0);
-    let x = (canvas.width - totalWidth) / 2;
-    const y = canvas.height / 2;
-
-    // Draw each segment in its own colour
-    segments.forEach((seg, i) => {
-      ctx.fillStyle = seg.color;
-      ctx.fillText(seg.text, x, y);
-      x += widths[i];
-    });
-
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.needsUpdate = true;
-    tex.anisotropy = 8;
-    return tex;
-  }, [segments]);
-
-  if (!texture) return null;
-
-  return (
-    <mesh position={[0, 0.62, 0.28]} renderOrder={999}>
-      <planeGeometry args={[0.85, 0.42]} />
-      <meshBasicMaterial
-        map={texture}
-        transparent
-        depthTest={false}
-        depthWrite={false}
-        toneMapped={false}
-      />
-    </mesh>
-  );
-}
-
 function Character({ config }: { config: AvatarConfig }) {
   const skin = config.skinTone;
   const pants = config.pantsColor;
@@ -234,13 +173,8 @@ function Character({ config }: { config: AvatarConfig }) {
         </RoundedBox>
       </BodyPart>
 
-      {/* Shirt 3D detail layer (e.g. logo decals) */}
+      {/* Shirt overlay (also handles the I HEART VOX text) */}
       {config.shirt && <Shirt3D shirtId={config.shirt} skinTone={skin} />}
-
-      {/* Multi-colour text overlay */}
-      {shirtItem?.shirtTextSegments && shirtItem.shirtTextSegments.length > 0 && (
-        <ShirtTextOverlay segments={shirtItem.shirtTextSegments} />
-      )}
 
       <BodyPart slot="leftArm" partId={bodyParts?.leftArm}>
         <group>
