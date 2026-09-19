@@ -177,12 +177,8 @@ function Character({ config }: { config: AvatarConfig }) {
       )}
       {config.hat && <Hat3D hatId={config.hat} />}
 
-      {/* Custom PNG face overlay */}
-      {config.face && !isHeadless && (
-        <Suspense fallback={null}>
-          <Face3D faceId={config.face} />
-        </Suspense>
-      )}
+      {/* Custom PNG face overlay — no Suspense needed, loads via useEffect */}
+      {config.face && !isHeadless && <Face3D faceId={config.face} />}
 
       <BodyPart slot="torso" partId={bodyParts?.torso}>
         <RoundedBox

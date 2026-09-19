@@ -2,7 +2,7 @@
 
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, useGLTF } from "@react-three/drei";
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, useEffect, useState } from "react";
 import * as THREE from "three";
 import { Hat3DGeometry } from "./Hats3D";
 import { Shirt3D } from "./Shirts3D";
@@ -13,12 +13,6 @@ import type { Item } from "../../lib/items";
 // ItemPreview — reusable 3D preview for any catalog item.
 // ============================================================
 
-// ============================================================
-// AutoFitModel — loads a GLB and rescales it to fill the
-// preview box, no matter how big or small the source model is.
-// This is what makes 34 MB Blender exports look the same size
-// as the built-in code-drawn hats.
-// ============================================================
 function AutoFitModel({ item, targetSize = 1.4 }: { item: Item; targetSize?: number }) {
   const gltf = useGLTF(item.modelPath!);
 
@@ -168,6 +162,87 @@ function HeadPreview({ item, size }: { item: Item; size: number }) {
   );
 }
 
+function FacePreview({ item, size }: { item: Item; size: number }) {
+  const [texture, setTexture] = useState<THREE.Texture | null>(null);
+
+  useEffect(() => {
+    if (!item.faceImageUrl) return;
+    let cancelled = false;
+    const loader = new THREE.TextureLoader();
+    loader.load(
+      item.faceImageUrl,
+      (tex) => {
+        if (cancelled) { tex.dispose(); return; }
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = 8;
+        tex.needsUpdate = true;
+        setTexture(tex);
+      },
+      undefined,
+      () => {}
+    );
+    return () => { cancelled = true; };
+  }, [item.faceImageUrl]);
+
+  return (
+    <div
+      className="w-full bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] cursor-grab active:cursor-grabbing"
+      style={{ height: size }}
+    >
+      <Canvas camera={{ position: [0, 0.1, 2.2], fov: 45 }} dpr={[1, 2]}>
+        <ambientLight intensity={0.75} />
+        <directionalLight position={[3, 5, 4]} intensity={1.15} />
+        <directionalLight position={[-3, 2, -3]} intensity={0.5} />
+        <hemisphereLight args={["#ffffff", "#666680", 0.5]} />
+
+        <group position={[0, -0.1, 0]}>
+          <RoundedBox args={[0.85, 0.85, 0.85]} radius={0.16} smoothness={6} castShadow>
+            <meshStandardMaterial color="#F5C6A5" roughness={0.6} />
+          </RoundedBox>
+
+          {!texture && (
+            <>
+              <mesh position={[-0.18, 0.1, 0.44]}>
+                <boxGeometry args={[0.09, 0.12, 0.03]} />
+                <meshStandardMaterial color="#1A1A2E" />
+              </mesh>
+              <mesh position={[0.18, 0.1, 0.44]}>
+                <boxGeometry args={[0.09, 0.12, 0.03]} />
+                <meshStandardMaterial color="#1A1A2E" />
+              </mesh>
+              <mesh position={[0, -0.16, 0.44]}>
+                <boxGeometry args={[0.2, 0.04, 0.03]} />
+                <meshStandardMaterial color="#1A1A2E" />
+              </mesh>
+            </>
+          )}
+
+          {texture && (
+            <mesh position={[0, 0, 0.426]}>
+              <planeGeometry args={[0.85, 0.85]} />
+              <meshBasicMaterial
+                map={texture}
+                transparent
+                toneMapped={false}
+                depthWrite={false}
+              />
+            </mesh>
+          )}
+        </group>
+
+        <OrbitControls
+          enablePan={false}
+          enableZoom={false}
+          autoRotate
+          autoRotateSpeed={1.8}
+          minPolarAngle={Math.PI / 3}
+          maxPolarAngle={Math.PI / 1.8}
+        />
+      </Canvas>
+    </div>
+  );
+}
+
 function AccessoryPreview({ item, size }: { item: Item; size: number }) {
   const isGLB = Boolean(item.modelPath);
 
@@ -222,5 +297,6 @@ export default function ItemPreview({ item, size = 160 }: { item: Item; size?: n
   if (item.category === "outfits") return <ShirtPreview item={item} size={size} />;
   if (item.category === "heads") return <HeadPreview item={item} size={size} />;
   if (item.category === "accessories") return <AccessoryPreview item={item} size={size} />;
+  if (item.category === "faces") return <FacePreview item={item} size={size} />;
   return <GenericPreview item={item} size={size} />;
 }

@@ -178,8 +178,8 @@ export const ITEMS: Item[] = [
     previewEmoji: "😜",
     creator: "Voxelio",
 
-    // File is at public/faces/SILLY face.png
-    faceImageUrl: "/faces/SILLY face.png",
+    // File is now at public/faces/silly-face.png (renamed, no spaces)
+    faceImageUrl: "/faces/silly-face.png",
   },
 ];
 
