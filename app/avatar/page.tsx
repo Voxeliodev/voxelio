@@ -25,7 +25,7 @@ import Avatar from "../components/Avatar";
 import AccountBadge from "../components/AccountBadge";
 import NavLink from "../components/NavLink";
 import ItemPreview from "../components/ItemPreview";
-import { getHats, getShirts, getAccessories, getFaces, type Item } from "../../lib/items";
+import { getHats, getShirts, getAccessories, getFaces, getHair, type Item } from "../../lib/items";
 
 const SKIN_TONES = ["#F5C6A5", "#E8B08A", "#D69B71", "#B87A54", "#8B5A3C", "#5C3A23", "#3B2314"];
 
@@ -56,7 +56,6 @@ export default function AvatarEditorPage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [advancedSlot, setAdvancedSlot] = useState<BodyPartSlot>("head");
 
-  // Live 3D scene for exporting to .glb
   const sceneRef = useRef<THREE.Scene | null>(null);
   const [exporting, setExporting] = useState(false);
 
@@ -155,9 +154,6 @@ export default function AvatarEditorPage() {
     persist({ ...config, partColors: {} });
   };
 
-  // ============================================================
-  // EXPORT AVATAR TO .GLB (owner only)
-  // ============================================================
   const handleExport = async () => {
     if (!sceneRef.current || !user) return;
     setExporting(true);
@@ -209,6 +205,7 @@ export default function AvatarEditorPage() {
   const ownedShirts = getShirts().filter((s) => owned.includes(s.id));
   const ownedAccessories = getAccessories().filter((a) => owned.includes(a.id));
   const ownedFaces = getFaces().filter((f) => owned.includes(f.id));
+  const ownedHair = getHair().filter((h) => owned.includes(h.id));
 
   const unreadCount = user ? getUnreadCount(user.id) : 0;
   const isOwner = isOwnerAccount(user?.username);
@@ -429,6 +426,31 @@ export default function AvatarEditorPage() {
                     </div>
                   </Section>
 
+                  <Section title="💇 Hair">
+                    {ownedHair.length === 0 && (
+                      <p className="text-xs text-[#888] mb-3 italic">
+                        No hair owned.{" "}
+                        <Link href="/catalog" className="text-[#6C3CE0] hover:underline font-bold">Visit the Catalog →</Link>
+                      </p>
+                    )}
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                      <ItemTile
+                        emoji="🚫"
+                        name="None"
+                        selected={(config.hair || "") === ""}
+                        onSelect={() => update("hair", "")}
+                      />
+                      {ownedHair.map((item) => (
+                        <ItemPreviewTile
+                          key={item.id}
+                          item={item}
+                          selected={config.hair === item.id}
+                          onSelect={() => update("hair", item.id)}
+                        />
+                      ))}
+                    </div>
+                  </Section>
+
                   <div className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden">
                     <button
                       onClick={() => setShowAdvanced((s) => !s)}
@@ -512,7 +534,7 @@ export default function AvatarEditorPage() {
 
                   <div className="bg-white border-2 border-dashed border-[#C5C8D6] rounded p-4 text-center">
                     <p className="text-xs font-bold text-[#888] mb-1">🚧 Coming Soon</p>
-                    <p className="text-xs text-[#999]">Hair, and more body types coming soon.</p>
+                    <p className="text-xs text-[#999]">Facial hair, and more body types coming soon.</p>
                   </div>
                 </>
               )}

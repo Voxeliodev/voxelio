@@ -7,6 +7,7 @@ import * as THREE from "three";
 import { Hat3DGeometry } from "./Hats3D";
 import { Shirt3D } from "./Shirts3D";
 import { Accessory3DGeometry } from "./Accessories3D";
+import { Hair3DGeometry } from "./Hair3D";
 import type { Item } from "../../lib/items";
 
 // ============================================================
@@ -243,6 +244,62 @@ function FacePreview({ item, size }: { item: Item; size: number }) {
   );
 }
 
+// ============================================================
+// HairPreview — hair on a mock head
+// ============================================================
+function HairPreview({ item, size }: { item: Item; size: number }) {
+  const isGLB = Boolean(item.modelPath);
+
+  return (
+    <div
+      className="w-full bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] cursor-grab active:cursor-grabbing"
+      style={{ height: size }}
+    >
+      <Canvas
+        camera={{ position: [0, 1.7, 2.2], fov: 45 }}
+        dpr={[1, 2]}
+      >
+        <ambientLight intensity={0.75} />
+        <directionalLight position={[3, 5, 4]} intensity={1.15} />
+        <directionalLight position={[-3, 2, -3]} intensity={0.5} />
+        <hemisphereLight args={["#ffffff", "#666680", 0.5]} />
+
+        {/* Mock head — matches the real avatar's head at y=1.4 */}
+        <RoundedBox
+          args={[0.85, 0.85, 0.85]}
+          radius={0.16}
+          smoothness={6}
+          position={[0, 1.4, 0]}
+          castShadow
+        >
+          <meshStandardMaterial color="#F5C6A5" roughness={0.6} />
+        </RoundedBox>
+
+        {/* Hair — code-drawn renders at y=1.4 already; GLB gets placed there */}
+        {isGLB ? (
+          <Suspense fallback={null}>
+            <group position={[0, 1.4, 0]}>
+              <AutoFitModel item={item} targetSize={1.2} />
+            </group>
+          </Suspense>
+        ) : (
+          <Hair3DGeometry hairId={item.id} />
+        )}
+
+        <OrbitControls
+          enablePan={false}
+          enableZoom={false}
+          autoRotate
+          autoRotateSpeed={1.6}
+          target={[0, 1.4, 0]}
+          minPolarAngle={Math.PI / 4}
+          maxPolarAngle={Math.PI / 1.8}
+        />
+      </Canvas>
+    </div>
+  );
+}
+
 function AccessoryPreview({ item, size }: { item: Item; size: number }) {
   const isGLB = Boolean(item.modelPath);
 
@@ -296,7 +353,8 @@ export default function ItemPreview({ item, size = 160 }: { item: Item; size?: n
   if (item.category === "hats") return <HatPreview item={item} size={size} />;
   if (item.category === "outfits") return <ShirtPreview item={item} size={size} />;
   if (item.category === "heads") return <HeadPreview item={item} size={size} />;
-  if (item.category === "accessories") return <AccessoryPreview item={item} size={size} />;
   if (item.category === "faces") return <FacePreview item={item} size={size} />;
+  if (item.category === "hair") return <HairPreview item={item} size={size} />;
+  if (item.category === "accessories") return <AccessoryPreview item={item} size={size} />;
   return <GenericPreview item={item} size={size} />;
 }

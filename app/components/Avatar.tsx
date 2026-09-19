@@ -9,6 +9,7 @@ import { Hat3D } from "./Hats3D";
 import { Shirt3D } from "./Shirts3D";
 import { Accessory3DGeometry } from "./Accessories3D";
 import { Face3D, DefaultFace3D } from "./Faces3D";
+import { Hair3D } from "./Hair3D";
 import { getItem } from "../../lib/items";
 import { getBodyPart, type BodyPartSlot } from "../../lib/bodyParts";
 
@@ -170,6 +171,7 @@ function Character({ config }: { config: AvatarConfig }) {
       {!isHeadless && (
         <HeadFor partId={bodyParts?.head} skinTone={headColor} hideFace={hideDefaultFace} />
       )}
+      {config.hair && <Hair3D hairId={config.hair} />}
       {config.hat && <Hat3D hatId={config.hat} />}
 
       {config.face && !isHeadless && (
