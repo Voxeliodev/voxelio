@@ -261,10 +261,14 @@ export default function CatalogPage() {
                 My Items
               </div>
               <ul className="p-3 text-sm space-y-1.5">
-                {["My Inventory", "Purchase History", "Redeem Code"].map((link) => (
-                  <li key={link}>
-                    <Link href="#" className="text-[#4A1FA8] hover:underline flex items-center gap-1">
-                      ▸ {link}
+                {[
+                  { label: "My Inventory", href: "#" },
+                  { label: "Purchase History", href: "#" },
+                  { label: "Redeem Code", href: "/redeem" },
+                ].map((link) => (
+                  <li key={link.label}>
+                    <Link href={link.href} className="text-[#4A1FA8] hover:underline flex items-center gap-1">
+                      ▸ {link.label}
                     </Link>
                   </li>
                 ))}
