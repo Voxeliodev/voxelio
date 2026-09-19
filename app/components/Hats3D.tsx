@@ -183,9 +183,6 @@ function makeBeanieRibTexture(): THREE.CanvasTexture | null {
   return tex;
 }
 
-// Brim texture: rib pattern + big "Vox Cooks" text baked in.
-// The canvas is wider than tall so the text wraps naturally
-// around the circumference of the brim cylinder.
 function makeBeanieBrimTexture(): THREE.CanvasTexture | null {
   if (typeof document === "undefined") return null;
 
@@ -201,7 +198,7 @@ function makeBeanieBrimTexture(): THREE.CanvasTexture | null {
   ctx.fillStyle = "#0A0A0A";
   ctx.fillRect(0, 0, W, H);
 
-  // Rib stripes (thicker stripes than crown since brim is wider)
+  // Rib stripes
   const ribCount = 42;
   const ribWidth = W / ribCount;
   for (let i = 0; i < ribCount; i++) {
@@ -215,8 +212,6 @@ function makeBeanieBrimTexture(): THREE.CanvasTexture | null {
   }
 
   // ===== "Vox Cooks" — big, centered horizontally =====
-  // Because we offset the texture by 0.5, the horizontal center
-  // of this canvas faces the front of the beanie.
   ctx.font = "900 260px 'Arial Black', Arial, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -234,8 +229,6 @@ function makeBeanieBrimTexture(): THREE.CanvasTexture | null {
   tex.wrapT = THREE.ClampToEdgeWrapping;
   tex.anisotropy = 16;
   tex.colorSpace = THREE.SRGBColorSpace;
-  // Shift texture so the center of the canvas (where the text is)
-  // lands on the front face of the cylinder (U = 0).
   tex.offset.x = 0.5;
   tex.needsUpdate = true;
   return tex;
@@ -246,8 +239,9 @@ function VoxCooksBeanie() {
   const ribTexture = useMemo(() => makeBeanieRibTexture(), []);
 
   return (
-    <group>
-      {/* ===== FOLDED BRIM (cuff) — texture includes text and wraps ===== */}
+    // Raise the whole beanie up so it sits higher on the head
+    <group position={[0, 0.25, 0]}>
+      {/* ===== FOLDED BRIM (cuff) ===== */}
       <mesh position={[0, -0.28, 0]} castShadow>
         <cylinderGeometry args={[0.52, 0.52, 0.36, 64]} />
         <meshStandardMaterial
