@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, Suspense } from "react";
-import { Canvas } from "@react-three/fiber";
+import { useMemo, Suspense, useEffect } from "react";
+import * as THREE from "three";
+import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, useGLTF } from "@react-three/drei";
 import type { AvatarConfig } from "../../lib/auth";
 import { Hat3D } from "./Hats3D";
@@ -16,6 +17,21 @@ import { getBodyPart, type BodyPartSlot } from "../../lib/bodyParts";
 // ============================================================
 
 const HELD_ACCESSORIES = ["accessory-vox-sword"];
+
+// ============================================================
+// SceneExporter — grabs the R3F scene and hands it to the parent
+// ============================================================
+function SceneExporter({
+  onSceneReady,
+}: {
+  onSceneReady?: (scene: THREE.Scene) => void;
+}) {
+  const { scene } = useThree();
+  useEffect(() => {
+    if (onSceneReady) onSceneReady(scene);
+  }, [scene, onSceneReady]);
+  return null;
+}
 
 function DefaultHead({ skinTone, hideFace }: { skinTone: string; hideFace?: boolean }) {
   return (
@@ -150,13 +166,12 @@ function Character({ config }: { config: AvatarConfig }) {
   const hideDefaultFace = Boolean(config.face);
 
   return (
-    <group position={[0, -0.6, 0]}>
+    <group name="VoxelioCharacter" position={[0, -0.6, 0]}>
       {!isHeadless && (
         <HeadFor partId={bodyParts?.head} skinTone={headColor} hideFace={hideDefaultFace} />
       )}
       {config.hat && <Hat3D hatId={config.hat} />}
 
-      {/* Custom equipped face — sibling of head, absolutely positioned */}
       {config.face && !isHeadless && (
         <Face3D
           faceId={config.face}
@@ -178,7 +193,6 @@ function Character({ config }: { config: AvatarConfig }) {
 
       {config.shirt && <Shirt3D shirtId={config.shirt} skinTone={skin} />}
 
-      {/* LEFT ARM */}
       <BodyPart slot="leftArm" partId={bodyParts?.leftArm}>
         <group>
           <RoundedBox
@@ -202,7 +216,6 @@ function Character({ config }: { config: AvatarConfig }) {
         </group>
       </BodyPart>
 
-      {/* RIGHT ARM */}
       <BodyPart slot="rightArm" partId={bodyParts?.rightArm}>
         <group position={[0.6, shoulderY, 0]} rotation={armRotation}>
           <RoundedBox
@@ -236,7 +249,6 @@ function Character({ config }: { config: AvatarConfig }) {
         </group>
       </BodyPart>
 
-      {/* LEGS */}
       <BodyPart slot="leftLeg" partId={bodyParts?.leftLeg}>
         <group>
           <RoundedBox
@@ -328,15 +340,15 @@ export default function Avatar({
   config,
   size = 200,
   interactive = false,
+  onSceneReady,
 }: {
   config: AvatarConfig;
   size?: number;
   interactive?: boolean;
+  onSceneReady?: (scene: THREE.Scene) => void;
 }) {
   const cameraPosition = useMemo(() => computeCameraPosition(config), [config]);
 
-  // Distance from the camera to the orbit target (origin).
-  // Used to set a sensible zoom range that scales with the avatar size.
   const cameraDistance = useMemo(
     () =>
       Math.sqrt(
@@ -347,8 +359,8 @@ export default function Avatar({
     [cameraPosition]
   );
 
-  const minDist = cameraDistance * 0.4; // zoomed in
-  const maxDist = cameraDistance * 2.0; // zoomed out
+  const minDist = cameraDistance * 0.4;
+  const maxDist = cameraDistance * 2.0;
 
   return (
     <div
@@ -376,6 +388,8 @@ export default function Avatar({
         <hemisphereLight args={["#ffffff", "#666680", 0.4]} />
 
         <Character config={config} />
+
+        {onSceneReady && <SceneExporter onSceneReady={onSceneReady} />}
 
         {interactive && (
           <OrbitControls
