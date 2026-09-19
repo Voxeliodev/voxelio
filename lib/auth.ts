@@ -642,6 +642,73 @@ export function markConversationRead(userId: string, otherId: string): void {
 }
 
 // ============================================================
+// REDEEM CODES
+// ============================================================
+export async function redeemCode(inputCode: string): Promise<{
+  success: boolean;
+  error?: string;
+  rewardType?: string;
+  rewardText?: string;
+}> {
+  const user = getCurrentUser();
+  if (!user) return { success: false, error: "You must be signed in." };
+
+  const trimmed = inputCode.trim();
+  if (!trimmed) return { success: false, error: "Please enter a code." };
+
+  const { data, error } = await supabase.rpc("redeem_code", {
+    input_code: trimmed,
+  });
+
+  if (error) {
+    console.error("redeem_code RPC failed:", error.message);
+    return { success: false, error: "Couldn't process that code. Try again." };
+  }
+
+  if (!data || !data.success) {
+    return { success: false, error: data?.error || "Couldn't redeem that code." };
+  }
+
+  const rewardType = data.reward_type as string;
+  const rewardValue = (data.reward_value || {}) as any;
+  let rewardText = "";
+
+  if (rewardType === "voxbux") {
+    const amount = Number(rewardValue.amount) || 0;
+    updateUser({ ...user, voxbux: user.voxbux + amount });
+    rewardText = `+${amount.toLocaleString()} Voxbux`;
+  } else if (rewardType === "item") {
+    const itemId = rewardValue.itemId as string | undefined;
+    if (itemId && !user.ownedItems.includes(itemId)) {
+      updateUser({ ...user, ownedItems: [...user.ownedItems, itemId] });
+      rewardText = `Item unlocked!`;
+    } else {
+      rewardText = `Reward granted`;
+    }
+  } else if (rewardType === "indev") {
+    const days = Number(rewardValue.days) || 30;
+    const ms = days * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const base = user.indevClub && user.indevClub.expiresAt > now
+      ? user.indevClub.expiresAt
+      : now;
+    updateUser({
+      ...user,
+      indevClub: {
+        tier: user.indevClub?.tier ?? "monthly",
+        startedAt: user.indevClub?.startedAt ?? now,
+        expiresAt: base + ms,
+      },
+    });
+    rewardText = `INDEV Club +${days} days`;
+  } else {
+    rewardText = "Reward granted";
+  }
+
+  return { success: true, rewardType, rewardText };
+}
+
+// ============================================================
 // DEV TOOLS
 // ============================================================
 export function giftVoxbux(userId: string, amount: number): { success: boolean; error?: string; newBalance?: number } {

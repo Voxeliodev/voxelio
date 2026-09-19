@@ -255,10 +255,16 @@ export default function Home() {
               Quick Links
             </div>
             <ul className="p-3 text-sm space-y-1.5">
-              {["Build a World", "Download Studio", "Report Abuse", "Parental Controls", "Redeem Code"].map((link) => (
-                <li key={link}>
-                  <Link href="#" className="text-[#4A1FA8] hover:underline flex items-center gap-1">
-                    ▸ {link}
+              {[
+                { label: "Build a World", href: "#" },
+                { label: "Download Studio", href: "#" },
+                { label: "Report Abuse", href: "#" },
+                { label: "Parental Controls", href: "#" },
+                { label: "Redeem Code", href: "/redeem" },
+              ].map((link) => (
+                <li key={link.label}>
+                  <Link href={link.href} className="text-[#4A1FA8] hover:underline flex items-center gap-1">
+                    ▸ {link.label}
                   </Link>
                 </li>
               ))}
@@ -497,9 +503,9 @@ export default function Home() {
             </div>
             <div className="bg-white border-2 border-[#C5C8D6] rounded p-4 space-y-3">
               {[
-                { date: "Sep 18, 2026", title: "Welcome to Voxelio!", desc: "The platform is officially live. Games Coming Soon!" },
-                { date: "Sep 12, 2026", title: "Avatar Customization Update", desc: "Added New Items And More Customization Options!" },
-                { date: "Sep 05, 2026", title: "Starting Work On Voxelio", desc: "Going To Be A Fun Experience!" },
+                { date: "Sep 18, 2026", title: "Welcome to Voxelio!", desc: "The platform is officially live. Be the first to create a world!" },
+                { date: "Sep 12, 2026", title: "Creator Payout Increase", desc: "Creators now keep 70% of all Voxbux earned." },
+                { date: "Sep 05, 2026", title: "Nova AI Assistant Released", desc: "Generate code, ideas, and assets with AI." },
               ].map((news) => (
                 <div key={news.title} className="border-l-4 border-[#6C3CE0] pl-3">
                   <div className="text-[10px] text-[#888] font-semibold uppercase">{news.date}</div>
