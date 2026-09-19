@@ -18,7 +18,7 @@
 
 export const OWNER_USERNAME = "voxelio";
 export const ADMIN_USERNAMES: string[] = ["CrazyVox"];
-export const MODERATOR_USERNAMES: string[] = [];
+export const MODERATOR_USERNAMES: string[] = ["Testerrdw"];
 
 // Kept for backwards compatibility in case something still imports it.
 export const OWNER_ID: string = OWNER_USERNAME;
