@@ -7,7 +7,7 @@ import type { AvatarConfig } from "../../lib/auth";
 import { Hat3D } from "./Hats3D";
 import { Shirt3D } from "./Shirts3D";
 import { Accessory3DGeometry } from "./Accessories3D";
-import { Face3D } from "./Faces3D";
+import { Face3D, DefaultFace3D } from "./Faces3D";
 import { getItem } from "../../lib/items";
 import { getBodyPart, type BodyPartSlot } from "../../lib/bodyParts";
 
@@ -17,35 +17,13 @@ import { getBodyPart, type BodyPartSlot } from "../../lib/bodyParts";
 
 const HELD_ACCESSORIES = ["accessory-vox-sword"];
 
-function Face({ eyeZ, mouthZ }: { eyeZ: number; mouthZ: number }) {
-  const eyeColor = "#1A1A2E";
-  const mouthColor = "#1A1A2E";
-
-  return (
-    <group>
-      <mesh position={[-0.18, 0.1, eyeZ]}>
-        <boxGeometry args={[0.09, 0.12, 0.03]} />
-        <meshStandardMaterial color={eyeColor} />
-      </mesh>
-      <mesh position={[0.18, 0.1, eyeZ]}>
-        <boxGeometry args={[0.09, 0.12, 0.03]} />
-        <meshStandardMaterial color={eyeColor} />
-      </mesh>
-      <mesh position={[0, -0.16, mouthZ]}>
-        <boxGeometry args={[0.2, 0.04, 0.03]} />
-        <meshStandardMaterial color={mouthColor} />
-      </mesh>
-    </group>
-  );
-}
-
 function DefaultHead({ skinTone, hideFace }: { skinTone: string; hideFace?: boolean }) {
   return (
     <group position={[0, 1.4, 0]}>
       <RoundedBox args={[0.85, 0.85, 0.85]} radius={0.16} smoothness={6} castShadow>
         <meshStandardMaterial color={skinTone} roughness={0.6} />
       </RoundedBox>
-      {!hideFace && <Face eyeZ={0.44} mouthZ={0.44} />}
+      {!hideFace && <DefaultFace3D headType="default" />}
     </group>
   );
 }
@@ -57,7 +35,7 @@ function RoundHead({ skinTone, hideFace }: { skinTone: string; hideFace?: boolea
         <sphereGeometry args={[0.52, 48, 48]} />
         <meshStandardMaterial color={skinTone} roughness={0.65} />
       </mesh>
-      {!hideFace && <Face eyeZ={0.5} mouthZ={0.5} />}
+      {!hideFace && <DefaultFace3D headType="round" />}
     </group>
   );
 }
@@ -178,7 +156,7 @@ function Character({ config }: { config: AvatarConfig }) {
       )}
       {config.hat && <Hat3D hatId={config.hat} />}
 
-      {/* Custom PNG face overlay — pass head type so it can wrap correctly */}
+      {/* Custom equipped face — sibling of head, absolutely positioned */}
       {config.face && !isHeadless && (
         <Face3D
           faceId={config.face}
