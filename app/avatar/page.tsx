@@ -22,7 +22,7 @@ import {
 import Avatar from "../components/Avatar";
 import AccountBadge from "../components/AccountBadge";
 import NavLink from "../components/NavLink";
-import { getHats, getShirts } from "../../lib/items";
+import { getHats, getShirts, getAccessories } from "../../lib/items";
 
 const SKIN_TONES = ["#F5C6A5", "#E8B08A", "#D69B71", "#B87A54", "#8B5A3C", "#5C3A23", "#3B2314"];
 
@@ -151,6 +151,7 @@ export default function AvatarEditorPage() {
   const owned = user?.ownedItems || [];
   const ownedHats = getHats().filter((h) => owned.includes(h.id));
   const ownedShirts = getShirts().filter((s) => owned.includes(s.id));
+  const ownedAccessories = getAccessories().filter((a) => owned.includes(a.id));
 
   const unreadCount = user ? getUnreadCount(user.id) : 0;
   const isOwner = isOwnerAccount(user?.username);
@@ -510,6 +511,38 @@ export default function AvatarEditorPage() {
                     {ownedShirts.length === 0 && (
                       <p className="text-xs text-[#888] mt-2 italic">
                         No shirts owned.{" "}
+                        <Link href="/catalog" className="text-[#6C3CE0] hover:underline font-bold">Visit the Catalog →</Link>
+                      </p>
+                    )}
+                  </Section>
+
+                  <Section title="⚔️ Accessories">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => update("accessory", "")}
+                        className={`px-3 py-2 text-xs font-bold rounded border transition ${
+                          (config.accessory || "") === "" ? "bg-[#6C3CE0] text-white border-[#4A1FA8]"
+                          : "bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE]"
+                        }`}
+                      >
+                        🚫 None
+                      </button>
+                      {ownedAccessories.map((item) => (
+                        <button
+                          key={item.id}
+                          onClick={() => update("accessory", item.id)}
+                          className={`px-3 py-2 text-xs font-bold rounded border transition ${
+                            config.accessory === item.id ? "bg-[#6C3CE0] text-white border-[#4A1FA8]"
+                            : "bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE]"
+                          }`}
+                        >
+                          {item.previewEmoji} {item.name}
+                        </button>
+                      ))}
+                    </div>
+                    {ownedAccessories.length === 0 && (
+                      <p className="text-xs text-[#888] mt-2 italic">
+                        No accessories owned.{" "}
                         <Link href="/catalog" className="text-[#6C3CE0] hover:underline font-bold">Visit the Catalog →</Link>
                       </p>
                     )}

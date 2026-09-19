@@ -6,6 +6,7 @@ import { OrbitControls, RoundedBox, useGLTF } from "@react-three/drei";
 import type { AvatarConfig } from "../../lib/auth";
 import { Hat3D } from "./Hats3D";
 import { Shirt3D } from "./Shirts3D";
+import { Accessory3D } from "./Accessories3D";
 import { getItem } from "../../lib/items";
 import { getBodyPart, type BodyPartSlot } from "../../lib/bodyParts";
 
@@ -173,8 +174,10 @@ function Character({ config }: { config: AvatarConfig }) {
         </RoundedBox>
       </BodyPart>
 
-      {/* Shirt overlay (also handles the I HEART VOX text) */}
       {config.shirt && <Shirt3D shirtId={config.shirt} skinTone={skin} />}
+
+      {/* Accessories (swords, shields, etc.) — right hand attachment */}
+      {config.accessory && <Accessory3D accessoryId={config.accessory} />}
 
       <BodyPart slot="leftArm" partId={bodyParts?.leftArm}>
         <group>
@@ -285,6 +288,8 @@ function getAvatarExtent(config: AvatarConfig): { top: number; bottom: number } 
     top = Math.max(top, 2.625);
   } else if (config.hat === "hat-vox-cooks") {
     top = Math.max(top, 2.15);
+  } else if (config.hat === "hat-vox-cooks-beanie") {
+    top = Math.max(top, 2.55);
   }
 
   const bottom = -1.0;

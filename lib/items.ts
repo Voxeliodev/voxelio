@@ -123,7 +123,7 @@ export const ITEMS: Item[] = [
     name: "I HEART VOX",
     description:
       "A clean white shirt with \"I HEART VOX\" printed across the chest. Show the world you love Voxelio.",
-    price: 15,
+    price: 50,
     category: "outfits",
     rarity: "rare",
     previewEmoji: "❤️",
@@ -134,6 +134,19 @@ export const ITEMS: Item[] = [
       { text: " HEART", color: "#E11D48" },
       { text: " VOX", color: "#7B2FF7" },
     ],
+  },
+
+  // ===== ACCESSORIES =====
+  {
+    id: "accessory-vox-sword",
+    name: "Vox Sword",
+    description:
+      "A classic voxel sword — silver blade, gold guard, and a sturdy wooden grip. Yours to wield.",
+    price: 75,
+    category: "accessories",
+    rarity: "rare",
+    previewEmoji: "⚔️",
+    creator: "Voxelio",
   },
 ];
 
@@ -170,6 +183,10 @@ export function getShirts(): Item[] {
 
 export function getHeads(): Item[] {
   return ITEMS.filter((i) => i.category === "heads");
+}
+
+export function getAccessories(): Item[] {
+  return ITEMS.filter((i) => i.category === "accessories");
 }
 
 export const RARITY_LABELS: Record<ItemRarity, string> = {
