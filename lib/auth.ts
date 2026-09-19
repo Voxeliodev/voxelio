@@ -13,12 +13,13 @@ export type BodyPartColors = {
 export type AvatarConfig = {
   skinTone: string; shirtColor: string; pantsColor: string; hat: string; shirt: string;
   accessory?: string;
+  face?: string;
   bodyParts: Record<BodyPartSlot, string>; partColors: BodyPartColors;
 };
 
 export const DEFAULT_AVATAR_CONFIG: AvatarConfig = {
   skinTone: "#F5C6A5", shirtColor: "#7B2FF7", pantsColor: "#1A1A2E",
-  hat: "", shirt: "", accessory: "",
+  hat: "", shirt: "", accessory: "", face: "",
   bodyParts: { ...DEFAULT_BODY_PARTS }, partColors: {},
 };
 
@@ -197,6 +198,7 @@ function normalizeAvatarConfig(raw: any): AvatarConfig {
     hat: raw?.hat || "",
     shirt: raw?.shirt || "",
     accessory: raw?.accessory || "",
+    face: raw?.face || "",
     bodyParts, partColors,
   };
 }

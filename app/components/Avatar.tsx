@@ -7,6 +7,7 @@ import type { AvatarConfig } from "../../lib/auth";
 import { Hat3D } from "./Hats3D";
 import { Shirt3D } from "./Shirts3D";
 import { Accessory3DGeometry } from "./Accessories3D";
+import { Face3D } from "./Faces3D";
 import { getItem } from "../../lib/items";
 import { getBodyPart, type BodyPartSlot } from "../../lib/bodyParts";
 
@@ -14,7 +15,6 @@ import { getBodyPart, type BodyPartSlot } from "../../lib/bodyParts";
 // VOXELIO 3D AVATAR
 // ============================================================
 
-// Accessories that cause the right arm to raise into a "holding" pose.
 const HELD_ACCESSORIES = ["accessory-vox-sword"];
 
 function Face({ eyeZ, mouthZ }: { eyeZ: number; mouthZ: number }) {
@@ -39,25 +39,25 @@ function Face({ eyeZ, mouthZ }: { eyeZ: number; mouthZ: number }) {
   );
 }
 
-function DefaultHead({ skinTone }: { skinTone: string }) {
+function DefaultHead({ skinTone, hideFace }: { skinTone: string; hideFace?: boolean }) {
   return (
     <group position={[0, 1.4, 0]}>
       <RoundedBox args={[0.85, 0.85, 0.85]} radius={0.16} smoothness={6} castShadow>
         <meshStandardMaterial color={skinTone} roughness={0.6} />
       </RoundedBox>
-      <Face eyeZ={0.44} mouthZ={0.44} />
+      {!hideFace && <Face eyeZ={0.44} mouthZ={0.44} />}
     </group>
   );
 }
 
-function RoundHead({ skinTone }: { skinTone: string }) {
+function RoundHead({ skinTone, hideFace }: { skinTone: string; hideFace?: boolean }) {
   return (
     <group position={[0, 1.4, 0]}>
       <mesh castShadow>
         <sphereGeometry args={[0.52, 48, 48]} />
         <meshStandardMaterial color={skinTone} roughness={0.65} />
       </mesh>
-      <Face eyeZ={0.5} mouthZ={0.5} />
+      {!hideFace && <Face eyeZ={0.5} mouthZ={0.5} />}
     </group>
   );
 }
@@ -69,12 +69,14 @@ function HeadlessHead() {
 function HeadFor({
   partId,
   skinTone,
+  hideFace,
 }: {
   partId: string | undefined;
   skinTone: string;
+  hideFace?: boolean;
 }) {
   if (partId === "head-round") {
-    return <RoundHead key="head-round" skinTone={skinTone} />;
+    return <RoundHead key="head-round" skinTone={skinTone} hideFace={hideFace} />;
   }
   if (partId === "head-headless") {
     return <HeadlessHead key="head-headless" />;
@@ -83,7 +85,7 @@ function HeadFor({
     const part = getBodyPart(partId);
     if (part?.modelPath) return <CustomBodyPart key={partId} partId={partId} />;
   }
-  return <DefaultHead key="default" skinTone={skinTone} />;
+  return <DefaultHead key="default" skinTone={skinTone} hideFace={hideFace} />;
 }
 
 function LoadedBodyPart({
@@ -161,21 +163,26 @@ function Character({ config }: { config: AvatarConfig }) {
   const isHeadless = bodyParts?.head === "head-headless";
 
   const isHolding = Boolean(config.accessory && HELD_ACCESSORIES.includes(config.accessory));
-
-  // Rotation: 90° forward when holding, 0 when relaxed.
   const armRotation: [number, number, number] = isHolding
     ? [-Math.PI / 2, 0, 0]
     : [0, 0, 0];
-
-  // Shoulder Y:
-  //   - Not holding: pivot at torso top (1.0), arm hangs naturally
-  //   - Holding: pivot lowered to 0.85 so the horizontal arm sits at torso height
   const shoulderY = isHolding ? 0.85 : 1.0;
+
+  const hideDefaultFace = Boolean(config.face);
 
   return (
     <group position={[0, -0.6, 0]}>
-      {!isHeadless && <HeadFor partId={bodyParts?.head} skinTone={headColor} />}
+      {!isHeadless && (
+        <HeadFor partId={bodyParts?.head} skinTone={headColor} hideFace={hideDefaultFace} />
+      )}
       {config.hat && <Hat3D hatId={config.hat} />}
+
+      {/* Custom PNG face overlay */}
+      {config.face && !isHeadless && (
+        <Suspense fallback={null}>
+          <Face3D faceId={config.face} />
+        </Suspense>
+      )}
 
       <BodyPart slot="torso" partId={bodyParts?.torso}>
         <RoundedBox
@@ -191,7 +198,7 @@ function Character({ config }: { config: AvatarConfig }) {
 
       {config.shirt && <Shirt3D shirtId={config.shirt} skinTone={skin} />}
 
-      {/* ==== LEFT ARM ==== */}
+      {/* LEFT ARM */}
       <BodyPart slot="leftArm" partId={bodyParts?.leftArm}>
         <group>
           <RoundedBox
@@ -215,7 +222,7 @@ function Character({ config }: { config: AvatarConfig }) {
         </group>
       </BodyPart>
 
-      {/* ==== RIGHT ARM — pivot at shoulder, height depends on holding state ==== */}
+      {/* RIGHT ARM */}
       <BodyPart slot="rightArm" partId={bodyParts?.rightArm}>
         <group position={[0.6, shoulderY, 0]} rotation={armRotation}>
           <RoundedBox
@@ -249,7 +256,7 @@ function Character({ config }: { config: AvatarConfig }) {
         </group>
       </BodyPart>
 
-      {/* ==== LEGS ==== */}
+      {/* LEGS */}
       <BodyPart slot="leftLeg" partId={bodyParts?.leftLeg}>
         <group>
           <RoundedBox

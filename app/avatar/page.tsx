@@ -22,7 +22,7 @@ import {
 import Avatar from "../components/Avatar";
 import AccountBadge from "../components/AccountBadge";
 import NavLink from "../components/NavLink";
-import { getHats, getShirts, getAccessories } from "../../lib/items";
+import { getHats, getShirts, getAccessories, getFaces } from "../../lib/items";
 
 const SKIN_TONES = ["#F5C6A5", "#E8B08A", "#D69B71", "#B87A54", "#8B5A3C", "#5C3A23", "#3B2314"];
 
@@ -152,6 +152,7 @@ export default function AvatarEditorPage() {
   const ownedHats = getHats().filter((h) => owned.includes(h.id));
   const ownedShirts = getShirts().filter((s) => owned.includes(s.id));
   const ownedAccessories = getAccessories().filter((a) => owned.includes(a.id));
+  const ownedFaces = getFaces().filter((f) => owned.includes(f.id));
 
   const unreadCount = user ? getUnreadCount(user.id) : 0;
   const isOwner = isOwnerAccount(user?.username);
@@ -406,7 +407,7 @@ export default function AvatarEditorPage() {
 
                   <div className="bg-white border-2 border-dashed border-[#C5C8D6] rounded p-4 text-center">
                     <p className="text-xs font-bold text-[#888] mb-1">🚧 Coming Soon</p>
-                    <p className="text-xs text-[#999]">Hair, faces, and more body types coming soon.</p>
+                    <p className="text-xs text-[#999]">Hair, and more body types coming soon.</p>
                   </div>
                 </>
               )}
@@ -543,6 +544,38 @@ export default function AvatarEditorPage() {
                     {ownedAccessories.length === 0 && (
                       <p className="text-xs text-[#888] mt-2 italic">
                         No accessories owned.{" "}
+                        <Link href="/catalog" className="text-[#6C3CE0] hover:underline font-bold">Visit the Catalog →</Link>
+                      </p>
+                    )}
+                  </Section>
+
+                  <Section title="😀 Faces">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => update("face", "")}
+                        className={`px-3 py-2 text-xs font-bold rounded border transition ${
+                          (config.face || "") === "" ? "bg-[#6C3CE0] text-white border-[#4A1FA8]"
+                          : "bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE]"
+                        }`}
+                      >
+                        🚫 None
+                      </button>
+                      {ownedFaces.map((item) => (
+                        <button
+                          key={item.id}
+                          onClick={() => update("face", item.id)}
+                          className={`px-3 py-2 text-xs font-bold rounded border transition ${
+                            config.face === item.id ? "bg-[#6C3CE0] text-white border-[#4A1FA8]"
+                            : "bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE]"
+                          }`}
+                        >
+                          {item.previewEmoji} {item.name}
+                        </button>
+                      ))}
+                    </div>
+                    {ownedFaces.length === 0 && (
+                      <p className="text-xs text-[#888] mt-2 italic">
+                        No faces owned.{" "}
                         <Link href="/catalog" className="text-[#6C3CE0] hover:underline font-bold">Visit the Catalog →</Link>
                       </p>
                     )}

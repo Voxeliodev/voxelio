@@ -31,6 +31,8 @@ export type Item = {
   shirtText?: string;
   shirtTextColor?: string;
   shirtTextSegments?: { text: string; color: string }[];
+
+  faceImageUrl?: string;
 };
 
 export const ITEMS: Item[] = [
@@ -78,7 +80,6 @@ export const ITEMS: Item[] = [
     previewEmoji: "🎃",
     creator: "Voxelio",
 
-    // File is at public/models/Vox_Haloween.glb (one L after "Ha")
     modelPath: "/models/Vox_Haloween.glb",
 
     modelScale: 1,
@@ -165,6 +166,21 @@ export const ITEMS: Item[] = [
     previewEmoji: "⚔️",
     creator: "Voxelio",
   },
+
+  // ===== FACES =====
+  {
+    id: "face-silly",
+    name: "Silly Face",
+    description: "A goofy face to make everyone laugh.",
+    price: 25,
+    category: "faces",
+    rarity: "rare",
+    previewEmoji: "😜",
+    creator: "Voxelio",
+
+    // File is at public/faces/SILLY face.png
+    faceImageUrl: "/faces/SILLY face.png",
+  },
 ];
 
 export function getItem(id: string): Item | undefined {
@@ -204,6 +220,10 @@ export function getHeads(): Item[] {
 
 export function getAccessories(): Item[] {
   return ITEMS.filter((i) => i.category === "accessories");
+}
+
+export function getFaces(): Item[] {
+  return ITEMS.filter((i) => i.category === "faces");
 }
 
 export const RARITY_LABELS: Record<ItemRarity, string> = {
