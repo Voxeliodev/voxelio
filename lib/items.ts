@@ -177,9 +177,18 @@ export const ITEMS: Item[] = [
     rarity: "rare",
     previewEmoji: "😜",
     creator: "Voxelio",
-
-    // File is now at public/faces/silly-face.png (renamed, no spaces)
     faceImageUrl: "/faces/silly-face.png",
+  },
+  {
+    id: "face-casual",
+    name: "Casual Face",
+    description: "A relaxed, easy-going face. Perfect for everyday exploring.",
+    price: 25,
+    category: "faces",
+    rarity: "rare",
+    previewEmoji: "🙂",
+    creator: "Voxelio",
+    faceImageUrl: "/faces/casual-person.png",
   },
 ];
 
