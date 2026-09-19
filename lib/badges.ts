@@ -2,21 +2,25 @@
 // VOXELIO BADGES — Who gets what badge
 // ============================================================
 //
-// Badges are assigned by USERNAME now (accounts use UUIDs internally,
-// but usernames are stable and readable).
+// Badges are assigned by USERNAME. Accounts use UUIDs internally,
+// but usernames are stable and readable.
 //
 // CHANGING THE OWNER:
 //   Change OWNER_USERNAME. Save. Refresh.
 //
 // PROMOTING SOMEONE:
 //   Add their username to ADMIN_USERNAMES or MODERATOR_USERNAMES.
+//   Case-insensitive. Example: ["CrazyVox", "AnotherUser"]
+//
+// DEMOTING SOMEONE:
+//   Remove their username from the list. Save. Refresh.
+// ------------------------------------------------------------
 
 export const OWNER_USERNAME = "voxelio";
-export const ADMIN_USERNAMES: string[] = [];
+export const ADMIN_USERNAMES: string[] = ["CrazyVox"];
 export const MODERATOR_USERNAMES: string[] = [];
 
-// Kept for compatibility in case any code still imports it.
-// Not used for badge logic anymore.
+// Kept for backwards compatibility in case something still imports it.
 export const OWNER_ID: string = OWNER_USERNAME;
 
 export type BadgeType = "owner" | "admin" | "moderator" | null;
@@ -42,6 +46,7 @@ export function isModeratorAccount(username: string | null | undefined): boolean
   return getAccountBadge(username) === "moderator";
 }
 
+// Handy: get a human-readable label for the badge
 export function getBadgeLabel(username: string | null | undefined): string | null {
   const badge = getAccountBadge(username);
   if (badge === "owner") return "Voxelio Owner";
