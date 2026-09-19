@@ -161,6 +161,7 @@ function Character({ config }: { config: AvatarConfig }) {
   const rightHandColor = skin;
 
   const isHeadless = bodyParts?.head === "head-headless";
+  const isRoundHead = bodyParts?.head === "head-round";
 
   const isHolding = Boolean(config.accessory && HELD_ACCESSORIES.includes(config.accessory));
   const armRotation: [number, number, number] = isHolding
@@ -177,8 +178,13 @@ function Character({ config }: { config: AvatarConfig }) {
       )}
       {config.hat && <Hat3D hatId={config.hat} />}
 
-      {/* Custom PNG face overlay — no Suspense needed, loads via useEffect */}
-      {config.face && !isHeadless && <Face3D faceId={config.face} />}
+      {/* Custom PNG face overlay — pass head type so it can wrap correctly */}
+      {config.face && !isHeadless && (
+        <Face3D
+          faceId={config.face}
+          headType={isRoundHead ? "round" : "default"}
+        />
+      )}
 
       <BodyPart slot="torso" partId={bodyParts?.torso}>
         <RoundedBox
