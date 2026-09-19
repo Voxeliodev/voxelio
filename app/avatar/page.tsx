@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import * as THREE from "three";
+import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
 import {
   getCurrentUser,
   updateUser,
@@ -53,6 +55,10 @@ export default function AvatarEditorPage() {
   const [savedFlash, setSavedFlash] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [advancedSlot, setAdvancedSlot] = useState<BodyPartSlot>("head");
+
+  // Live 3D scene for exporting to .glb
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const refreshFromStorage = useCallback(() => {
     const fresh = getCurrentUser();
@@ -147,6 +153,55 @@ export default function AvatarEditorPage() {
   const resetAllPartColours = () => {
     if (!user || !config) return;
     persist({ ...config, partColors: {} });
+  };
+
+  // ============================================================
+  // EXPORT AVATAR TO .GLB (owner only)
+  // ============================================================
+  const handleExport = async () => {
+    if (!sceneRef.current || !user) return;
+    setExporting(true);
+
+    try {
+      const characterGroup = sceneRef.current.getObjectByName("VoxelioCharacter");
+      if (!characterGroup) {
+        alert("Couldn't find the character to export.");
+        setExporting(false);
+        return;
+      }
+
+      const exporter = new GLTFExporter();
+
+      exporter.parse(
+        characterGroup,
+        (result) => {
+          const blob = new Blob([result as ArrayBuffer], {
+            type: "model/gltf-binary",
+          });
+          const url = URL.createObjectURL(blob);
+
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `${user.username || "voxelio-avatar"}.glb`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+
+          setExporting(false);
+        },
+        (error) => {
+          console.error("Export failed:", error);
+          alert("Export failed. Check the console for details.");
+          setExporting(false);
+        },
+        { binary: true }
+      );
+    } catch (err) {
+      console.error("Export error:", err);
+      alert("Export failed. Check the console for details.");
+      setExporting(false);
+    }
   };
 
   const owned = user?.ownedItems || [];
@@ -279,14 +334,40 @@ export default function AvatarEditorPage() {
                   <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded font-normal">🖱️ Drag · Scroll</span>
                 </div>
                 <div className="p-6 flex justify-center bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0]">
-                  <Avatar config={config} size={280} interactive={true} />
+                  <Avatar
+                    config={config}
+                    size={280}
+                    interactive={true}
+                    onSceneReady={(s) => { sceneRef.current = s; }}
+                  />
                 </div>
               </div>
 
-              <div className="bg-white border-2 border-[#C5C8D6] rounded p-3">
-                <div className="bg-green-50 border-2 border-green-300 rounded p-2 text-center mb-2">
+              <div className="bg-white border-2 border-[#C5C8D6] rounded p-3 space-y-2">
+                <div className="bg-green-50 border-2 border-green-300 rounded p-2 text-center">
                   <p className="text-xs font-bold text-green-700">✓ Changes save automatically</p>
                 </div>
+
+                {isOwner && (
+                  <>
+                    <button
+                      onClick={handleExport}
+                      disabled={exporting}
+                      className={`block text-center w-full font-bold text-sm py-2 rounded border transition ${
+                        exporting
+                          ? "bg-[#EEF0F7] text-[#888] border-[#C5C8D6] cursor-not-allowed"
+                          : "bg-gradient-to-b from-[#00B8D4] to-[#0090A8] text-white border-[#007A8A] hover:from-[#33CBE0] hover:to-[#00A8C0]"
+                      }`}
+                    >
+                      {exporting ? "Preparing .glb…" : "⬇️ Download as .glb"}
+                    </button>
+
+                    <p className="text-[10px] text-[#888] text-center leading-tight">
+                      Opens in Blender, Maya, Unity, Unreal, etc.
+                    </p>
+                  </>
+                )}
+
                 <Link href={`/profile/${user.username}/${user.id}`} className="block text-center w-full bg-[#EEF0F7] text-[#4A1FA8] font-bold text-sm py-2 rounded border border-[#C5C8D6] hover:bg-[#E0E3EE] transition">
                   View Profile →
                 </Link>
@@ -571,7 +652,6 @@ export default function AvatarEditorPage() {
 // TILES
 // ============================================================
 
-// Simple emoji tile — used for the "None" option
 function ItemTile({
   emoji,
   name,
@@ -603,7 +683,6 @@ function ItemTile({
   );
 }
 
-// 3D-preview tile — renders the item with ItemPreview
 function ItemPreviewTile({
   item,
   selected,
@@ -633,7 +712,6 @@ function ItemPreviewTile({
   );
 }
 
-// Face tile (PNG preview)
 function FaceCard({
   item,
   selected,
