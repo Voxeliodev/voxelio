@@ -6,13 +6,17 @@ import { OrbitControls, RoundedBox, useGLTF } from "@react-three/drei";
 import type { AvatarConfig } from "../../lib/auth";
 import { Hat3D } from "./Hats3D";
 import { Shirt3D } from "./Shirts3D";
-import { Accessory3D } from "./Accessories3D";
+import { Accessory3DGeometry } from "./Accessories3D";
 import { getItem } from "../../lib/items";
 import { getBodyPart, type BodyPartSlot } from "../../lib/bodyParts";
 
 // ============================================================
 // VOXELIO 3D AVATAR
 // ============================================================
+
+// Accessories that cause the right arm to raise into a "holding" pose.
+// Add new held-item IDs here as you create them (shield, staff, etc).
+const HELD_ACCESSORIES = ["accessory-vox-sword"];
 
 function Face({ eyeZ, mouthZ }: { eyeZ: number; mouthZ: number }) {
   const eyeColor = "#1A1A2E";
@@ -157,6 +161,15 @@ function Character({ config }: { config: AvatarConfig }) {
 
   const isHeadless = bodyParts?.head === "head-headless";
 
+  // Does the equipped accessory require the arm raised?
+  const isHolding = Boolean(config.accessory && HELD_ACCESSORIES.includes(config.accessory));
+
+  // Right-arm pivot rotation. When holding something, the arm swings
+  // forward and up by 60° around the X axis.
+  const armRotation: [number, number, number] = isHolding
+    ? [-Math.PI / 3, 0, 0]
+    : [0, 0, 0];
+
   return (
     <group position={[0, -0.6, 0]}>
       {!isHeadless && <HeadFor partId={bodyParts?.head} skinTone={headColor} />}
@@ -176,9 +189,7 @@ function Character({ config }: { config: AvatarConfig }) {
 
       {config.shirt && <Shirt3D shirtId={config.shirt} skinTone={skin} />}
 
-      {/* Accessories (swords, shields, etc.) — right hand attachment */}
-      {config.accessory && <Accessory3D accessoryId={config.accessory} />}
-
+      {/* ==== LEFT ARM (unchanged) ==== */}
       <BodyPart slot="leftArm" partId={bodyParts?.leftArm}>
         <group>
           <RoundedBox
@@ -202,29 +213,45 @@ function Character({ config }: { config: AvatarConfig }) {
         </group>
       </BodyPart>
 
+      {/* ==== RIGHT ARM — pivot at shoulder so we can raise it ==== */}
       <BodyPart slot="rightArm" partId={bodyParts?.rightArm}>
-        <group>
+        <group position={[0.6, 1.0, 0]} rotation={armRotation}>
+          {/* Upper arm, positioned relative to the shoulder */}
           <RoundedBox
             args={[0.3, 1, 0.3]}
             radius={0.06}
             smoothness={4}
-            position={[0.6, 0.5, 0]}
+            position={[0, -0.5, 0]}
             castShadow
           >
             <meshStandardMaterial color={rightArmColor} roughness={0.7} />
           </RoundedBox>
+
+          {/* Hand, at the bottom of the arm */}
           <RoundedBox
             args={[0.3, 0.3, 0.3]}
             radius={0.06}
             smoothness={4}
-            position={[0.6, -0.15, 0]}
+            position={[0, -1.15, 0]}
             castShadow
           >
             <meshStandardMaterial color={rightHandColor} roughness={0.6} />
           </RoundedBox>
+
+          {/* Held accessory — counter-rotated so the blade stays upright
+              in world space even though the arm is tilted forward. */}
+          {config.accessory && (
+            <group
+              position={[0, -1.15, 0]}
+              rotation={[-armRotation[0], 0, 0]}
+            >
+              <Accessory3DGeometry accessoryId={config.accessory} />
+            </group>
+          )}
         </group>
       </BodyPart>
 
+      {/* ==== LEGS (unchanged) ==== */}
       <BodyPart slot="leftLeg" partId={bodyParts?.leftLeg}>
         <group>
           <RoundedBox
