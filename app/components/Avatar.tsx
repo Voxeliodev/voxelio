@@ -335,6 +335,21 @@ export default function Avatar({
 }) {
   const cameraPosition = useMemo(() => computeCameraPosition(config), [config]);
 
+  // Distance from the camera to the orbit target (origin).
+  // Used to set a sensible zoom range that scales with the avatar size.
+  const cameraDistance = useMemo(
+    () =>
+      Math.sqrt(
+        cameraPosition[0] * cameraPosition[0] +
+          cameraPosition[1] * cameraPosition[1] +
+          cameraPosition[2] * cameraPosition[2]
+      ),
+    [cameraPosition]
+  );
+
+  const minDist = cameraDistance * 0.4; // zoomed in
+  const maxDist = cameraDistance * 2.0; // zoomed out
+
   return (
     <div
       style={{
@@ -365,9 +380,10 @@ export default function Avatar({
         {interactive && (
           <OrbitControls
             enablePan={false}
-            enableZoom={false}
-            minDistance={2.5}
-            maxDistance={10}
+            enableZoom={true}
+            zoomSpeed={0.9}
+            minDistance={minDist}
+            maxDistance={maxDist}
             minPolarAngle={Math.PI / 6}
             maxPolarAngle={Math.PI / 1.8}
             autoRotate={true}
