@@ -17,10 +17,13 @@ import {
   hasIncomingRequestFrom,
   hasOutgoingRequestTo,
   getUnreadCount,
+  subscribeAuth,
   type User,
 } from "../../../../lib/auth";
+import { isOwnerAccount } from "../../../../lib/badges";
 import Avatar from "../../../components/Avatar";
 import AccountBadge from "../../../components/AccountBadge";
+import NavLink from "../../../components/NavLink";
 
 const MAX_BIO_LENGTH = 200;
 
@@ -41,10 +44,6 @@ export default function ProfilePage() {
 
   const [view3D, setView3D] = useState(true);
 
-  useEffect(() => {
-    refresh();
-  }, [username, id]);
-
   const refresh = () => {
     const byName = findUserByUsername(username);
     if (byName) {
@@ -52,15 +51,22 @@ export default function ProfilePage() {
         router.replace(`/profile/${byName.username}/${byName.id}`);
       }
       setProfileUser(byName);
-      setBioDraft(byName.bio);
+      setBioDraft((prev) => (editingBio ? prev : byName.bio));
     } else {
       setNotFound(true);
     }
     setCurrentUser(getCurrentUser());
   };
 
-  const handleSignOut = () => {
-    signOut();
+  useEffect(() => {
+    refresh();
+    const unsub = subscribeAuth(() => refresh());
+    return () => unsub();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [username, id]);
+
+  const handleSignOut = async () => {
+    await signOut();
     setCurrentUser(null);
   };
 
@@ -190,13 +196,14 @@ export default function ProfilePage() {
   }
 
   const unreadCount = currentUser ? getUnreadCount(currentUser.id) : 0;
+  const isOwner = isOwnerAccount(currentUser?.username);
 
   const navTabs: any[] = [
     { name: "Home", href: "/" },
     { name: "Games", href: "/#discover" },
     { name: "Create", href: "/#create" },
     { name: "Catalog", href: "/catalog" },
-    ...(currentUser?.id === "1" ? [{ name: "Dev", href: "/dev", dev: true }] : []),
+    ...(isOwner ? [{ name: "Dev", href: "/dev", dev: true }] : []),
     { name: "Friends", href: "/friends" },
     { name: "Messages", href: "/messages" },
     { name: "Avatar", href: "/avatar" },
@@ -225,7 +232,7 @@ export default function ProfilePage() {
                   Welcome,{" "}
                   <strong className="text-white inline-flex items-center">
                     {currentUser.username}
-                    <AccountBadge userId={currentUser.id} size={12} />
+                    <AccountBadge username={currentUser.username} userId={currentUser.id} size={12} />
                   </strong>
                 </span>
                 <button onClick={handleSignOut} className="hover:text-[#00E5FF]">Sign Out</button>
@@ -261,7 +268,7 @@ export default function ProfilePage() {
       <nav className="bg-[#4A1FA8] border-b-2 border-[#2D1070]">
         <div className="max-w-6xl mx-auto px-3 flex flex-wrap">
           {navTabs.map((tab) => (
-            <Link
+            <NavLink
               key={tab.name}
               href={tab.href}
               className={`px-4 py-2.5 text-sm font-bold border-r border-[#3A1580] transition relative ${
@@ -280,7 +287,7 @@ export default function ProfilePage() {
                   {unreadCount}
                 </span>
               )}
-            </Link>
+            </NavLink>
           ))}
         </div>
       </nav>
@@ -355,13 +362,13 @@ export default function ProfilePage() {
                 <div className="p-3 border-t border-[#E5E7F0]">
                   <h1 className="font-black text-lg text-[#1A1A2E] text-center truncate inline-flex items-center justify-center w-full">
                     <span className="truncate">{profileUser.username}</span>
-                    <AccountBadge userId={profileUser.id} size={18} />
+                    <AccountBadge username={profileUser.username} userId={profileUser.id} size={18} />
                   </h1>
                   <p className="text-center text-xs text-[#666] mt-1">
                     {profileUser.status === "online" ? "🟢 Online" : "⚫ Offline"}
                   </p>
                   <p className="text-center text-[10px] text-[#999]">
-                    ID: {formatAccountId(profileUser.id)}
+                    ID: {formatAccountId(profileUser.id, profileUser.displayId)}
                   </p>
                   {isOwnProfile && (
                     <p className="text-center text-[10px] text-[#7B2FF7] font-bold mt-1">THIS IS YOU</p>
@@ -391,7 +398,7 @@ export default function ProfilePage() {
                   <Row label="Worlds" value="0" />
                   <Row label="Voxbux" value={formatVoxbux(profileUser.voxbux)} />
                   <Row label="Joined" value={profileUser.joined} />
-                  <Row label="Account ID" value={formatAccountId(profileUser.id)} />
+                  <Row label="Account ID" value={formatAccountId(profileUser.id, profileUser.displayId)} />
                 </div>
               </div>
 

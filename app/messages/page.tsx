@@ -9,32 +9,40 @@ import {
   findUserById,
   getUnreadCount,
   formatVoxbux,
+  subscribeAuth,
   type User,
 } from "../../lib/auth";
+import { isOwnerAccount } from "../../lib/badges";
 import AccountBadge from "../components/AccountBadge";
 import Avatar from "../components/Avatar";
+import NavLink from "../components/NavLink";
 
 export default function MessagesPage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
+  const refresh = () => setCurrentUser(getCurrentUser());
+
   useEffect(() => {
-    setCurrentUser(getCurrentUser());
+    refresh();
+    const unsub = subscribeAuth(() => refresh());
+    return () => unsub();
   }, []);
 
-  const handleSignOut = () => {
-    signOut();
+  const handleSignOut = async () => {
+    await signOut();
     setCurrentUser(null);
   };
 
   const conversations = currentUser ? getConversations(currentUser.id) : [];
   const unreadCount = currentUser ? getUnreadCount(currentUser.id) : 0;
+  const isOwner = isOwnerAccount(currentUser?.username);
 
   const navTabs: any[] = [
     { name: "Home", href: "/" },
     { name: "Games", href: "/#discover" },
     { name: "Create", href: "/#create" },
     { name: "Catalog", href: "/catalog" },
-    ...(currentUser?.id === "1" ? [{ name: "Dev", href: "/dev", dev: true }] : []),
+    ...(isOwner ? [{ name: "Dev", href: "/dev", dev: true }] : []),
     { name: "Friends", href: "/friends" },
     { name: "Messages", href: "/messages", active: true },
     { name: "Avatar", href: "/avatar" },
@@ -54,7 +62,7 @@ export default function MessagesPage() {
                   Welcome,{" "}
                   <strong className="text-white inline-flex items-center">
                     {currentUser.username}
-                    <AccountBadge userId={currentUser.id} size={12} />
+                    <AccountBadge username={currentUser.username} userId={currentUser.id} size={12} />
                   </strong>
                 </span>
                 <button onClick={handleSignOut} className="hover:text-[#00E5FF]">Sign Out</button>
@@ -92,7 +100,7 @@ export default function MessagesPage() {
       <nav className="bg-[#4A1FA8] border-b-2 border-[#2D1070]">
         <div className="max-w-6xl mx-auto px-3 flex flex-wrap">
           {navTabs.map((tab) => (
-            <Link
+            <NavLink
               key={tab.name}
               href={tab.href}
               className={`px-4 py-2.5 text-sm font-bold border-r border-[#3A1580] transition relative ${
@@ -111,7 +119,7 @@ export default function MessagesPage() {
                   {unreadCount}
                 </span>
               )}
-            </Link>
+            </NavLink>
           ))}
         </div>
       </nav>
@@ -195,7 +203,7 @@ export default function MessagesPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <span className="font-black text-sm truncate">{other.username}</span>
-                          <AccountBadge userId={other.id} size={12} />
+                          <AccountBadge username={other.username} userId={other.id} size={12} />
                         </div>
                         <p className={`text-xs truncate ${conv.unread > 0 ? "text-[#1A1A2E] font-semibold" : "text-[#666]"}`}>
                           {preview}

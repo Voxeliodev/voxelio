@@ -7,6 +7,7 @@ import type { User } from "../lib/auth";
 import { isOwnerAccount } from "../lib/badges";
 import Avatar from "./components/Avatar";
 import AccountBadge from "./components/AccountBadge";
+import NavLink from "./components/NavLink";
 
 export default function Home() {
   const [users, setUsers] = useState<User[]>([]);
@@ -21,7 +22,6 @@ export default function Home() {
 
   useEffect(() => {
     refresh();
-    // Realtime: update the member list any time any profile changes anywhere
     const unsub = subscribeAuth(() => refresh());
     return () => unsub();
   }, []);
@@ -120,7 +120,7 @@ export default function Home() {
       <nav className="bg-[#4A1FA8] border-b-2 border-[#2D1070]">
         <div className="max-w-6xl mx-auto px-3 flex flex-wrap">
           {navTabs.map((tab) => (
-            <Link
+            <NavLink
               key={tab.name}
               href={tab.href}
               className={`px-4 py-2.5 text-sm font-bold border-r border-[#3A1580] transition ${
@@ -134,7 +134,7 @@ export default function Home() {
               }`}
             >
               {tab.name}
-            </Link>
+            </NavLink>
           ))}
         </div>
       </nav>

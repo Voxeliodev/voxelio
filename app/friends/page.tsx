@@ -25,6 +25,7 @@ import {
 import { isOwnerAccount } from "../../lib/badges";
 import AccountBadge from "../components/AccountBadge";
 import Avatar from "../components/Avatar";
+import NavLink from "../components/NavLink";
 
 type Tab = "friends" | "requests" | "sent" | "find";
 
@@ -38,8 +39,6 @@ export default function FriendsPage() {
 
   useEffect(() => {
     refresh();
-    // Live updates: when anyone's profile changes (friend requests, accepted
-    // requests from the other side, etc.), refresh the view.
     const unsub = subscribeAuth(() => refresh());
     return () => unsub();
   }, []);
@@ -60,7 +59,6 @@ export default function FriendsPage() {
   const unreadCount = currentUser ? getUnreadCount(currentUser.id) : 0;
   const isOwner = isOwnerAccount(currentUser?.username);
 
-  // ===== Search results =====
   const searchResults: User[] = (() => {
     if (!currentUser || !searchQuery.trim()) return [];
     const q = searchQuery.trim().toLowerCase();
@@ -146,7 +144,6 @@ export default function FriendsPage() {
         </div>
       )}
 
-      {/* TOP BAR */}
       <div className="bg-[#1A1A2E] text-white text-xs">
         <div className="max-w-6xl mx-auto px-3 py-1.5 flex justify-between items-center">
           <div className="flex gap-4 items-center">
@@ -181,7 +178,6 @@ export default function FriendsPage() {
         </div>
       </div>
 
-      {/* HEADER */}
       <header className="bg-gradient-to-b from-[#6C3CE0] to-[#5A2FC7] border-b-4 border-[#4A1FA8]">
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
@@ -190,11 +186,10 @@ export default function FriendsPage() {
         </div>
       </header>
 
-      {/* NAV */}
       <nav className="bg-[#4A1FA8] border-b-2 border-[#2D1070]">
         <div className="max-w-6xl mx-auto px-3 flex flex-wrap">
           {navTabs.map((tab) => (
-            <Link
+            <NavLink
               key={tab.name}
               href={tab.href}
               className={`px-4 py-2.5 text-sm font-bold border-r border-[#3A1580] transition relative ${
@@ -213,7 +208,7 @@ export default function FriendsPage() {
                   {unreadCount}
                 </span>
               )}
-            </Link>
+            </NavLink>
           ))}
         </div>
       </nav>
@@ -236,7 +231,6 @@ export default function FriendsPage() {
           </div>
         ) : (
           <>
-            {/* PAGE HEADER */}
             <div className="mb-6">
               <h1 className="text-3xl font-black text-[#4A1FA8] mb-1">👥 Friends</h1>
               <p className="text-sm text-[#666]">
@@ -244,7 +238,6 @@ export default function FriendsPage() {
               </p>
             </div>
 
-            {/* TABS */}
             <div className="bg-white border-2 border-[#C5C8D6] rounded p-2 mb-4 flex flex-wrap gap-2">
               {([
                 { id: "friends" as const, label: `Friends (${friends.length})`, emoji: "👥" },
@@ -267,7 +260,6 @@ export default function FriendsPage() {
               ))}
             </div>
 
-            {/* ===== FRIENDS TAB ===== */}
             {tab === "friends" && (
               <>
                 {friends.length === 0 ? (
@@ -308,7 +300,6 @@ export default function FriendsPage() {
               </>
             )}
 
-            {/* ===== REQUESTS TAB ===== */}
             {tab === "requests" && (
               <>
                 {incoming.length === 0 ? (
@@ -346,7 +337,6 @@ export default function FriendsPage() {
               </>
             )}
 
-            {/* ===== SENT TAB ===== */}
             {tab === "sent" && (
               <>
                 {outgoing.length === 0 ? (
@@ -377,7 +367,6 @@ export default function FriendsPage() {
               </>
             )}
 
-            {/* ===== FIND PEOPLE TAB ===== */}
             {tab === "find" && (
               <>
                 <div className="bg-white border-2 border-[#C5C8D6] rounded p-3 mb-4">
@@ -478,10 +467,6 @@ export default function FriendsPage() {
     </div>
   );
 }
-
-// ============================================================
-// HELPER COMPONENTS
-// ============================================================
 
 function UserCard({
   user,

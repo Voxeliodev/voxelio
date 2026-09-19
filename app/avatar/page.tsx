@@ -21,6 +21,7 @@ import {
 } from "../../lib/bodyParts";
 import Avatar from "../components/Avatar";
 import AccountBadge from "../components/AccountBadge";
+import NavLink from "../components/NavLink";
 import { getHats, getShirts } from "../../lib/items";
 
 const SKIN_TONES = ["#F5C6A5", "#E8B08A", "#D69B71", "#B87A54", "#8B5A3C", "#5C3A23", "#3B2314"];
@@ -52,15 +53,11 @@ export default function AvatarEditorPage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [advancedSlot, setAdvancedSlot] = useState<BodyPartSlot>("head");
 
-  // Pull the freshest user from the auth cache. Doesn't overwrite
-  // the current config while the user is editing if nothing changed remotely.
   const refreshFromStorage = useCallback(() => {
     const fresh = getCurrentUser();
     if (fresh) {
       setUser(fresh);
       setConfig((prev) => {
-        // Only replace config if it actually changed remotely, otherwise
-        // the Avatar preview would fight the user's edits.
         if (!prev) return fresh.avatarConfig;
         if (JSON.stringify(prev) === JSON.stringify(fresh.avatarConfig)) return prev;
         return fresh.avatarConfig;
@@ -74,8 +71,6 @@ export default function AvatarEditorPage() {
   useEffect(() => {
     refreshFromStorage();
 
-    // Realtime: whenever another browser updates any profile (including ours),
-    // re-read from the cache so the preview updates.
     const unsub = subscribeAuth(() => {
       const fresh = getCurrentUser();
       if (!fresh) return;
@@ -235,7 +230,7 @@ export default function AvatarEditorPage() {
       <nav className="bg-[#4A1FA8] border-b-2 border-[#2D1070]">
         <div className="max-w-6xl mx-auto px-3 flex flex-wrap">
           {navTabs.map((tab) => (
-            <Link
+            <NavLink
               key={tab.name}
               href={tab.href}
               className={`px-4 py-2.5 text-sm font-bold border-r border-[#3A1580] transition relative ${
@@ -251,7 +246,7 @@ export default function AvatarEditorPage() {
                   {unreadCount}
                 </span>
               )}
-            </Link>
+            </NavLink>
           ))}
         </div>
       </nav>

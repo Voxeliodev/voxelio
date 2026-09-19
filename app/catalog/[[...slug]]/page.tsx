@@ -2,10 +2,19 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
-import { getCurrentUser, signOut, formatVoxbux, getUnreadCount, type User } from "../../../lib/auth";
+import {
+  getCurrentUser,
+  signOut,
+  formatVoxbux,
+  getUnreadCount,
+  subscribeAuth,
+  type User,
+} from "../../../lib/auth";
+import { isOwnerAccount } from "../../../lib/badges";
 import AccountBadge from "../../components/AccountBadge";
 import ItemPreview from "../../components/ItemPreview";
 import ItemModal from "../../components/ItemModal";
+import NavLink from "../../components/NavLink";
 import {
   getItemsByCategory,
   getItemBySlug,
@@ -51,8 +60,10 @@ export default function CatalogPage() {
 
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
 
+  const refreshUser = () => setCurrentUser(getCurrentUser());
+
   useEffect(() => {
-    setCurrentUser(getCurrentUser());
+    refreshUser();
 
     const syncFromUrl = () => {
       const slug = getSlugFromUrl();
@@ -66,14 +77,17 @@ export default function CatalogPage() {
 
     syncFromUrl();
 
+    const unsub = subscribeAuth(() => refreshUser());
+
     window.addEventListener("popstate", syncFromUrl);
-    return () => window.removeEventListener("popstate", syncFromUrl);
+    return () => {
+      unsub();
+      window.removeEventListener("popstate", syncFromUrl);
+    };
   }, []);
 
-  const refreshUser = () => setCurrentUser(getCurrentUser());
-
-  const handleSignOut = () => {
-    signOut();
+  const handleSignOut = async () => {
+    await signOut();
     setCurrentUser(null);
   };
 
@@ -98,13 +112,14 @@ export default function CatalogPage() {
   }
 
   const unreadCount = currentUser ? getUnreadCount(currentUser.id) : 0;
+  const isOwner = isOwnerAccount(currentUser?.username);
 
   const navTabs: any[] = [
     { name: "Home", href: "/" },
     { name: "Games", href: "/#discover" },
     { name: "Create", href: "/#create" },
     { name: "Catalog", href: "/catalog", active: true },
-    ...(currentUser?.id === "1" ? [{ name: "Dev", href: "/dev", dev: true }] : []),
+    ...(isOwner ? [{ name: "Dev", href: "/dev", dev: true }] : []),
     { name: "Friends", href: "/friends" },
     { name: "Messages", href: "/messages" },
     { name: "Avatar", href: "/avatar" },
@@ -131,7 +146,7 @@ export default function CatalogPage() {
                   Welcome,{" "}
                   <strong className="text-white inline-flex items-center">
                     {currentUser.username}
-                    <AccountBadge userId={currentUser.id} size={12} />
+                    <AccountBadge username={currentUser.username} userId={currentUser.id} size={12} />
                   </strong>
                 </span>
                 <button onClick={handleSignOut} className="hover:text-[#00E5FF]">Sign Out</button>
@@ -175,7 +190,7 @@ export default function CatalogPage() {
       <nav className="bg-[#4A1FA8] border-b-2 border-[#2D1070]">
         <div className="max-w-6xl mx-auto px-3 flex flex-wrap">
           {navTabs.map((tab) => (
-            <Link
+            <NavLink
               key={tab.name}
               href={tab.href}
               className={`px-4 py-2.5 text-sm font-bold border-r border-[#3A1580] transition relative ${
@@ -194,7 +209,7 @@ export default function CatalogPage() {
                   {unreadCount}
                 </span>
               )}
-            </Link>
+            </NavLink>
           ))}
         </div>
       </nav>
@@ -338,15 +353,13 @@ export default function CatalogPage() {
                           </span>
 
                           {owned ? (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                window.location.href = "/avatar";
-                              }}
+                            <a
+                              href="/avatar"
+                              onClick={(e) => e.stopPropagation()}
                               className="text-xs font-bold py-1.5 px-3 rounded border bg-green-500 text-white border-green-700 hover:bg-green-600 transition"
                             >
                               ✓ Equip →
-                            </button>
+                            </a>
                           ) : (
                             <span className="text-xs font-bold py-1.5 px-3 rounded border bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white border-[#4A1FA8]">
                               {item.price === 0 ? "Get" : "Buy"}

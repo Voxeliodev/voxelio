@@ -21,6 +21,7 @@ import {
 } from "../../lib/auth";
 import { isOwnerAccount } from "../../lib/badges";
 import AccountBadge from "../components/AccountBadge";
+import NavLink from "../components/NavLink";
 
 const BAN_DURATIONS = [
   { id: "1h", name: "1 Hour", ms: 60 * 60 * 1000 },
@@ -50,7 +51,6 @@ export default function DevPage() {
 
   useEffect(() => {
     refresh();
-    // Re-render whenever auth data changes (realtime updates, logins, etc.)
     const unsub = subscribeAuth(() => refresh());
     return () => unsub();
   }, []);
@@ -255,7 +255,7 @@ export default function DevPage() {
       <nav className="bg-[#4A1FA8] border-b-2 border-[#2D1070]">
         <div className="max-w-6xl mx-auto px-3 flex flex-wrap">
           {navTabs.map((tab) => (
-            <Link
+            <NavLink
               key={tab.name}
               href={tab.href}
               className={`px-4 py-2.5 text-sm font-bold border-r border-[#3A1580] transition relative ${
@@ -274,7 +274,7 @@ export default function DevPage() {
                   {unreadCount}
                 </span>
               )}
-            </Link>
+            </NavLink>
           ))}
         </div>
       </nav>

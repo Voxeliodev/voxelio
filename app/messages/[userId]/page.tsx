@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import {
   getCurrentUser,
   signOut,
@@ -20,10 +20,10 @@ import {
 import { isOwnerAccount } from "../../../lib/badges";
 import AccountBadge from "../../components/AccountBadge";
 import Avatar from "../../components/Avatar";
+import NavLink from "../../../components/NavLink";
 
 export default function ConversationPage() {
   const params = useParams();
-  const router = useRouter();
   const otherId = (params.userId as string) || "";
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -55,7 +55,6 @@ export default function ConversationPage() {
     markConversationRead(u.id, o.id);
   }, [otherId]);
 
-  // Realtime: refresh when anything changes elsewhere (profile edits, etc.)
   useEffect(() => {
     const unsub = subscribeAuth(() => {
       const u = getCurrentUser();
@@ -67,18 +66,6 @@ export default function ConversationPage() {
     return () => unsub();
   }, [otherId]);
 
-  // Poll every 3s for new messages in this conversation (localStorage workaround)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const u = getCurrentUser();
-      if (!u || !other) return;
-      setMessages(getConversation(u.id, other.id));
-      markConversationRead(u.id, other.id);
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [other]);
-
-  // Scroll to bottom when messages change
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -120,7 +107,6 @@ export default function ConversationPage() {
   return (
     <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans flex flex-col">
 
-      {/* TOP BAR */}
       <div className="bg-[#1A1A2E] text-white text-xs">
         <div className="max-w-6xl mx-auto px-3 py-1.5 flex justify-between items-center">
           <div className="flex gap-4 items-center">
@@ -155,7 +141,6 @@ export default function ConversationPage() {
         </div>
       </div>
 
-      {/* HEADER */}
       <header className="bg-gradient-to-b from-[#6C3CE0] to-[#5A2FC7] border-b-4 border-[#4A1FA8]">
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
@@ -164,11 +149,10 @@ export default function ConversationPage() {
         </div>
       </header>
 
-      {/* NAV */}
       <nav className="bg-[#4A1FA8] border-b-2 border-[#2D1070]">
         <div className="max-w-6xl mx-auto px-3 flex flex-wrap">
           {navTabs.map((tab) => (
-            <Link
+            <NavLink
               key={tab.name}
               href={tab.href}
               className={`px-4 py-2.5 text-sm font-bold border-r border-[#3A1580] transition relative ${
@@ -187,7 +171,7 @@ export default function ConversationPage() {
                   {unreadCount}
                 </span>
               )}
-            </Link>
+            </NavLink>
           ))}
         </div>
       </nav>
@@ -242,7 +226,6 @@ export default function ConversationPage() {
         ) : (
           <div className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden flex flex-col" style={{ height: "calc(100vh - 320px)", minHeight: "500px" }}>
 
-            {/* CONVERSATION HEADER */}
             <div className="bg-gradient-to-r from-[#6C3CE0] to-[#5A2FC7] px-4 py-3 border-b-2 border-[#4A1FA8] flex items-center gap-3 flex-shrink-0">
               <Link
                 href="/messages"
@@ -276,7 +259,6 @@ export default function ConversationPage() {
               </Link>
             </div>
 
-            {/* MESSAGES */}
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-2 bg-[#EEF0F7]">
               {messages.length === 0 ? (
                 <div className="text-center py-12 text-sm text-[#888]">
@@ -306,7 +288,6 @@ export default function ConversationPage() {
               )}
             </div>
 
-            {/* COMPOSER */}
             <form onSubmit={handleSend} className="border-t-2 border-[#C5C8D6] p-3 flex gap-2 bg-white flex-shrink-0">
               <input
                 type="text"
