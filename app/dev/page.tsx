@@ -16,8 +16,10 @@ import {
   formatAccountId,
   formatVoxbux,
   getUnreadCount,
+  subscribeAuth,
   type User,
 } from "../../lib/auth";
+import { isOwnerAccount } from "../../lib/badges";
 import AccountBadge from "../components/AccountBadge";
 
 const BAN_DURATIONS = [
@@ -48,6 +50,9 @@ export default function DevPage() {
 
   useEffect(() => {
     refresh();
+    // Re-render whenever auth data changes (realtime updates, logins, etc.)
+    const unsub = subscribeAuth(() => refresh());
+    return () => unsub();
   }, []);
 
   const refresh = () => {
@@ -55,8 +60,8 @@ export default function DevPage() {
     setCurrentUser(getCurrentUser());
   };
 
-  const handleSignOut = () => {
-    signOut();
+  const handleSignOut = async () => {
+    await signOut();
     setCurrentUser(null);
   };
 
@@ -144,7 +149,7 @@ export default function DevPage() {
     if (!actionUser) return;
     const result = terminateUser(actionUser.id);
     if (result.success) {
-      showToast("success", `Terminated account "${actionUser.username}". Username is locked forever.`);
+      showToast("success", `Terminated account "${actionUser.username}".`);
       refresh();
       closeAction();
     } else {
@@ -152,7 +157,7 @@ export default function DevPage() {
     }
   };
 
-  const isOwner = currentUser?.id === "1";
+  const isOwner = isOwnerAccount(currentUser?.username);
 
   const filtered = users
     .filter((u) => {
@@ -160,13 +165,19 @@ export default function DevPage() {
       if (filter === "active" && isUserBanned(u)) return false;
       if (!search.trim()) return true;
       const q = search.trim().toLowerCase();
+      const displayIdStr = u.displayId ? String(u.displayId) : "";
       return (
         u.username.toLowerCase().includes(q) ||
         u.id === q ||
-        u.id.includes(q)
+        u.id.toLowerCase().includes(q) ||
+        displayIdStr === q
       );
     })
-    .sort((a, b) => parseInt(a.id, 10) - parseInt(b.id, 10));
+    .sort((a, b) => {
+      const ad = a.displayId ?? Number.MAX_SAFE_INTEGER;
+      const bd = b.displayId ?? Number.MAX_SAFE_INTEGER;
+      return ad - bd;
+    });
 
   const totalUsers = users.length;
   const bannedCount = users.filter((u) => isUserBanned(u)).length;
@@ -179,7 +190,7 @@ export default function DevPage() {
     { name: "Games", href: "/#discover" },
     { name: "Create", href: "/#create" },
     { name: "Catalog", href: "/catalog" },
-    { name: "Dev", href: "/dev", dev: true, active: true },
+    ...(isOwner ? [{ name: "Dev", href: "/dev", dev: true, active: true }] : []),
     { name: "Friends", href: "/friends" },
     { name: "Messages", href: "/messages" },
     { name: "Avatar", href: "/avatar" },
@@ -208,7 +219,7 @@ export default function DevPage() {
                   Welcome,{" "}
                   <strong className="text-white inline-flex items-center">
                     {currentUser.username}
-                    <AccountBadge userId={currentUser.id} size={12} />
+                    <AccountBadge username={currentUser.username} userId={currentUser.id} size={12} />
                   </strong>
                 </span>
                 <button onClick={handleSignOut} className="hover:text-[#00E5FF]">Sign Out</button>
@@ -360,8 +371,8 @@ export default function DevPage() {
               <div className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden">
                 {filtered.map((u, idx) => {
                   const status = getBanStatusLabel(u);
-                  const isSelf = u.id === currentUser.id;
-                  const isOwnerTarget = u.id === "1";
+                  const isSelf = u.id === currentUser?.id;
+                  const isOwnerTarget = isOwnerAccount(u.username);
 
                   return (
                     <div
@@ -377,9 +388,9 @@ export default function DevPage() {
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1 flex-wrap">
                             <span className="font-black text-sm truncate">{u.username}</span>
-                            <AccountBadge userId={u.id} size={14} />
+                            <AccountBadge username={u.username} userId={u.id} size={14} />
                             <span className="text-[10px] font-bold text-[#888] bg-[#EEF0F7] px-1.5 py-0.5 rounded">
-                              {formatAccountId(u.id)}
+                              {formatAccountId(u.id, u.displayId)}
                             </span>
                             {isSelf && (
                               <span className="text-[10px] bg-[#6C3CE0] text-white px-1.5 py-0.5 rounded font-bold">YOU</span>
@@ -484,7 +495,7 @@ export default function DevPage() {
                 {actionType === "terminate" && `⚠️ Terminate ${actionUser.username}`}
               </h2>
               <p className="text-white/70 text-xs mt-0.5">
-                ID {formatAccountId(actionUser.id)} • Current balance: {formatVoxbux(actionUser.voxbux)}
+                ID {formatAccountId(actionUser.id, actionUser.displayId)} • Current balance: {formatVoxbux(actionUser.voxbux)}
               </p>
             </div>
 
@@ -579,7 +590,7 @@ export default function DevPage() {
                 <>
                   <p className="text-sm text-[#666]">
                     This will <strong className="text-red-600">permanently delete</strong> the account{" "}
-                    <strong>{actionUser.username}</strong> (ID {formatAccountId(actionUser.id)}).
+                    <strong>{actionUser.username}</strong> (ID {formatAccountId(actionUser.id, actionUser.displayId)}).
                   </p>
                   <div className="bg-red-50 border-2 border-red-300 rounded p-3 text-xs text-red-800 space-y-1">
                     <p>⚠️ This action <strong>cannot be undone</strong>.</p>

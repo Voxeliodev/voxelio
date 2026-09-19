@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createUser, getUsers, getCurrentUser, signOut, formatVoxbux, getUnreadCount } from "../../lib/auth";
 import type { User } from "../../lib/auth";
+import { isOwnerAccount } from "../../lib/badges";
 import AccountBadge from "../components/AccountBadge";
 
 export default function SignUpPage() {
@@ -28,27 +29,24 @@ export default function SignUpPage() {
   };
 
   useEffect(() => {
-    const hasStorage = typeof window !== "undefined" && typeof localStorage !== "undefined";
     addDebug(`✅ Page loaded at ${new Date().toLocaleTimeString()}`);
 
-    if (hasStorage) {
-      try {
-        const users = getUsers();
-        addDebug(`Accounts currently stored: ${users.length}`);
-        if (users.length > 0) {
-          addDebug(`Usernames: ${users.map((u) => `${u.username} (ID ${u.id})`).join(", ")}`);
-        }
-
-        const session = getCurrentUser();
-        if (session) {
-          addDebug(`Currently signed in as: "${session.username}"`);
-        } else {
-          addDebug(`No active session.`);
-        }
-        setCurrentUser(session);
-      } catch (err) {
-        addDebug(`❌ Error reading storage: ${String(err)}`);
+    try {
+      const users = getUsers();
+      addDebug(`Accounts currently stored: ${users.length}`);
+      if (users.length > 0) {
+        addDebug(`Usernames: ${users.map((u) => `${u.username} (ID ${u.displayId ?? u.id.slice(0, 8)})`).join(", ")}`);
       }
+
+      const session = getCurrentUser();
+      if (session) {
+        addDebug(`Currently signed in as: "${session.username}"`);
+      } else {
+        addDebug(`No active session.`);
+      }
+      setCurrentUser(session);
+    } catch (err) {
+      addDebug(`❌ Error reading storage: ${String(err)}`);
     }
   }, []);
 
@@ -153,13 +151,14 @@ export default function SignUpPage() {
   };
 
   const unreadCount = currentUser ? getUnreadCount(currentUser.id) : 0;
+  const isOwner = isOwnerAccount(currentUser?.username);
 
   const navTabs: any[] = [
     { name: "Home", href: "/" },
     { name: "Games", href: "/#discover" },
     { name: "Create", href: "/#create" },
     { name: "Catalog", href: "/catalog" },
-    ...(currentUser?.id === "1" ? [{ name: "Dev", href: "/dev", dev: true }] : []),
+    ...(isOwner ? [{ name: "Dev", href: "/dev", dev: true }] : []),
     { name: "Friends", href: "/friends" },
     { name: "Messages", href: "/messages" },
     { name: "Avatar", href: "/avatar" },
@@ -178,7 +177,7 @@ export default function SignUpPage() {
                   Welcome,{" "}
                   <strong className="text-white inline-flex items-center">
                     {currentUser.username}
-                    <AccountBadge userId={currentUser.id} size={12} />
+                    <AccountBadge username={currentUser.username} userId={currentUser.id} size={12} />
                   </strong>
                 </span>
                 <button onClick={handleSignOut} className="hover:text-[#00E5FF]">
@@ -330,7 +329,9 @@ export default function SignUpPage() {
                 <div className="text-7xl mb-4">🎉</div>
                 <h2 className="text-2xl font-black text-[#1A1A2E] mb-2 inline-flex items-center justify-center gap-1">
                   Welcome, {username}
-                  {currentUser && <AccountBadge userId={currentUser.id} size={22} />}
+                  {currentUser && (
+                    <AccountBadge username={currentUser.username} userId={currentUser.id} size={22} />
+                  )}
                 </h2>
                 <p className="text-sm text-[#666] mb-6 max-w-md mx-auto">
                   Your account has been created successfully. You are now signed in

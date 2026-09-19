@@ -13,9 +13,11 @@ import {
   markConversationRead,
   formatVoxbux,
   getUnreadCount,
+  subscribeAuth,
   type User,
   type Message,
 } from "../../../lib/auth";
+import { isOwnerAccount } from "../../../lib/badges";
 import AccountBadge from "../../components/AccountBadge";
 import Avatar from "../../components/Avatar";
 
@@ -31,6 +33,11 @@ export default function ConversationPage() {
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const loadConversation = (u: User | null, o: User | null) => {
+    if (!u || !o) return;
+    setMessages(getConversation(u.id, o.id));
+  };
+
   useEffect(() => {
     const u = getCurrentUser();
     setCurrentUser(u);
@@ -39,16 +46,37 @@ export default function ConversationPage() {
 
     if (!u || !o) return;
 
-    // Require friendship to view/send
     if (!areFriends(u.id, o.id)) {
       setError("You can only message people you're friends with.");
       return;
     }
 
-    // Load messages and mark as read
-    setMessages(getConversation(u.id, o.id));
+    loadConversation(u, o);
     markConversationRead(u.id, o.id);
   }, [otherId]);
+
+  // Realtime: refresh when anything changes elsewhere (profile edits, etc.)
+  useEffect(() => {
+    const unsub = subscribeAuth(() => {
+      const u = getCurrentUser();
+      const o = findUserById(otherId);
+      setCurrentUser(u);
+      setOther(o || null);
+      if (u && o) loadConversation(u, o);
+    });
+    return () => unsub();
+  }, [otherId]);
+
+  // Poll every 3s for new messages in this conversation (localStorage workaround)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const u = getCurrentUser();
+      if (!u || !other) return;
+      setMessages(getConversation(u.id, other.id));
+      markConversationRead(u.id, other.id);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [other]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -57,8 +85,8 @@ export default function ConversationPage() {
     }
   }, [messages]);
 
-  const handleSignOut = () => {
-    signOut();
+  const handleSignOut = async () => {
+    await signOut();
     setCurrentUser(null);
   };
 
@@ -75,13 +103,14 @@ export default function ConversationPage() {
   };
 
   const unreadCount = currentUser ? getUnreadCount(currentUser.id) : 0;
+  const isOwner = isOwnerAccount(currentUser?.username);
 
   const navTabs: any[] = [
     { name: "Home", href: "/" },
     { name: "Games", href: "/#discover" },
     { name: "Create", href: "/#create" },
     { name: "Catalog", href: "/catalog" },
-    ...(currentUser?.id === "1" ? [{ name: "Dev", href: "/dev", dev: true }] : []),
+    ...(isOwner ? [{ name: "Dev", href: "/dev", dev: true }] : []),
     { name: "Friends", href: "/friends" },
     { name: "Messages", href: "/messages", active: true },
     { name: "Avatar", href: "/avatar" },
@@ -101,7 +130,7 @@ export default function ConversationPage() {
                   Welcome,{" "}
                   <strong className="text-white inline-flex items-center">
                     {currentUser.username}
-                    <AccountBadge userId={currentUser.id} size={12} />
+                    <AccountBadge username={currentUser.username} userId={currentUser.id} size={12} />
                   </strong>
                 </span>
                 <button onClick={handleSignOut} className="hover:text-[#00E5FF]">Sign Out</button>
@@ -232,7 +261,7 @@ export default function ConversationPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="font-black text-white text-sm truncate">{other.username}</span>
-                    <AccountBadge userId={other.id} size={12} />
+                    <AccountBadge username={other.username} userId={other.id} size={12} />
                   </div>
                   <p className="text-[10px] text-white/70">
                     {other.status === "online" ? "🟢 Online" : "⚫ Offline"}

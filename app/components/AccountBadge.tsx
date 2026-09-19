@@ -4,16 +4,20 @@ import { getAccountBadge } from "../../lib/badges";
 import { isIndevMemberById } from "../../lib/auth";
 
 export default function AccountBadge({
+  username,
   userId,
   size = 14,
 }: {
-  userId: string;
+  username?: string | null;
+  userId?: string | null;
   size?: number;
 }) {
-  const badge = getAccountBadge(userId);
-  const isIndev = isIndevMemberById(userId);
+  const badge = getAccountBadge(username);
+  const isIndev = userId ? isIndevMemberById(userId) : false;
 
   if (!badge && !isIndev) return null;
+
+  const gradientKey = userId || username || "anon";
 
   return (
     <span className="inline-flex items-center gap-1 ml-1.5 flex-shrink-0">
@@ -112,14 +116,14 @@ export default function AccountBadge({
         >
           <svg viewBox="0 0 20 20" width={size} height={size}>
             <defs>
-              <linearGradient id={`indev-grad-${userId}`} x1="0%" y1="0%" x2="100%" y2="100%">
+              <linearGradient id={`indev-grad-${gradientKey}`} x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stopColor="#A855F7" />
                 <stop offset="100%" stopColor="#6C3CE0" />
               </linearGradient>
             </defs>
             <polygon
               points="10,1 12.5,7 19,7.5 14,12 15.5,18.5 10,15 4.5,18.5 6,12 1,7.5 7.5,7"
-              fill={`url(#indev-grad-${userId})`}
+              fill={`url(#indev-grad-${gradientKey})`}
               stroke="#4A1FA8"
               strokeWidth="1"
               strokeLinejoin="round"

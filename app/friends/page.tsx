@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import {
+  getUsers,
   getCurrentUser,
   signOut,
   getFriendList,
@@ -18,8 +19,10 @@ import {
   hasOutgoingRequestTo,
   formatVoxbux,
   getUnreadCount,
+  subscribeAuth,
   type User,
 } from "../../lib/auth";
+import { isOwnerAccount } from "../../lib/badges";
 import AccountBadge from "../components/AccountBadge";
 import Avatar from "../components/Avatar";
 
@@ -31,14 +34,18 @@ export default function FriendsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [toast, setToast] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  useEffect(() => {
-    refresh();
-  }, []);
-
   const refresh = () => setCurrentUser(getCurrentUser());
 
-  const handleSignOut = () => {
-    signOut();
+  useEffect(() => {
+    refresh();
+    // Live updates: when anyone's profile changes (friend requests, accepted
+    // requests from the other side, etc.), refresh the view.
+    const unsub = subscribeAuth(() => refresh());
+    return () => unsub();
+  }, []);
+
+  const handleSignOut = async () => {
+    await signOut();
     setCurrentUser(null);
   };
 
@@ -51,16 +58,22 @@ export default function FriendsPage() {
   const incoming = currentUser ? getIncomingRequests(currentUser.id) : [];
   const outgoing = currentUser ? getOutgoingRequests(currentUser.id) : [];
   const unreadCount = currentUser ? getUnreadCount(currentUser.id) : 0;
+  const isOwner = isOwnerAccount(currentUser?.username);
 
   // ===== Search results =====
   const searchResults: User[] = (() => {
     if (!currentUser || !searchQuery.trim()) return [];
     const q = searchQuery.trim().toLowerCase();
-    // Lazy import to avoid circular: use getUsers via dynamic approach
-    const users = require("../../lib/auth").getUsers() as User[];
-    return users
+    return getUsers()
       .filter((u) => u.id !== currentUser.id)
-      .filter((u) => u.username.toLowerCase().includes(q) || u.id === q)
+      .filter((u) => {
+        const displayIdStr = u.displayId ? String(u.displayId) : "";
+        return (
+          u.username.toLowerCase().includes(q) ||
+          u.id.toLowerCase().includes(q) ||
+          displayIdStr === q
+        );
+      })
       .slice(0, 20);
   })();
 
@@ -113,7 +126,7 @@ export default function FriendsPage() {
     { name: "Games", href: "/#discover" },
     { name: "Create", href: "/#create" },
     { name: "Catalog", href: "/catalog" },
-    ...(currentUser?.id === "1" ? [{ name: "Dev", href: "/dev", dev: true }] : []),
+    ...(isOwner ? [{ name: "Dev", href: "/dev", dev: true }] : []),
     { name: "Friends", href: "/friends", active: true },
     { name: "Messages", href: "/messages" },
     { name: "Avatar", href: "/avatar" },
@@ -143,7 +156,7 @@ export default function FriendsPage() {
                   Welcome,{" "}
                   <strong className="text-white inline-flex items-center">
                     {currentUser.username}
-                    <AccountBadge userId={currentUser.id} size={12} />
+                    <AccountBadge username={currentUser.username} userId={currentUser.id} size={12} />
                   </strong>
                 </span>
                 <button onClick={handleSignOut} className="hover:text-[#00E5FF]">Sign Out</button>
@@ -271,7 +284,6 @@ export default function FriendsPage() {
                       <UserCard
                         key={u.id}
                         user={u}
-                        currentUser={currentUser}
                         actions={
                           <>
                             <Link
@@ -311,7 +323,6 @@ export default function FriendsPage() {
                       <UserCard
                         key={u.id}
                         user={u}
-                        currentUser={currentUser}
                         actions={
                           <>
                             <button
@@ -350,7 +361,6 @@ export default function FriendsPage() {
                       <UserCard
                         key={u.id}
                         user={u}
-                        currentUser={currentUser}
                         badge={<span className="text-[10px] bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded font-bold">PENDING</span>}
                         actions={
                           <button
@@ -448,7 +458,6 @@ export default function FriendsPage() {
                         <UserCard
                           key={u.id}
                           user={u}
-                          currentUser={currentUser}
                           actions={action}
                         />
                       );
@@ -476,12 +485,10 @@ export default function FriendsPage() {
 
 function UserCard({
   user,
-  currentUser,
   actions,
   badge,
 }: {
   user: User;
-  currentUser: User | null;
   actions: React.ReactNode;
   badge?: React.ReactNode;
 }) {
@@ -501,7 +508,7 @@ function UserCard({
           title={user.username}
         >
           <span className="truncate">{user.username}</span>
-          <AccountBadge userId={user.id} size={14} />
+          <AccountBadge username={user.username} userId={user.id} size={14} />
         </Link>
         <span
           className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${

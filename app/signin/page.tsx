@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import { verifyLogin, getUsers, getCurrentUser, signOut, formatVoxbux, getUnreadCount } from "../../lib/auth";
 import type { User } from "../../lib/auth";
+import { isOwnerAccount } from "../../lib/badges";
 import AccountBadge from "../components/AccountBadge";
 
 export default function SignInPage() {
@@ -23,32 +24,28 @@ export default function SignInPage() {
   };
 
   useEffect(() => {
-    const hasStorage = typeof window !== "undefined" && typeof localStorage !== "undefined";
     addDebug(`✅ Signin page loaded at ${new Date().toLocaleTimeString()}`);
-    addDebug(`localStorage available: ${hasStorage ? "YES" : "NO"}`);
 
-    if (hasStorage) {
-      try {
-        const users = getUsers();
-        addDebug(`Accounts found: ${users.length}`);
-        if (users.length > 0) {
-          users.forEach((u) => {
-            addDebug(`  → "${u.username}" (ID: ${u.id}, Balance: ${formatVoxbux(u.voxbux)})`);
-          });
-        } else {
-          addDebug(`⚠️ NO ACCOUNTS FOUND — sign up first!`);
-        }
-
-        const session = getCurrentUser();
-        if (session) {
-          addDebug(`Currently signed in as: "${session.username}"`);
-        } else {
-          addDebug(`No active session.`);
-        }
-        setCurrentUser(session);
-      } catch (err) {
-        addDebug(`❌ Error reading storage: ${String(err)}`);
+    try {
+      const users = getUsers();
+      addDebug(`Accounts found: ${users.length}`);
+      if (users.length > 0) {
+        users.forEach((u) => {
+          addDebug(`  → "${u.username}" (ID: ${u.displayId ?? u.id.slice(0, 8)}, Balance: ${formatVoxbux(u.voxbux)})`);
+        });
+      } else {
+        addDebug(`⚠️ NO ACCOUNTS FOUND — sign up first!`);
       }
+
+      const session = getCurrentUser();
+      if (session) {
+        addDebug(`Currently signed in as: "${session.username}"`);
+      } else {
+        addDebug(`No active session.`);
+      }
+      setCurrentUser(session);
+    } catch (err) {
+      addDebug(`❌ Error reading storage: ${String(err)}`);
     }
   }, []);
 
@@ -107,13 +104,14 @@ export default function SignInPage() {
   };
 
   const unreadCount = currentUser ? getUnreadCount(currentUser.id) : 0;
+  const isOwner = isOwnerAccount(currentUser?.username);
 
   const navTabs: any[] = [
     { name: "Home", href: "/" },
     { name: "Games", href: "/#discover" },
     { name: "Create", href: "/#create" },
     { name: "Catalog", href: "/catalog" },
-    ...(currentUser?.id === "1" ? [{ name: "Dev", href: "/dev", dev: true }] : []),
+    ...(isOwner ? [{ name: "Dev", href: "/dev", dev: true }] : []),
     { name: "Friends", href: "/friends" },
     { name: "Messages", href: "/messages" },
     { name: "Avatar", href: "/avatar" },
@@ -132,7 +130,7 @@ export default function SignInPage() {
                   Welcome,{" "}
                   <strong className="text-white inline-flex items-center">
                     {currentUser.username}
-                    <AccountBadge userId={currentUser.id} size={12} />
+                    <AccountBadge username={currentUser.username} userId={currentUser.id} size={12} />
                   </strong>
                 </span>
                 <button onClick={handleSignOut} className="hover:text-[#00E5FF]">
@@ -273,7 +271,9 @@ export default function SignInPage() {
                 <div className="text-7xl mb-4">👋</div>
                 <h2 className="text-2xl font-black text-[#1A1A2E] mb-2 inline-flex items-center justify-center gap-1">
                   Welcome back, {username}
-                  {currentUser && <AccountBadge userId={currentUser.id} size={22} />}
+                  {currentUser && (
+                    <AccountBadge username={currentUser.username} userId={currentUser.id} size={22} />
+                  )}
                 </h2>
                 <p className="text-sm text-[#666] mb-6 max-w-md mx-auto">
                   You're signed in. Head to the homepage to start exploring worlds.

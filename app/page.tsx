@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
-import { getUsers, getCurrentUser, signOut, formatVoxbux } from "../lib/auth";
+import { getUsers, getCurrentUser, signOut, formatVoxbux, subscribeAuth } from "../lib/auth";
 import type { User } from "../lib/auth";
+import { isOwnerAccount } from "../lib/badges";
 import Avatar from "./components/Avatar";
 import AccountBadge from "./components/AccountBadge";
 
@@ -13,13 +14,20 @@ export default function Home() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "online" | "friends">("all");
 
-  useEffect(() => {
+  const refresh = () => {
     setUsers(getUsers());
     setCurrentUser(getCurrentUser());
+  };
+
+  useEffect(() => {
+    refresh();
+    // Realtime: update the member list any time any profile changes anywhere
+    const unsub = subscribeAuth(() => refresh());
+    return () => unsub();
   }, []);
 
-  const handleSignOut = () => {
-    signOut();
+  const handleSignOut = async () => {
+    await signOut();
     setCurrentUser(null);
     setUsers(getUsers());
   };
@@ -28,18 +36,21 @@ export default function Home() {
     const matchesSearch = user.username.toLowerCase().includes(search.toLowerCase());
     const matchesFilter =
       filter === "all" ||
-      (filter === "online" && user.status === "online");
+      (filter === "online" && user.status === "online") ||
+      (filter === "friends" && currentUser?.friendIds?.includes(user.id));
     return matchesSearch && matchesFilter;
   });
 
   const onlineCount = users.filter((u) => u.status === "online").length;
+  const friendsCount = currentUser ? currentUser.friendIds.length : 0;
+  const isOwner = isOwnerAccount(currentUser?.username);
 
   const navTabs: any[] = [
     { name: "Home", href: "#", active: true },
     { name: "Games", href: "#discover" },
     { name: "Create", href: "#create" },
     { name: "Catalog", href: "/catalog" },
-    ...(currentUser?.id === "1" ? [{ name: "Dev", href: "/dev", dev: true }] : []),
+    ...(isOwner ? [{ name: "Dev", href: "/dev", dev: true }] : []),
     { name: "Friends", href: "/friends" },
     { name: "Messages", href: "/messages" },
     { name: "Avatar", href: "/avatar" },
@@ -59,7 +70,7 @@ export default function Home() {
                   Welcome,{" "}
                   <strong className="text-white inline-flex items-center">
                     {currentUser.username}
-                    <AccountBadge userId={currentUser.id} size={12} />
+                    <AccountBadge username={currentUser.username} userId={currentUser.id} size={12} />
                   </strong>
                 </span>
                 <button onClick={handleSignOut} className="hover:text-[#00E5FF]">Sign Out</button>
@@ -148,9 +159,11 @@ export default function Home() {
                     className="font-black text-sm hover:text-[#6C3CE0] truncate inline-flex items-center justify-center"
                   >
                     {currentUser.username}
-                    <AccountBadge userId={currentUser.id} size={14} />
+                    <AccountBadge username={currentUser.username} userId={currentUser.id} size={14} />
                   </Link>
-                  <p className="text-[10px] text-[#666]">🟢 Online</p>
+                  <p className="text-[10px] text-[#666]">
+                    {currentUser.status === "online" ? "🟢 Online" : "⚪ Offline"}
+                  </p>
                 </div>
                 <div className="text-xs text-[#666] text-center border-t border-[#E5E7F0] pt-2">
                   Member since {currentUser.joined}
@@ -263,7 +276,12 @@ export default function Home() {
               <p className="text-white/90 mb-4 max-w-xl text-sm md:text-base">
                 {currentUser ? (
                   <>
-                    Hey <strong className="inline-flex items-center">{currentUser.username}<AccountBadge userId={currentUser.id} size={14} /></strong>! Ready to build something amazing today?
+                    Hey{" "}
+                    <strong className="inline-flex items-center">
+                      {currentUser.username}
+                      <AccountBadge username={currentUser.username} userId={currentUser.id} size={14} />
+                    </strong>
+                    ! Ready to build something amazing today?
                   </>
                 ) : (
                   "Build worlds. Play together. Connect through Nexus Gates. Be one of the first creators in the universe of infinite possibilities."
@@ -350,7 +368,7 @@ export default function Home() {
                 {[
                   { key: "all" as const, label: `All (${users.length})` },
                   { key: "online" as const, label: `Online (${onlineCount})` },
-                  { key: "friends" as const, label: "Friends" },
+                  { key: "friends" as const, label: `Friends (${friendsCount})` },
                 ].map((tab) => (
                   <button
                     key={tab.key}
@@ -388,7 +406,7 @@ export default function Home() {
                         title={user.username}
                       >
                         <span className="truncate">{user.username}</span>
-                        <AccountBadge userId={user.id} size={14} />
+                        <AccountBadge username={user.username} userId={user.id} size={14} />
                         {currentUser?.id === user.id && (
                           <span className="ml-2 text-[10px] bg-white/20 px-1.5 py-0.5 rounded flex-shrink-0">YOU</span>
                         )}
@@ -430,11 +448,13 @@ export default function Home() {
               <div className="bg-white border-2 border-dashed border-[#C5C8D6] rounded p-10 text-center">
                 <div className="text-5xl mb-3">👤</div>
                 <h3 className="font-black text-lg text-[#1A1A2E] mb-2">
-                  {search ? "No Players Found" : "No Players Yet"}
+                  {search ? "No Players Found" : filter === "friends" ? "No Friends Yet" : "No Players Yet"}
                 </h3>
                 <p className="text-sm text-[#666] max-w-md mx-auto mb-4">
                   {search
                     ? `Nobody with "${search}" in their username has signed up yet.`
+                    : filter === "friends"
+                    ? "You haven't added any friends yet. Click the + button on a member's card to send a request."
                     : "Once players start joining Voxelio, they'll show up here."}
                 </p>
                 {search ? (
@@ -442,12 +462,14 @@ export default function Home() {
                     Clear search
                   </button>
                 ) : (
-                  <Link
-                    href="/signup"
-                    className="inline-block bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white font-bold text-xs px-6 py-2.5 rounded border border-[#4A1FA8] hover:from-[#8B5FFF] hover:to-[#6A3FD7] transition"
-                  >
-                    Be the First to Sign Up
-                  </Link>
+                  !currentUser && (
+                    <Link
+                      href="/signup"
+                      className="inline-block bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white font-bold text-xs px-6 py-2.5 rounded border border-[#4A1FA8] hover:from-[#8B5FFF] hover:to-[#6A3FD7] transition"
+                    >
+                      Be the First to Sign Up
+                    </Link>
+                  )
                 )}
               </div>
             )}

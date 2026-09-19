@@ -2,58 +2,48 @@
 // VOXELIO BADGES — Who gets what badge
 // ============================================================
 //
-// This is the ONLY file you need to edit to manage badges.
-//
-// HOW IT WORKS:
-//   Badges are assigned by ACCOUNT ID (a number as a string).
-//   You can find a user's ID on their profile page under their name,
-//   or in the debug panel on the signin page.
-//
-// EXAMPLES:
-//   const OWNER_ID      = "1";              // Account #1 is the owner
-//   const ADMIN_IDS     = ["2", "5", "9"];  // Accounts #2, #5, #9 are admins
-//   const MODERATOR_IDS = ["3", "7"];       // Accounts #3, #7 are moderators
+// Badges are assigned by USERNAME now (accounts use UUIDs internally,
+// but usernames are stable and readable).
 //
 // CHANGING THE OWNER:
-//   Just change OWNER_ID to a different number. Save the file. Refresh.
-//   The new owner gets the gold diamond; the old one loses it.
+//   Change OWNER_USERNAME. Save. Refresh.
 //
 // PROMOTING SOMEONE:
-//   Add their ID to ADMIN_IDS or MODERATOR_IDS. Save. Refresh.
-//
-// DEMOTING SOMEONE:
-//   Remove their ID from the list. Save. Refresh.
-// ------------------------------------------------------------
+//   Add their username to ADMIN_USERNAMES or MODERATOR_USERNAMES.
 
-export const OWNER_ID: string = "1";
-export const ADMIN_IDS: string[] = ["2"];
-export const MODERATOR_IDS: string[] = [];
+export const OWNER_USERNAME = "voxelio";
+export const ADMIN_USERNAMES: string[] = [];
+export const MODERATOR_USERNAMES: string[] = [];
+
+// Kept for compatibility in case any code still imports it.
+// Not used for badge logic anymore.
+export const OWNER_ID: string = OWNER_USERNAME;
 
 export type BadgeType = "owner" | "admin" | "moderator" | null;
 
-export function getAccountBadge(userId: string): BadgeType {
-  if (!userId) return null;
-  if (userId === OWNER_ID) return "owner";
-  if (ADMIN_IDS.includes(userId)) return "admin";
-  if (MODERATOR_IDS.includes(userId)) return "moderator";
+export function getAccountBadge(username: string | null | undefined): BadgeType {
+  if (!username) return null;
+  const lower = username.toLowerCase();
+  if (lower === OWNER_USERNAME.toLowerCase()) return "owner";
+  if (ADMIN_USERNAMES.map((u) => u.toLowerCase()).includes(lower)) return "admin";
+  if (MODERATOR_USERNAMES.map((u) => u.toLowerCase()).includes(lower)) return "moderator";
   return null;
 }
 
-export function isOwnerAccount(userId: string): boolean {
-  return getAccountBadge(userId) === "owner";
+export function isOwnerAccount(username: string | null | undefined): boolean {
+  return getAccountBadge(username) === "owner";
 }
 
-export function isAdminAccount(userId: string): boolean {
-  return getAccountBadge(userId) === "admin";
+export function isAdminAccount(username: string | null | undefined): boolean {
+  return getAccountBadge(username) === "admin";
 }
 
-export function isModeratorAccount(userId: string): boolean {
-  return getAccountBadge(userId) === "moderator";
+export function isModeratorAccount(username: string | null | undefined): boolean {
+  return getAccountBadge(username) === "moderator";
 }
 
-// Handy: get a human-readable label for the badge
-export function getBadgeLabel(userId: string): string | null {
-  const badge = getAccountBadge(userId);
+export function getBadgeLabel(username: string | null | undefined): string | null {
+  const badge = getAccountBadge(username);
   if (badge === "owner") return "Voxelio Owner";
   if (badge === "admin") return "Voxelio Admin";
   if (badge === "moderator") return "Voxelio Moderator";

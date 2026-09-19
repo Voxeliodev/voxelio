@@ -8,9 +8,11 @@ import {
   signOut,
   formatVoxbux,
   getUnreadCount,
+  subscribeAuth,
   type User,
   type AvatarConfig,
 } from "../../lib/auth";
+import { isOwnerAccount } from "../../lib/badges";
 import {
   BODY_PART_SLOTS,
   DEFAULT_PART_ID,
@@ -50,16 +52,40 @@ export default function AvatarEditorPage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [advancedSlot, setAdvancedSlot] = useState<BodyPartSlot>("head");
 
+  // Pull the freshest user from the auth cache. Doesn't overwrite
+  // the current config while the user is editing if nothing changed remotely.
   const refreshFromStorage = useCallback(() => {
     const fresh = getCurrentUser();
     if (fresh) {
       setUser(fresh);
-      setConfig(fresh.avatarConfig);
+      setConfig((prev) => {
+        // Only replace config if it actually changed remotely, otherwise
+        // the Avatar preview would fight the user's edits.
+        if (!prev) return fresh.avatarConfig;
+        if (JSON.stringify(prev) === JSON.stringify(fresh.avatarConfig)) return prev;
+        return fresh.avatarConfig;
+      });
+    } else {
+      setUser(null);
+      setConfig(null);
     }
   }, []);
 
   useEffect(() => {
     refreshFromStorage();
+
+    // Realtime: whenever another browser updates any profile (including ours),
+    // re-read from the cache so the preview updates.
+    const unsub = subscribeAuth(() => {
+      const fresh = getCurrentUser();
+      if (!fresh) return;
+      setUser(fresh);
+      setConfig((prev) => {
+        if (!prev) return fresh.avatarConfig;
+        if (JSON.stringify(prev) === JSON.stringify(fresh.avatarConfig)) return prev;
+        return fresh.avatarConfig;
+      });
+    });
 
     const handleVisibility = () => {
       if (document.visibilityState === "visible") refreshFromStorage();
@@ -71,14 +97,15 @@ export default function AvatarEditorPage() {
     window.addEventListener("pageshow", refreshFromStorage);
 
     return () => {
+      unsub();
       document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("focus", handleFocus);
       window.removeEventListener("pageshow", refreshFromStorage);
     };
   }, [refreshFromStorage]);
 
-  const handleSignOut = () => {
-    signOut();
+  const handleSignOut = async () => {
+    await signOut();
     setUser(null);
     setConfig(null);
   };
@@ -131,13 +158,14 @@ export default function AvatarEditorPage() {
   const ownedShirts = getShirts().filter((s) => owned.includes(s.id));
 
   const unreadCount = user ? getUnreadCount(user.id) : 0;
+  const isOwner = isOwnerAccount(user?.username);
 
   const navTabs: any[] = [
     { name: "Home", href: "/" },
     { name: "Games", href: "/#discover" },
     { name: "Create", href: "/#create" },
     { name: "Catalog", href: "/catalog" },
-    ...(user?.id === "1" ? [{ name: "Dev", href: "/dev", dev: true }] : []),
+    ...(isOwner ? [{ name: "Dev", href: "/dev", dev: true }] : []),
     { name: "Friends", href: "/friends" },
     { name: "Messages", href: "/messages" },
     { name: "Avatar", href: "/avatar", active: true },
@@ -174,7 +202,7 @@ export default function AvatarEditorPage() {
                   Welcome,{" "}
                   <strong className="text-white inline-flex items-center">
                     {user.username}
-                    <AccountBadge userId={user.id} size={12} />
+                    <AccountBadge username={user.username} userId={user.id} size={12} />
                   </strong>
                 </span>
                 <button onClick={handleSignOut} className="hover:text-[#00E5FF]">Sign Out</button>

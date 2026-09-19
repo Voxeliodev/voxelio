@@ -1,7 +1,7 @@
 "use client";
 
 import { supabase } from "./supabase";
-import { OWNER_ID } from "./badges";
+import { OWNER_USERNAME } from "./badges";
 import { filterMessage } from "./chatFilter";
 import { DEFAULT_BODY_PARTS, type BodyPartSlot } from "./bodyParts";
 
@@ -31,12 +31,14 @@ export const INDEV_PRICING: Record<IndevTier, { name: string; price: number; dur
 };
 
 export type User = {
-  id: string; username: string; email: string; passwordHash: string; birthday: string;
+  id: string;
+  displayId?: number | null;
+  username: string; email: string; passwordHash: string; birthday: string;
   joined: string; status: "online" | "offline"; bio: string; avatar: string;
   avatarConfig: AvatarConfig; friends: number; friendIds: string[];
   incomingRequests: string[]; outgoingRequests: string[]; voxbux: number;
   ownedItems: string[]; bannedUntil?: number | null; banReason?: string;
-  indevClub?: IndevClub | null;
+  indevClub?: IndevClub | null; lastSeen?: number;
 };
 
 export type Message = {
@@ -44,10 +46,11 @@ export type Message = {
 };
 
 // ============================================================
-// CACHE
+// CACHE + HYDRATE
 // ============================================================
 let usersCache: User[] = [];
 let currentUserCache: User | null = null;
+let messagesCache: Message[] = [];
 let hydrated = false;
 const listeners = new Set<() => void>();
 function notify() { for (const fn of listeners) fn(); }
@@ -60,23 +63,101 @@ export function subscribeAuth(fn: () => void): () => void {
 export async function hydrateAuth(): Promise<void> {
   if (typeof window === "undefined" || hydrated) return;
 
+  // Set this BEFORE any await so React StrictMode's double-run can't
+  // try to attach realtime listeners to the same channel twice.
+  hydrated = true;
+
   const { data: { session } } = await supabase.auth.getSession();
   const { data: profiles, error } = await supabase.from("profiles").select("*");
   if (!error && profiles) usersCache = profiles.map(rowToUser);
 
   if (session?.user) {
     currentUserCache = usersCache.find((u) => u.id === session.user.id) || null;
+    const { data: msgRows } = await supabase
+      .from("messages")
+      .select("*")
+      .or(`from_id.eq.${session.user.id},to_id.eq.${session.user.id}`);
+    if (msgRows) messagesCache = msgRows.map(rowToMessage);
   }
 
-  hydrated = true;
   notify();
 
-  supabase.auth.onAuthStateChange((_e, session) => {
-    currentUserCache = session?.user
-      ? usersCache.find((u) => u.id === session.user.id) || null
-      : null;
+  supabase.auth.onAuthStateChange(async (_e, session) => {
+    if (session?.user) {
+      currentUserCache = usersCache.find((u) => u.id === session.user.id) || null;
+      const { data: msgRows } = await supabase
+        .from("messages")
+        .select("*")
+        .or(`from_id.eq.${session.user.id},to_id.eq.${session.user.id}`);
+      if (msgRows) messagesCache = msgRows.map(rowToMessage);
+    } else {
+      currentUserCache = null;
+      messagesCache = [];
+    }
     notify();
   });
+
+  // Heartbeat: mark this user as online every 20s
+  setInterval(() => {
+    if (currentUserCache) {
+      updateUser({ ...currentUserCache, lastSeen: Date.now() });
+    }
+  }, 20000);
+
+  // Realtime: profiles
+  supabase
+    .channel("profiles-realtime")
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "profiles" },
+      (payload) => {
+        const row = payload.new as any;
+        if (!row || !row.id) return;
+        const u = rowToUser(row);
+        const idx = usersCache.findIndex((x) => x.id === u.id);
+        if (idx >= 0) usersCache[idx] = u;
+        else usersCache.push(u);
+        if (currentUserCache?.id === u.id) currentUserCache = u;
+        notify();
+      }
+    )
+    .subscribe();
+
+  // Realtime: messages
+  supabase
+    .channel("messages-realtime")
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "messages" },
+      (payload) => {
+        if (payload.eventType === "INSERT") {
+          const m = rowToMessage(payload.new);
+          if (!messagesCache.some((x) => x.id === m.id)) {
+            messagesCache.push(m);
+            notify();
+          }
+        } else if (payload.eventType === "UPDATE") {
+          const m = rowToMessage(payload.new);
+          const idx = messagesCache.findIndex((x) => x.id === m.id);
+          if (idx >= 0) messagesCache[idx] = m;
+          notify();
+        } else if (payload.eventType === "DELETE") {
+          const old = payload.old as any;
+          if (old?.id) {
+            messagesCache = messagesCache.filter((x) => x.id !== old.id);
+            notify();
+          }
+        }
+      }
+    )
+    .subscribe();
+
+  // Clean up channels on full unload
+  if (typeof window !== "undefined") {
+    window.addEventListener("beforeunload", () => {
+      supabase.removeAllChannels();
+    });
+  }
 }
 
 // ============================================================
@@ -108,9 +189,11 @@ function rowToUser(row: any): User {
   const d = row.data || {};
   const friendIds = Array.isArray(d.friendIds) ? d.friendIds : [];
   return {
-    id: row.id, username: row.username, email: row.email, passwordHash: "",
+    id: row.id,
+    displayId: typeof row.display_id === "number" ? row.display_id : null,
+    username: row.username, email: row.email, passwordHash: "",
     birthday: d.birthday || "", joined: d.joined || "",
-    status: d.status === "online" ? "online" : "offline",
+    status: (typeof d.lastSeen === "number" && Date.now() - d.lastSeen < 60000) ? "online" : "offline",
     bio: d.bio || "New Voxelio member!", avatar: d.avatar || "🎨",
     avatarConfig: normalizeAvatarConfig(d.avatarConfig),
     friends: friendIds.length, friendIds,
@@ -121,12 +204,16 @@ function rowToUser(row: any): User {
     bannedUntil: typeof d.bannedUntil === "number" ? d.bannedUntil : null,
     banReason: typeof d.banReason === "string" ? d.banReason : undefined,
     indevClub: d.indevClub && typeof d.indevClub === "object" ? d.indevClub : null,
+    lastSeen: typeof d.lastSeen === "number" ? d.lastSeen : 0,
   };
 }
 
 function userToRow(u: User) {
   return {
-    id: u.id, username: u.username, email: u.email,
+    id: u.id,
+    display_id: u.displayId ?? null,
+    username: u.username,
+    email: u.email,
     data: {
       birthday: u.birthday, joined: u.joined, status: u.status, bio: u.bio,
       avatar: u.avatar, avatarConfig: u.avatarConfig,
@@ -134,7 +221,19 @@ function userToRow(u: User) {
       outgoingRequests: u.outgoingRequests, voxbux: u.voxbux,
       ownedItems: u.ownedItems, bannedUntil: u.bannedUntil,
       banReason: u.banReason, indevClub: u.indevClub,
+      lastSeen: u.lastSeen ?? Date.now(),
     },
+  };
+}
+
+function rowToMessage(row: any): Message {
+  return {
+    id: row.id,
+    fromId: row.from_id,
+    toId: row.to_id,
+    text: row.text,
+    sentAt: new Date(row.sent_at).getTime(),
+    read: Boolean(row.read),
   };
 }
 
@@ -167,7 +266,10 @@ export function getBanStatusLabel(user: User): { text: string; tone: "ok" | "war
 // READ
 // ============================================================
 export function getUsers(): User[] {
-  return usersCache.map((u) => ({ ...u, friends: u.friendIds.length }));
+  return usersCache.map((u) => {
+    const online = typeof u.lastSeen === "number" && Date.now() - u.lastSeen < 60000;
+    return { ...u, friends: u.friendIds.length, status: online ? "online" : "offline" };
+  });
 }
 export function findUserByUsername(username: string): User | undefined {
   return getUsers().find((u) => u.username.toLowerCase() === username.toLowerCase());
@@ -178,8 +280,15 @@ export function findUserByEmail(email: string): User | undefined {
 export function findUserById(id: string): User | undefined {
   return getUsers().find((u) => u.id === id);
 }
+export function findUserByDisplayId(displayId: number): User | undefined {
+  return getUsers().find((u) => u.displayId === displayId);
+}
 export function findUserByUsernameOrId(query: string): User | undefined {
   const q = query.trim(); if (!q) return undefined;
+  if (/^\d+$/.test(q)) {
+    const byDisplay = findUserByDisplayId(parseInt(q, 10));
+    if (byDisplay) return byDisplay;
+  }
   return findUserById(q) || findUserByUsername(q);
 }
 export function isUsernameTaken(username: string): boolean {
@@ -194,23 +303,37 @@ export function getUsedUsernames(): string[] { return getUsers().map((u) => u.us
 export function getUsedEmails(): string[] { return getUsers().map((u) => u.email.toLowerCase()); }
 
 // ============================================================
-// WRITE (fire-and-forget)
+// WRITE
 // ============================================================
 export function updateUser(updatedUser: User): void {
   const idx = usersCache.findIndex((u) => u.id === updatedUser.id);
   if (idx >= 0) usersCache[idx] = updatedUser; else usersCache.push(updatedUser);
   if (currentUserCache?.id === updatedUser.id) currentUserCache = updatedUser;
-  void supabase.from("profiles").upsert(userToRow(updatedUser));
+  supabase
+    .from("profiles")
+    .upsert(userToRow(updatedUser))
+    .then(({ error }) => {
+      if (error) {
+        console.error("❌ updateUser FAILED:", error.message, error.details, error.hint);
+      } else {
+        console.log("✅ updateUser saved:", updatedUser.username);
+      }
+    });
   notify();
 }
 export function saveUsers(users: User[]): void {
   usersCache = users;
-  void supabase.from("profiles").upsert(users.map(userToRow));
+  supabase
+    .from("profiles")
+    .upsert(users.map(userToRow))
+    .then(({ error }) => {
+      if (error) console.error("❌ saveUsers FAILED:", error.message, error.details, error.hint);
+    });
   notify();
 }
 
 // ============================================================
-// CREATE / LOGIN / SIGNOUT (async now!)
+// CREATE / LOGIN / SIGNOUT
 // ============================================================
 export async function createUser(data: { username: string; email: string; password: string; birthday: string }):
   Promise<{ success: boolean; error?: string; user?: User }> {
@@ -225,7 +348,8 @@ export async function createUser(data: { username: string; email: string; passwo
 
   const avatars = ["🎨","🚀","🏎️","👻","⚔️","🏝️","🎢","🧟","🍕","🚁","🏗️","🐉"];
   const newUser: User = {
-    id: authData.user.id, username: data.username, email: data.email,
+    id: authData.user.id, displayId: null,
+    username: data.username, email: data.email,
     passwordHash: "", birthday: data.birthday,
     joined: new Date().toLocaleDateString("en-US", { month: "short", year: "numeric" }),
     status: "online", bio: "New Voxelio member!",
@@ -233,15 +357,22 @@ export async function createUser(data: { username: string; email: string; passwo
     avatarConfig: { ...DEFAULT_AVATAR_CONFIG, bodyParts: { ...DEFAULT_BODY_PARTS }, partColors: {} },
     friends: 0, friendIds: [], incomingRequests: [], outgoingRequests: [],
     voxbux: DEFAULT_VOXBUX, ownedItems: [], bannedUntil: null, indevClub: null,
+    lastSeen: Date.now(),
   };
 
-  const { error: insertError } = await supabase.from("profiles").insert(userToRow(newUser));
+  const { data: inserted, error: insertError } = await supabase
+    .from("profiles")
+    .insert(userToRow(newUser))
+    .select()
+    .single();
+
   if (insertError) return { success: false, error: insertError.message };
 
-  usersCache.push(newUser);
-  currentUserCache = newUser;
+  const finalUser = inserted ? rowToUser(inserted) : newUser;
+  usersCache.push(finalUser);
+  currentUserCache = finalUser;
   notify();
-  return { success: true, user: newUser };
+  return { success: true, user: finalUser };
 }
 
 export async function verifyLogin(username: string, password: string):
@@ -256,7 +387,7 @@ export async function verifyLogin(username: string, password: string):
   const { error } = await supabase.auth.signInWithPassword({ email: user.email, password });
   if (error) return { success: false, error: "Incorrect password. Please try again." };
 
-  const updated = { ...user, status: "online" as const };
+  const updated = { ...user, status: "online" as const, lastSeen: Date.now() };
   updateUser(updated);
   currentUserCache = updated;
   notify();
@@ -267,14 +398,16 @@ export function getCurrentUser(): User | null {
   if (!currentUserCache) return null;
   const fresh = usersCache.find((u) => u.id === currentUserCache!.id);
   if (!fresh || isUserBanned(fresh)) return null;
-  return fresh;
+  const online = typeof fresh.lastSeen === "number" && Date.now() - fresh.lastSeen < 60000;
+  return { ...fresh, status: online ? "online" : "offline" };
 }
 export function setCurrentUser(user: User | null): void { currentUserCache = user; notify(); }
 export async function signOut(): Promise<void> {
   const c = getCurrentUser();
-  if (c) updateUser({ ...c, status: "offline" });
+  if (c) updateUser({ ...c, status: "offline", lastSeen: 0 });
   await supabase.auth.signOut();
   currentUserCache = null;
+  messagesCache = [];
   notify();
 }
 
@@ -389,65 +522,117 @@ export function getOutgoingRequests(userId: string): User[] {
 }
 
 // ============================================================
-// MESSAGES (still local per-browser for now)
+// MESSAGES — Supabase-backed
 // ============================================================
-const MESSAGES_KEY = "voxelio_messages";
 export function getMessages(): Message[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(MESSAGES_KEY);
-    if (!raw) return [];
-    const p = JSON.parse(raw);
-    return Array.isArray(p) ? p : [];
-  } catch { return []; }
+  return [...messagesCache];
 }
-function saveMessages(msgs: Message[]): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(MESSAGES_KEY, JSON.stringify(msgs));
-}
-export function sendMessage(fromId: string, toId: string, text: string): { success: boolean; error?: string; message?: Message } {
+
+export function sendMessage(
+  fromId: string,
+  toId: string,
+  text: string
+): { success: boolean; error?: string; message?: Message } {
   const trimmed = text.trim();
   if (!trimmed) return { success: false, error: "Message can't be empty." };
   if (trimmed.length > 500) return { success: false, error: "Message too long (max 500 characters)." };
-  const from = findUserById(fromId); const to = findUserById(toId);
+
+  const from = findUserById(fromId);
+  const to = findUserById(toId);
   if (!from || !to) return { success: false, error: "User not found." };
   if (!from.friendIds.includes(toId)) return { success: false, error: "You can only message friends." };
   if (isUserBanned(from)) return { success: false, error: "This account is banned." };
+
   const filtered = filterMessage(trimmed);
-  const msg: Message = { id: "m_" + Date.now().toString(36) + Math.random().toString(36).slice(2,7),
-    fromId, toId, text: filtered, sentAt: Date.now(), read: false };
-  const msgs = getMessages(); msgs.push(msg); saveMessages(msgs);
+  const id =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : "m_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+
+  const msg: Message = {
+    id,
+    fromId,
+    toId,
+    text: filtered,
+    sentAt: Date.now(),
+    read: false,
+  };
+
+  messagesCache.push(msg);
+  notify();
+
+  supabase
+    .from("messages")
+    .insert({
+      id,
+      from_id: fromId,
+      to_id: toId,
+      text: filtered,
+      read: false,
+    })
+    .then(({ error }) => {
+      if (error) console.error("❌ sendMessage FAILED:", error.message, error.details, error.hint);
+    });
+
   return { success: true, message: msg };
 }
+
 export function getConversation(a: string, b: string): Message[] {
-  return getMessages().filter((m) => (m.fromId === a && m.toId === b) || (m.fromId === b && m.toId === a)).sort((x, y) => x.sentAt - y.sentAt);
+  return messagesCache
+    .filter((m) => (m.fromId === a && m.toId === b) || (m.fromId === b && m.toId === a))
+    .sort((x, y) => x.sentAt - y.sentAt);
 }
-export function getConversations(userId: string): { otherId: string; lastMessage: Message; unread: number }[] {
-  const msgs = getMessages().filter((m) => m.fromId === userId || m.toId === userId);
+
+export function getConversations(
+  userId: string
+): { otherId: string; lastMessage: Message; unread: number }[] {
+  const msgs = messagesCache.filter((m) => m.fromId === userId || m.toId === userId);
   const by = new Map<string, Message[]>();
   for (const m of msgs) {
     const o = m.fromId === userId ? m.toId : m.fromId;
-    if (!by.has(o)) by.set(o, []); by.get(o)!.push(m);
+    if (!by.has(o)) by.set(o, []);
+    by.get(o)!.push(m);
   }
   const out: { otherId: string; lastMessage: Message; unread: number }[] = [];
   for (const [otherId, list] of by.entries()) {
     list.sort((a, b) => a.sentAt - b.sentAt);
-    out.push({ otherId, lastMessage: list[list.length - 1],
-      unread: list.filter((m) => m.toId === userId && !m.read).length });
+    out.push({
+      otherId,
+      lastMessage: list[list.length - 1],
+      unread: list.filter((m) => m.toId === userId && !m.read).length,
+    });
   }
   out.sort((a, b) => b.lastMessage.sentAt - a.lastMessage.sentAt);
   return out;
 }
+
 export function getUnreadCount(userId: string): number {
-  return getMessages().filter((m) => m.toId === userId && !m.read).length;
+  return messagesCache.filter((m) => m.toId === userId && !m.read).length;
 }
+
 export function getUnreadFrom(userId: string, fromId: string): number {
-  return getMessages().filter((m) => m.toId === userId && m.fromId === fromId && !m.read).length;
+  return messagesCache.filter((m) => m.toId === userId && m.fromId === fromId && !m.read).length;
 }
+
 export function markConversationRead(userId: string, otherId: string): void {
-  const msgs = getMessages(); let changed = false;
-  for (const m of msgs) if (m.toId === userId && m.fromId === otherId && !m.read) { m.read = true; changed = true; }
-  if (changed) saveMessages(msgs);
+  const unreadIds: string[] = [];
+  messagesCache = messagesCache.map((m) => {
+    if (m.toId === userId && m.fromId === otherId && !m.read) {
+      unreadIds.push(m.id);
+      return { ...m, read: true };
+    }
+    return m;
+  });
+  if (unreadIds.length > 0) {
+    notify();
+    supabase
+      .from("messages")
+      .update({ read: true })
+      .in("id", unreadIds)
+      .then(({ error }) => {
+        if (error) console.error("❌ markRead FAILED:", error.message);
+      });
+  }
 }
 
 // ============================================================
@@ -472,7 +657,7 @@ export function setVoxbux(userId: string, amount: number): { success: boolean; e
 export function banUser(userId: string, durationMs: number | "permanent", reason?: string): { success: boolean; error?: string; bannedUntil?: number } {
   const u = findUserById(userId);
   if (!u) return { success: false, error: "User not found." };
-  if (u.id === OWNER_ID) return { success: false, error: "You cannot ban the owner." };
+  if (u.username.toLowerCase() === OWNER_USERNAME.toLowerCase()) return { success: false, error: "You cannot ban the owner." };
   const until = durationMs === "permanent" ? -1 : Date.now() + durationMs;
   updateUser({ ...u, bannedUntil: until, banReason: reason?.trim() || undefined });
   return { success: true, bannedUntil: until };
@@ -486,9 +671,15 @@ export function unbanUser(userId: string): { success: boolean; error?: string } 
 export function terminateUser(userId: string): { success: boolean; error?: string } {
   const u = findUserById(userId);
   if (!u) return { success: false, error: "User not found." };
-  if (u.id === OWNER_ID) return { success: false, error: "You cannot terminate the owner." };
+  if (u.username.toLowerCase() === OWNER_USERNAME.toLowerCase()) return { success: false, error: "You cannot terminate the owner." };
   usersCache = usersCache.filter((x) => x.id !== userId);
-  void supabase.from("profiles").delete().eq("id", userId);
+  supabase
+    .from("profiles")
+    .delete()
+    .eq("id", userId)
+    .then(({ error }) => {
+      if (error) console.error("❌ terminate FAILED:", error.message);
+    });
   if (currentUserCache?.id === userId) currentUserCache = null;
   notify();
   return { success: true };
@@ -500,7 +691,11 @@ export function terminateUser(userId: string): { success: boolean; error?: strin
 export { getAccountBadge, isOwnerAccount, isAdminAccount, isModeratorAccount, getBadgeLabel } from "./badges";
 export type { BadgeType } from "./badges";
 
-export function formatAccountId(id: string): string { return "#" + id; }
+export function formatAccountId(id: string, displayId?: number | null): string {
+  if (displayId) return "#" + displayId;
+  if (/^\d+$/.test(id)) return "#" + id;
+  return "#" + id.slice(0, 8);
+}
 
 export function hashPassword(password: string): string {
   let hash = 5381;
