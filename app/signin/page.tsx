@@ -52,8 +52,8 @@ export default function SignInPage() {
     }
   }, []);
 
-  const handleSignOut = () => {
-    signOut();
+  const handleSignOut = async () => {
+    await signOut();
     setCurrentUser(null);
     addDebug("🚪 Signed out.");
   };
@@ -66,7 +66,7 @@ export default function SignInPage() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setDebugInfo([]);
     addDebug("=== SIGN IN CLICKED ===");
@@ -84,7 +84,7 @@ export default function SignInPage() {
 
     let result;
     try {
-      result = verifyLogin(username, password);
+      result = await verifyLogin(username, password);
       addDebug(`verifyLogin returned: ${JSON.stringify(result)}`);
     } catch (err) {
       addDebug(`❌ verifyLogin THREW AN ERROR: ${String(err)}`);

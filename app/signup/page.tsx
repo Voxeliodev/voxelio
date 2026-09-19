@@ -52,8 +52,8 @@ export default function SignUpPage() {
     }
   }, []);
 
-  const handleSignOut = () => {
-    signOut();
+  const handleSignOut = async () => {
+    await signOut();
     setCurrentUser(null);
     addDebug("🚪 Signed out.");
   };
@@ -112,7 +112,7 @@ export default function SignUpPage() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setDebugInfo([]);
     addDebug("=== SUBMIT CLICKED ===");
@@ -127,7 +127,7 @@ export default function SignUpPage() {
 
     let result;
     try {
-      result = createUser({ username, email, password, birthday });
+      result = await createUser({ username, email, password, birthday });
       addDebug(`createUser returned: ${JSON.stringify(result)}`);
     } catch (err) {
       addDebug(`❌ createUser THREW AN ERROR: ${String(err)}`);
