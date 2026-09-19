@@ -15,7 +15,6 @@ import { getBodyPart, type BodyPartSlot } from "../../lib/bodyParts";
 // ============================================================
 
 // Accessories that cause the right arm to raise into a "holding" pose.
-// Add new held-item IDs here as you create them (shield, staff, etc).
 const HELD_ACCESSORIES = ["accessory-vox-sword"];
 
 function Face({ eyeZ, mouthZ }: { eyeZ: number; mouthZ: number }) {
@@ -163,9 +162,15 @@ function Character({ config }: { config: AvatarConfig }) {
 
   const isHolding = Boolean(config.accessory && HELD_ACCESSORIES.includes(config.accessory));
 
+  // Rotation: 90° forward when holding, 0 when relaxed.
   const armRotation: [number, number, number] = isHolding
     ? [-Math.PI / 2, 0, 0]
     : [0, 0, 0];
+
+  // Shoulder Y:
+  //   - Not holding: pivot at torso top (1.0), arm hangs naturally
+  //   - Holding: pivot lowered to 0.85 so the horizontal arm sits at torso height
+  const shoulderY = isHolding ? 0.85 : 1.0;
 
   return (
     <group position={[0, -0.6, 0]}>
@@ -186,7 +191,7 @@ function Character({ config }: { config: AvatarConfig }) {
 
       {config.shirt && <Shirt3D shirtId={config.shirt} skinTone={skin} />}
 
-      {/* ==== LEFT ARM (unchanged) ==== */}
+      {/* ==== LEFT ARM ==== */}
       <BodyPart slot="leftArm" partId={bodyParts?.leftArm}>
         <group>
           <RoundedBox
@@ -210,10 +215,9 @@ function Character({ config }: { config: AvatarConfig }) {
         </group>
       </BodyPart>
 
-      {/* ==== RIGHT ARM — pivot at shoulder so we can raise it ==== */}
+      {/* ==== RIGHT ARM — pivot at shoulder, height depends on holding state ==== */}
       <BodyPart slot="rightArm" partId={bodyParts?.rightArm}>
-        <group position={[0.6, 0.85, 0]} rotation={armRotation}>
-          {/* Upper arm, positioned relative to the shoulder */}
+        <group position={[0.6, shoulderY, 0]} rotation={armRotation}>
           <RoundedBox
             args={[0.3, 1, 0.3]}
             radius={0.06}
@@ -224,7 +228,6 @@ function Character({ config }: { config: AvatarConfig }) {
             <meshStandardMaterial color={rightArmColor} roughness={0.7} />
           </RoundedBox>
 
-          {/* Hand, at the bottom of the arm */}
           <RoundedBox
             args={[0.3, 0.3, 0.3]}
             radius={0.06}
@@ -235,8 +238,6 @@ function Character({ config }: { config: AvatarConfig }) {
             <meshStandardMaterial color={rightHandColor} roughness={0.6} />
           </RoundedBox>
 
-          {/* Held accessory — counter-rotated so the blade stays upright
-              in world space even though the arm is tilted forward. */}
           {config.accessory && (
             <group
               position={[0, -1.32, 0]}
@@ -248,7 +249,7 @@ function Character({ config }: { config: AvatarConfig }) {
         </group>
       </BodyPart>
 
-      {/* ==== LEGS (unchanged) ==== */}
+      {/* ==== LEGS ==== */}
       <BodyPart slot="leftLeg" partId={bodyParts?.leftLeg}>
         <group>
           <RoundedBox
