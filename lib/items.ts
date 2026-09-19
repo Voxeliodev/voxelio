@@ -28,6 +28,9 @@ export type Item = {
   modelRotation?: [number, number, number];
 
   shirtColorOverride?: string;
+  shirtText?: string;
+  shirtTextColor?: string;
+  shirtTextSegments?: { text: string; color: string }[];
 };
 
 export const ITEMS: Item[] = [
@@ -103,6 +106,23 @@ export const ITEMS: Item[] = [
     previewEmoji: "🕴️",
     creator: "Voxelio",
     shirtColorOverride: "#1A1A2E",
+  },
+  {
+    id: "shirt-i-love-vox",
+    name: "I ❤️ VOX",
+    description:
+      "A clean white shirt with \"I HEART VOX\" printed across the chest. Show the world you love Voxelio.",
+    price: 50,
+    category: "outfits",
+    rarity: "rare",
+    previewEmoji: "❤️",
+    creator: "Voxelio",
+    shirtColorOverride: "#FFFFFF",
+    shirtTextSegments: [
+      { text: "I", color: "#000000" },
+      { text: " HEART", color: "#E11D48" },
+      { text: " VOX", color: "#7B2FF7" },
+    ],
   },
 ];
 

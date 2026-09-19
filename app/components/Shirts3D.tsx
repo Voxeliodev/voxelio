@@ -104,9 +104,9 @@ function makeBusinessSuitTexture(): THREE.CanvasTexture | null {
   // ============================================================
   ctx.fillStyle = "#EDEDF2";
   ctx.beginPath();
-  ctx.moveTo(cx - 200, shirtTopY - 10);   // outer top
-  ctx.lineTo(cx - 30, shirtTopY + 90);    // inner point
-  ctx.lineTo(cx - 210, shirtTopY + 240);  // outer bottom
+  ctx.moveTo(cx - 200, shirtTopY - 10);
+  ctx.lineTo(cx - 30, shirtTopY + 90);
+  ctx.lineTo(cx - 210, shirtTopY + 240);
   ctx.closePath();
   ctx.fill();
 
@@ -117,7 +117,6 @@ function makeBusinessSuitTexture(): THREE.CanvasTexture | null {
   ctx.closePath();
   ctx.fill();
 
-  // Collar shadows
   ctx.strokeStyle = "rgba(0, 0, 0, 0.20)";
   ctx.lineWidth = 5;
 
@@ -132,12 +131,11 @@ function makeBusinessSuitTexture(): THREE.CanvasTexture | null {
   ctx.stroke();
 
   // ============================================================
-  // 3. BUTTON PLACKET — from the collar down to the bottom edge
+  // 3. BUTTON PLACKET
   // ============================================================
   ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
   ctx.fillRect(cx - 4, shirtTopY + 240, 8, shirtBottomY - shirtTopY - 240);
 
-  // Buttons below the tie
   ctx.fillStyle = "#D8D8DC";
   for (const by of [720, 810, 900]) {
     ctx.beginPath();
@@ -146,14 +144,13 @@ function makeBusinessSuitTexture(): THREE.CanvasTexture | null {
   }
 
   // ============================================================
-  // 4. TIE — knot at the collar, body widens, sharp V point
+  // 4. TIE
   // ============================================================
   const tieTopY = shirtTopY + 90;
   const tieKnotBottomY = tieTopY + 110;
   const tieWidestY = 640;
   const tiePointY = 760;
 
-  // Knot
   ctx.fillStyle = "#991717";
   ctx.beginPath();
   ctx.moveTo(cx - 55, tieTopY);
@@ -163,7 +160,6 @@ function makeBusinessSuitTexture(): THREE.CanvasTexture | null {
   ctx.closePath();
   ctx.fill();
 
-  // Body
   ctx.fillStyle = "#DC2626";
   ctx.beginPath();
   ctx.moveTo(cx - 75, tieKnotBottomY);
@@ -174,7 +170,6 @@ function makeBusinessSuitTexture(): THREE.CanvasTexture | null {
   ctx.closePath();
   ctx.fill();
 
-  // Highlight gradient
   const highlight = ctx.createLinearGradient(cx - 110, 0, cx + 110, 0);
   highlight.addColorStop(0, "rgba(0, 0, 0, 0.20)");
   highlight.addColorStop(0.5, "rgba(255, 255, 255, 0.18)");
@@ -190,7 +185,6 @@ function makeBusinessSuitTexture(): THREE.CanvasTexture | null {
   ctx.closePath();
   ctx.fill();
 
-  // Tie outline
   ctx.strokeStyle = "#7F1D1D";
   ctx.lineWidth = 6;
   ctx.beginPath();
@@ -211,10 +205,58 @@ function makeBusinessSuitTexture(): THREE.CanvasTexture | null {
   return tex;
 }
 
+// ---------- I HEART VOX ----------
+// Multi-colour text: "I" black, "HEART" red, "VOX" purple.
+function makeIHeartVoxTexture(): THREE.CanvasTexture | null {
+  if (typeof document === "undefined") return null;
+
+  const W = 1024;
+  const H = 1024;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.clearRect(0, 0, W, H);
+
+  const cx = W / 2;
+  const cy = H / 2 - 40;
+
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.font = "900 150px 'Arial Black', Arial, Helvetica, sans-serif";
+
+  const segments = [
+    { text: "I", color: "#000000" },
+    { text: " HEART", color: "#E11D48" },
+    { text: " VOX", color: "#7B2FF7" },
+  ];
+
+  const widths = segments.map((s) => ctx.measureText(s.text).width);
+  const totalWidth = widths.reduce((a, b) => a + b, 0);
+
+  let x = cx - totalWidth / 2;
+  segments.forEach((seg, i) => {
+    ctx.fillStyle = seg.color;
+    ctx.fillText(seg.text, x, cy);
+    x += widths[i];
+  });
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.anisotropy = 16;
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 // ---------- Router ----------
 function buildTexture(shirtId: string): THREE.CanvasTexture | null {
   if (shirtId === "shirt-vox-cooks") return makeVoxCooksTexture();
   if (shirtId === "shirt-suit") return makeBusinessSuitTexture();
+  if (shirtId === "shirt-i-love-vox") return makeIHeartVoxTexture();
   return null;
 }
 
@@ -225,7 +267,6 @@ export function Shirt3D({
   shirtId: string;
   skinTone?: string;
 }) {
-  // `skinTone` is accepted for forward-compatibility but currently unused.
   const texture = useMemo(() => buildTexture(shirtId), [shirtId]);
   if (!texture) return null;
 
