@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
-import { verifyLogin, getUsers, getCurrentUser, signOut, formatVoxbux, getUnreadCount } from "../../lib/auth";
+import { verifyLogin, getCurrentUser, signOut, formatVoxbux, getUnreadCount } from "../../lib/auth";
 import type { User } from "../../lib/auth";
 import { isOwnerAccount } from "../../lib/badges";
 import AccountBadge from "../components/AccountBadge";
@@ -17,43 +17,13 @@ export default function SignInPage() {
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  const [debugInfo, setDebugInfo] = useState<string[]>([]);
-  const [showDebug, setShowDebug] = useState(false);
-
-  const addDebug = (msg: string) => {
-    setDebugInfo((prev) => [...prev, msg]);
-  };
-
   useEffect(() => {
-    addDebug(`✅ Signin page loaded at ${new Date().toLocaleTimeString()}`);
-
-    try {
-      const users = getUsers();
-      addDebug(`Accounts found: ${users.length}`);
-      if (users.length > 0) {
-        users.forEach((u) => {
-          addDebug(`  → "${u.username}" (ID: ${u.displayId ?? u.id.slice(0, 8)}, Balance: ${formatVoxbux(u.voxbux)})`);
-        });
-      } else {
-        addDebug(`⚠️ NO ACCOUNTS FOUND — sign up first!`);
-      }
-
-      const session = getCurrentUser();
-      if (session) {
-        addDebug(`Currently signed in as: "${session.username}"`);
-      } else {
-        addDebug(`No active session.`);
-      }
-      setCurrentUser(session);
-    } catch (err) {
-      addDebug(`❌ Error reading storage: ${String(err)}`);
-    }
+    setCurrentUser(getCurrentUser());
   }, []);
 
   const handleSignOut = async () => {
     await signOut();
     setCurrentUser(null);
-    addDebug("🚪 Signed out.");
   };
 
   const validate = () => {
@@ -66,31 +36,18 @@ export default function SignInPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setDebugInfo([]);
-    addDebug("=== SIGN IN CLICKED ===");
-    addDebug(`Username typed: "${username}"`);
 
-    const valid = validate();
-    addDebug(`Validation passed: ${valid ? "YES" : "NO"}`);
-
-    if (!valid) {
-      addDebug("❌ Stopped — fix the errors above.");
-      return;
-    }
-
-    addDebug("Calling verifyLogin...");
+    if (!validate()) return;
 
     let result;
     try {
       result = await verifyLogin(username, password);
-      addDebug(`verifyLogin returned: ${JSON.stringify(result)}`);
-    } catch (err) {
-      addDebug(`❌ verifyLogin THREW AN ERROR: ${String(err)}`);
+    } catch {
+      setErrors({ password: "Something went wrong. Please try again." });
       return;
     }
 
     if (!result.success) {
-      addDebug(`❌ Sign in failed: ${result.error}`);
       if (result.error?.toLowerCase().includes("username")) {
         setErrors({ username: result.error });
       } else {
@@ -99,7 +56,6 @@ export default function SignInPage() {
       return;
     }
 
-    addDebug(`✅ SUCCESS! Signed in as "${result.user?.username}" (ID: ${result.user?.id})`);
     setCurrentUser(result.user || null);
     setSubmitted(true);
   };
@@ -202,31 +158,6 @@ export default function SignInPage() {
           ))}
         </div>
       </nav>
-
-      <div className="bg-black text-green-400 font-mono text-xs border-b-4 border-yellow-500">
-        <div className="max-w-6xl mx-auto px-3 py-2">
-          <div className="flex justify-between items-center">
-            <strong className="text-yellow-400">🔍 DEBUG PANEL</strong>
-            <button
-              onClick={() => setShowDebug(!showDebug)}
-              className="bg-yellow-500 text-black px-2 py-0.5 rounded text-[10px] font-bold"
-            >
-              {showDebug ? "HIDE" : "SHOW"}
-            </button>
-          </div>
-          {showDebug && (
-            <div className="space-y-0.5 max-h-48 overflow-y-auto mt-1">
-              {debugInfo.length === 0 ? (
-                <div className="text-gray-500 italic">Waiting for actions...</div>
-              ) : (
-                debugInfo.map((msg, i) => (
-                  <div key={i}>{msg}</div>
-                ))
-              )}
-            </div>
-          )}
-        </div>
-      </div>
 
       <main className="max-w-6xl mx-auto px-3 py-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
 
