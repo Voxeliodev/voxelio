@@ -4,6 +4,7 @@ import { Canvas } from "@react-three/fiber";
 import { OrbitControls, RoundedBox } from "@react-three/drei";
 import { Hat3DGeometry } from "./Hats3D";
 import { Shirt3D } from "./Shirts3D";
+import { Accessory3DGeometry } from "./Accessories3D";
 import type { Item } from "../../lib/items";
 
 // ============================================================
@@ -120,6 +121,39 @@ function HeadPreview({ item, size }: { item: Item; size: number }) {
   );
 }
 
+function AccessoryPreview({ item, size }: { item: Item; size: number }) {
+  return (
+    <div
+      className="w-full bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] cursor-grab active:cursor-grabbing"
+      style={{ height: size }}
+    >
+      <Canvas camera={{ position: [1.2, 0.4, 1.6], fov: 45 }} dpr={[1, 2]}>
+        <ambientLight intensity={0.8} />
+        <directionalLight position={[3, 5, 4]} intensity={1.2} />
+        <directionalLight position={[-3, 2, -3]} intensity={0.5} />
+        <directionalLight position={[0, 0, 3]} intensity={0.4} />
+        <hemisphereLight args={["#ffffff", "#666680", 0.5]} />
+
+        {/* Sword is drawn around y=0.5 on average. Shift it so
+            its midpoint sits at the origin, and tilt it slightly
+            for a nicer display angle. */}
+        <group position={[0, -0.5, 0]} rotation={[0, 0, -0.15]} scale={[1, 1, 1]}>
+          <Accessory3DGeometry accessoryId={item.id} />
+        </group>
+
+        <OrbitControls
+          enablePan={false}
+          enableZoom={false}
+          autoRotate
+          autoRotateSpeed={2}
+          minPolarAngle={Math.PI / 6}
+          maxPolarAngle={Math.PI / 1.6}
+        />
+      </Canvas>
+    </div>
+  );
+}
+
 function GenericPreview({ item, size }: { item: Item; size: number }) {
   return (
     <div
@@ -135,5 +169,6 @@ export default function ItemPreview({ item, size = 160 }: { item: Item; size?: n
   if (item.category === "hats") return <HatPreview item={item} size={size} />;
   if (item.category === "outfits") return <ShirtPreview item={item} size={size} />;
   if (item.category === "heads") return <HeadPreview item={item} size={size} />;
+  if (item.category === "accessories") return <AccessoryPreview item={item} size={size} />;
   return <GenericPreview item={item} size={size} />;
 }
