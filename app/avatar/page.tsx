@@ -22,6 +22,7 @@ import {
 import Avatar from "../components/Avatar";
 import AccountBadge from "../components/AccountBadge";
 import NavLink from "../components/NavLink";
+import ItemPreview from "../components/ItemPreview";
 import { getHats, getShirts, getAccessories, getFaces, type Item } from "../../lib/items";
 
 const SKIN_TONES = ["#F5C6A5", "#E8B08A", "#D69B71", "#B87A54", "#8B5A3C", "#5C3A23", "#3B2314"];
@@ -332,30 +333,10 @@ export default function AvatarEditorPage() {
                       </p>
                     )}
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-                      {/* Default face — shows the actual /faces/default.png image */}
-                      <button
-                        onClick={() => update("face", "")}
-                        className={`flex flex-col items-center gap-1 p-2 rounded border-2 transition ${
-                          !config.face
-                            ? "border-[#6C3CE0] bg-[#F5F0FF] shadow-md"
-                            : "border-[#C5C8D6] bg-white hover:border-[#6C3CE0] hover:shadow-md"
-                        }`}
-                        title="Default"
-                      >
-                        <div className="w-full aspect-square rounded bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] flex items-center justify-center overflow-hidden">
-                          <img
-                            src="/faces/default.png"
-                            alt="Default face"
-                            className="w-full h-full object-contain"
-                            draggable={false}
-                          />
-                        </div>
-                        <span className="text-[10px] font-bold text-[#1A1A2E] text-center leading-tight">
-                          Default
-                        </span>
-                      </button>
-
-                      {/* Owned custom faces */}
+                      <FaceDefaultTile
+                        selected={!config.face}
+                        onSelect={() => update("face", "")}
+                      />
                       {ownedFaces.map((face) => (
                         <FaceCard
                           key={face.id}
@@ -497,99 +478,78 @@ export default function AvatarEditorPage() {
               {tab === "items" && (
                 <>
                   <Section title="🎩 Hats">
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => update("hat", "")}
-                        className={`px-3 py-2 text-xs font-bold rounded border transition ${
-                          config.hat === "" ? "bg-[#6C3CE0] text-white border-[#4A1FA8]"
-                          : "bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE]"
-                        }`}
-                      >
-                        🚫 None
-                      </button>
-                      {ownedHats.map((item) => (
-                        <button
-                          key={item.id}
-                          onClick={() => update("hat", item.id)}
-                          className={`px-3 py-2 text-xs font-bold rounded border transition ${
-                            config.hat === item.id ? "bg-[#6C3CE0] text-white border-[#4A1FA8]"
-                            : "bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE]"
-                          }`}
-                        >
-                          {item.previewEmoji} {item.name}
-                        </button>
-                      ))}
-                    </div>
                     {ownedHats.length === 0 && (
-                      <p className="text-xs text-[#888] mt-2 italic">
+                      <p className="text-xs text-[#888] mb-3 italic">
                         No hats owned.{" "}
                         <Link href="/catalog" className="text-[#6C3CE0] hover:underline font-bold">Visit the Catalog →</Link>
                       </p>
                     )}
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                      <ItemTile
+                        emoji="🚫"
+                        name="None"
+                        selected={config.hat === ""}
+                        onSelect={() => update("hat", "")}
+                      />
+                      {ownedHats.map((item) => (
+                        <ItemPreviewTile
+                          key={item.id}
+                          item={item}
+                          selected={config.hat === item.id}
+                          onSelect={() => update("hat", item.id)}
+                        />
+                      ))}
+                    </div>
                   </Section>
 
                   <Section title="👚 Shirts">
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => update("shirt", "")}
-                        className={`px-3 py-2 text-xs font-bold rounded border transition ${
-                          config.shirt === "" ? "bg-[#6C3CE0] text-white border-[#4A1FA8]"
-                          : "bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE]"
-                        }`}
-                      >
-                        🚫 None
-                      </button>
-                      {ownedShirts.map((item) => (
-                        <button
-                          key={item.id}
-                          onClick={() => update("shirt", item.id)}
-                          className={`px-3 py-2 text-xs font-bold rounded border transition ${
-                            config.shirt === item.id ? "bg-[#6C3CE0] text-white border-[#4A1FA8]"
-                            : "bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE]"
-                          }`}
-                        >
-                          {item.previewEmoji} {item.name}
-                        </button>
-                      ))}
-                    </div>
                     {ownedShirts.length === 0 && (
-                      <p className="text-xs text-[#888] mt-2 italic">
+                      <p className="text-xs text-[#888] mb-3 italic">
                         No shirts owned.{" "}
                         <Link href="/catalog" className="text-[#6C3CE0] hover:underline font-bold">Visit the Catalog →</Link>
                       </p>
                     )}
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                      <ItemTile
+                        emoji="🚫"
+                        name="None"
+                        selected={config.shirt === ""}
+                        onSelect={() => update("shirt", "")}
+                      />
+                      {ownedShirts.map((item) => (
+                        <ItemPreviewTile
+                          key={item.id}
+                          item={item}
+                          selected={config.shirt === item.id}
+                          onSelect={() => update("shirt", item.id)}
+                        />
+                      ))}
+                    </div>
                   </Section>
 
                   <Section title="⚔️ Accessories">
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => update("accessory", "")}
-                        className={`px-3 py-2 text-xs font-bold rounded border transition ${
-                          (config.accessory || "") === "" ? "bg-[#6C3CE0] text-white border-[#4A1FA8]"
-                          : "bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE]"
-                        }`}
-                      >
-                        🚫 None
-                      </button>
-                      {ownedAccessories.map((item) => (
-                        <button
-                          key={item.id}
-                          onClick={() => update("accessory", item.id)}
-                          className={`px-3 py-2 text-xs font-bold rounded border transition ${
-                            config.accessory === item.id ? "bg-[#6C3CE0] text-white border-[#4A1FA8]"
-                            : "bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE]"
-                          }`}
-                        >
-                          {item.previewEmoji} {item.name}
-                        </button>
-                      ))}
-                    </div>
                     {ownedAccessories.length === 0 && (
-                      <p className="text-xs text-[#888] mt-2 italic">
+                      <p className="text-xs text-[#888] mb-3 italic">
                         No accessories owned.{" "}
                         <Link href="/catalog" className="text-[#6C3CE0] hover:underline font-bold">Visit the Catalog →</Link>
                       </p>
                     )}
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                      <ItemTile
+                        emoji="🚫"
+                        name="None"
+                        selected={(config.accessory || "") === ""}
+                        onSelect={() => update("accessory", "")}
+                      />
+                      {ownedAccessories.map((item) => (
+                        <ItemPreviewTile
+                          key={item.id}
+                          item={item}
+                          selected={config.accessory === item.id}
+                          onSelect={() => update("accessory", item.id)}
+                        />
+                      ))}
+                    </div>
                   </Section>
                 </>
               )}
@@ -608,8 +568,72 @@ export default function AvatarEditorPage() {
 }
 
 // ============================================================
-// FACE CARD — image preview + name, Roblox-style tile
+// TILES
 // ============================================================
+
+// Simple emoji tile — used for the "None" option
+function ItemTile({
+  emoji,
+  name,
+  selected,
+  onSelect,
+}: {
+  emoji: string;
+  name: string;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      onClick={onSelect}
+      className={`flex flex-col items-center gap-1 p-2 rounded border-2 transition ${
+        selected
+          ? "border-[#6C3CE0] bg-[#F5F0FF] shadow-md"
+          : "border-[#C5C8D6] bg-white hover:border-[#6C3CE0] hover:shadow-md"
+      }`}
+      title={name}
+    >
+      <div className="w-full aspect-square rounded bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] flex items-center justify-center overflow-hidden">
+        <span className="text-3xl">{emoji}</span>
+      </div>
+      <span className="text-[10px] font-bold text-[#1A1A2E] text-center leading-tight line-clamp-2">
+        {name}
+      </span>
+    </button>
+  );
+}
+
+// 3D-preview tile — renders the item with ItemPreview
+function ItemPreviewTile({
+  item,
+  selected,
+  onSelect,
+}: {
+  item: Item;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      onClick={onSelect}
+      className={`flex flex-col items-center gap-1 p-2 rounded border-2 transition ${
+        selected
+          ? "border-[#6C3CE0] bg-[#F5F0FF] shadow-md"
+          : "border-[#C5C8D6] bg-white hover:border-[#6C3CE0] hover:shadow-md"
+      }`}
+      title={item.name}
+    >
+      <div className="w-full aspect-square rounded bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] flex items-center justify-center overflow-hidden pointer-events-none">
+        <ItemPreview item={item} size={90} />
+      </div>
+      <span className="text-[10px] font-bold text-[#1A1A2E] text-center leading-tight line-clamp-2">
+        {item.name}
+      </span>
+    </button>
+  );
+}
+
+// Face tile (PNG preview)
 function FaceCard({
   item,
   selected,
@@ -643,6 +667,32 @@ function FaceCard({
       </div>
       <span className="text-[10px] font-bold text-[#1A1A2E] text-center leading-tight line-clamp-2">
         {item.name}
+      </span>
+    </button>
+  );
+}
+
+function FaceDefaultTile({ selected, onSelect }: { selected: boolean; onSelect: () => void }) {
+  return (
+    <button
+      onClick={onSelect}
+      className={`flex flex-col items-center gap-1 p-2 rounded border-2 transition ${
+        selected
+          ? "border-[#6C3CE0] bg-[#F5F0FF] shadow-md"
+          : "border-[#C5C8D6] bg-white hover:border-[#6C3CE0] hover:shadow-md"
+      }`}
+      title="Default"
+    >
+      <div className="w-full aspect-square rounded bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] flex items-center justify-center overflow-hidden">
+        <img
+          src="/faces/default.png"
+          alt="Default face"
+          className="w-full h-full object-contain"
+          draggable={false}
+        />
+      </div>
+      <span className="text-[10px] font-bold text-[#1A1A2E] text-center leading-tight">
+        Default
       </span>
     </button>
   );
