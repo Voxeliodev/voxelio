@@ -22,7 +22,7 @@ import {
 import Avatar from "../components/Avatar";
 import AccountBadge from "../components/AccountBadge";
 import NavLink from "../components/NavLink";
-import { getHats, getShirts, getAccessories, getFaces } from "../../lib/items";
+import { getHats, getShirts, getAccessories, getFaces, type Item } from "../../lib/items";
 
 const SKIN_TONES = ["#F5C6A5", "#E8B08A", "#D69B71", "#B87A54", "#8B5A3C", "#5C3A23", "#3B2314"];
 
@@ -324,6 +324,43 @@ export default function AvatarEditorPage() {
                     </div>
                   </Section>
 
+                  <Section title="😀 Face">
+                    {ownedFaces.length === 0 && (
+                      <p className="text-xs text-[#888] mb-3 italic">
+                        No faces owned.{" "}
+                        <Link href="/catalog" className="text-[#6C3CE0] hover:underline font-bold">Visit the Catalog →</Link>
+                      </p>
+                    )}
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                      {/* Default (None) option */}
+                      <button
+                        onClick={() => update("face", "")}
+                        className={`flex flex-col items-center gap-1 p-2 rounded border-2 transition ${
+                          !config.face
+                            ? "border-[#6C3CE0] bg-[#F5F0FF] shadow-md"
+                            : "border-[#C5C8D6] bg-white hover:border-[#6C3CE0] hover:shadow-md"
+                        }`}
+                      >
+                        <div className="w-full aspect-square rounded bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] flex items-center justify-center">
+                          <span className="text-3xl">🙂</span>
+                        </div>
+                        <span className="text-[10px] font-bold text-[#1A1A2E] text-center leading-tight">
+                          Default
+                        </span>
+                      </button>
+
+                      {/* Owned faces */}
+                      {ownedFaces.map((face) => (
+                        <FaceCard
+                          key={face.id}
+                          item={face}
+                          selected={config.face === face.id}
+                          onSelect={() => update("face", face.id)}
+                        />
+                      ))}
+                    </div>
+                  </Section>
+
                   <div className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden">
                     <button
                       onClick={() => setShowAdvanced((s) => !s)}
@@ -548,38 +585,6 @@ export default function AvatarEditorPage() {
                       </p>
                     )}
                   </Section>
-
-                  <Section title="😀 Faces">
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => update("face", "")}
-                        className={`px-3 py-2 text-xs font-bold rounded border transition ${
-                          (config.face || "") === "" ? "bg-[#6C3CE0] text-white border-[#4A1FA8]"
-                          : "bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE]"
-                        }`}
-                      >
-                        🚫 None
-                      </button>
-                      {ownedFaces.map((item) => (
-                        <button
-                          key={item.id}
-                          onClick={() => update("face", item.id)}
-                          className={`px-3 py-2 text-xs font-bold rounded border transition ${
-                            config.face === item.id ? "bg-[#6C3CE0] text-white border-[#4A1FA8]"
-                            : "bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE]"
-                          }`}
-                        >
-                          {item.previewEmoji} {item.name}
-                        </button>
-                      ))}
-                    </div>
-                    {ownedFaces.length === 0 && (
-                      <p className="text-xs text-[#888] mt-2 italic">
-                        No faces owned.{" "}
-                        <Link href="/catalog" className="text-[#6C3CE0] hover:underline font-bold">Visit the Catalog →</Link>
-                      </p>
-                    )}
-                  </Section>
                 </>
               )}
             </div>
@@ -593,6 +598,47 @@ export default function AvatarEditorPage() {
         </div>
       </footer>
     </div>
+  );
+}
+
+// ============================================================
+// FACE CARD — image preview + name, Roblox-style tile
+// ============================================================
+function FaceCard({
+  item,
+  selected,
+  onSelect,
+}: {
+  item: Item;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      onClick={onSelect}
+      className={`flex flex-col items-center gap-1 p-2 rounded border-2 transition ${
+        selected
+          ? "border-[#6C3CE0] bg-[#F5F0FF] shadow-md"
+          : "border-[#C5C8D6] bg-white hover:border-[#6C3CE0] hover:shadow-md"
+      }`}
+      title={item.name}
+    >
+      <div className="w-full aspect-square rounded bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] flex items-center justify-center overflow-hidden">
+        {item.faceImageUrl ? (
+          <img
+            src={item.faceImageUrl}
+            alt={item.name}
+            className="w-full h-full object-contain"
+            draggable={false}
+          />
+        ) : (
+          <span className="text-3xl">{item.previewEmoji}</span>
+        )}
+      </div>
+      <span className="text-[10px] font-bold text-[#1A1A2E] text-center leading-tight line-clamp-2">
+        {item.name}
+      </span>
+    </button>
   );
 }
 
