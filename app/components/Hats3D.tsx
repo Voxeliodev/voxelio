@@ -62,32 +62,26 @@ function makeSignTexture(): THREE.CanvasTexture | null {
 
   ctx.clearRect(0, 0, 1024, 640);
 
-  // Outer dark frame
   ctx.strokeStyle = "#3B2008";
   ctx.lineWidth = 26;
   ctx.strokeRect(13, 13, 1024 - 26, 640 - 26);
 
-  // Inner thinner line
   ctx.strokeStyle = "#2A1505";
   ctx.lineWidth = 6;
   ctx.strokeRect(30, 30, 1024 - 60, 640 - 60);
 
-  // Text — "carved" effect with a shadow + highlight
   ctx.font = "900 170px 'Arial Black', Arial, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
-  // Shadow
   ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
   ctx.fillText("VOX", 515, 205);
   ctx.fillText("COOKS", 515, 445);
 
-  // Main text
   ctx.fillStyle = "#FFEBC9";
   ctx.fillText("VOX", 512, 200);
   ctx.fillText("COOKS", 512, 440);
 
-  // Highlight
   ctx.fillStyle = "rgba(255, 255, 255, 0.28)";
   ctx.fillText("VOX", 510, 198);
   ctx.fillText("COOKS", 510, 438);
@@ -108,34 +102,23 @@ function VoxCooksSign() {
   const woodDark = "#5A3818";
   const woodDarker = "#3B2008";
 
-  // Layout in local space:
-  //   Board bottom is at y = 0.175  (board center 0.5, half-height 0.325)
-  //   Post must reach all the way up to that point (and slightly into the board)
-  //
-  //   Post spans y = -0.35 → 0.20   (height 0.55, center -0.075)
-  //   Bracket spans y = 0.10 → 0.20 (height 0.10, center 0.15)
-
   return (
     <group>
-      {/* ===== POST going into the head and up to the sign ===== */}
       <mesh position={[0, -0.075, 0]} castShadow>
         <boxGeometry args={[0.16, 0.55, 0.16]} />
         <meshStandardMaterial color={woodDark} roughness={0.9} />
       </mesh>
 
-      {/* ===== Bracket / collar at the joint (right below the board) ===== */}
       <mesh position={[0, 0.15, 0]} castShadow>
         <boxGeometry args={[0.34, 0.1, 0.16]} />
         <meshStandardMaterial color={woodDarker} roughness={0.95} />
       </mesh>
 
-      {/* ===== Main sign board ===== */}
       <mesh position={[0, 0.5, 0]} castShadow>
         <boxGeometry args={[1.0, 0.65, 0.12]} />
         <meshStandardMaterial color={woodMain} roughness={0.85} />
       </mesh>
 
-      {/* ===== Front face texture with "VOX COOKS" ===== */}
       {texture && (
         <mesh position={[0, 0.5, 0.061]}>
           <planeGeometry args={[0.98, 0.63]} />
@@ -143,7 +126,6 @@ function VoxCooksSign() {
         </mesh>
       )}
 
-      {/* ===== Corner nails ===== */}
       <mesh position={[-0.4, 0.73, 0.065]}>
         <circleGeometry args={[0.028, 12]} />
         <meshStandardMaterial color={woodDarker} />
@@ -164,6 +146,121 @@ function VoxCooksSign() {
   );
 }
 
+// ---------- Vox Cooks Beanie ----------
+// Ribbed black beanie with a folded cuff and "Vox Cooks"
+// in purple across the front of the brim.
+
+function makeBeanieRibTexture(): THREE.CanvasTexture | null {
+  if (typeof document === "undefined") return null;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  // Base fabric colour
+  ctx.fillStyle = "#0A0A0A";
+  ctx.fillRect(0, 0, 512, 512);
+
+  // Vertical rib stripes — subtle lighter/darker bands
+  const ribCount = 26;
+  const ribWidth = 512 / ribCount;
+  for (let i = 0; i < ribCount; i++) {
+    const x = i * ribWidth;
+    const grad = ctx.createLinearGradient(x, 0, x + ribWidth, 0);
+    grad.addColorStop(0, "#000000");
+    grad.addColorStop(0.5, "#1E1E1E");
+    grad.addColorStop(1, "#000000");
+    ctx.fillStyle = grad;
+    ctx.fillRect(x, 0, ribWidth, 512);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 16;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function makeBeanieTextTexture(): THREE.CanvasTexture | null {
+  if (typeof document === "undefined") return null;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 1024;
+  canvas.height = 512;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.clearRect(0, 0, 1024, 512);
+
+  ctx.font = "900 200px 'Arial Black', Arial, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  // Black outline for readability
+  ctx.lineWidth = 16;
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "#000000";
+  ctx.strokeText("Vox Cooks", 512, 256);
+
+  // Purple fill
+  ctx.fillStyle = "#A855F7";
+  ctx.fillText("Vox Cooks", 512, 256);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.anisotropy = 16;
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function VoxCooksBeanie() {
+  const ribTexture = useMemo(() => makeBeanieRibTexture(), []);
+  const textTexture = useMemo(() => makeBeanieTextTexture(), []);
+
+  return (
+    <group>
+      {/* ===== FOLDED BRIM (cuff) ===== */}
+      <mesh position={[0, -0.28, 0]} castShadow>
+        <cylinderGeometry args={[0.52, 0.52, 0.36, 48]} />
+        <meshStandardMaterial
+          color="#0A0A0A"
+          map={ribTexture ?? undefined}
+          roughness={0.95}
+        />
+      </mesh>
+
+      {/* ===== CROWN DOME ===== */}
+      <mesh position={[0, -0.10, 0]} scale={[1, 1.15, 1]} castShadow>
+        <sphereGeometry args={[0.52, 48, 32, 0, Math.PI * 2, 0, Math.PI / 2]} />
+        <meshStandardMaterial
+          color="#0A0A0A"
+          map={ribTexture ?? undefined}
+          roughness={0.95}
+        />
+      </mesh>
+
+      {/* ===== "Vox Cooks" TEXT ON FRONT OF BRIM ===== */}
+      {textTexture && (
+        <mesh position={[0, -0.28, 0.53]} renderOrder={10}>
+          <planeGeometry args={[0.88, 0.24]} />
+          <meshBasicMaterial
+            map={textTexture}
+            transparent
+            toneMapped={false}
+            depthWrite={false}
+          />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
 // ---------- Public API ----------
 
 export function Hat3DGeometry({ hatId }: { hatId: string }) {
@@ -172,6 +269,7 @@ export function Hat3DGeometry({ hatId }: { hatId: string }) {
 
   if (item.modelPath) return <ModelHat item={item} />;
   if (hatId === "hat-vox-sign") return <VoxCooksSign />;
+  if (hatId === "hat-vox-cooks-beanie") return <VoxCooksBeanie />;
   return <FallbackCap />;
 }
 

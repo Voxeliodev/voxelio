@@ -57,6 +57,17 @@ export const ITEMS: Item[] = [
     previewEmoji: "🪧",
     creator: "Voxelio",
   },
+  {
+    id: "hat-vox-cooks-beanie",
+    name: "Vox Cooks Beanie",
+    description:
+      "A snug black ribbed beanie with the Vox Cooks logo stitched across the fold in purple. Warm, cosy, and iconic.",
+    price: 55,
+    category: "hats",
+    rarity: "epic",
+    previewEmoji: "🧶",
+    creator: "Voxelio",
+  },
 
   // ===== HEADS =====
   {
@@ -109,10 +120,10 @@ export const ITEMS: Item[] = [
   },
   {
     id: "shirt-i-love-vox",
-    name: "I ❤️ VOX",
+    name: "I HEART VOX",
     description:
       "A clean white shirt with \"I HEART VOX\" printed across the chest. Show the world you love Voxelio.",
-    price: 50,
+    price: 15,
     category: "outfits",
     rarity: "rare",
     previewEmoji: "❤️",
