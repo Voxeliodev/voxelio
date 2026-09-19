@@ -165,58 +165,6 @@ export const ITEMS: Item[] = [
     creator: "Voxelio",
   },
 
-  // ===== HAIR =====
-  {
-    id: "hair-short-black",
-    name: "Short Black Hair",
-    description: "A clean, classic short black haircut.",
-    price: 30,
-    category: "hair",
-    rarity: "common",
-    previewEmoji: "🖤",
-    creator: "Voxelio",
-  },
-  {
-    id: "hair-short-blonde",
-    name: "Short Blonde Hair",
-    description: "Bright and cheerful short blonde hair.",
-    price: 30,
-    category: "hair",
-    rarity: "common",
-    previewEmoji: "💛",
-    creator: "Voxelio",
-  },
-  {
-    id: "hair-mohawk-pink",
-    name: "Pink Mohawk",
-    description: "Stand out from the crowd with this bright pink mohawk.",
-    price: 100,
-    category: "hair",
-    rarity: "rare",
-    previewEmoji: "💗",
-    creator: "Voxelio",
-  },
-  {
-    id: "hair-long-brown",
-    name: "Long Brown Hair",
-    description: "Flowing long brown hair that reaches the shoulders.",
-    price: 75,
-    category: "hair",
-    rarity: "rare",
-    previewEmoji: "🤎",
-    creator: "Voxelio",
-  },
-  {
-    id: "hair-ponytail-black",
-    name: "Black Ponytail",
-    description: "A sleek black ponytail tied at the back.",
-    price: 75,
-    category: "hair",
-    rarity: "rare",
-    previewEmoji: "🎀",
-    creator: "Voxelio",
-  },
-
   // ===== FACES =====
   {
     id: "face-silly",
