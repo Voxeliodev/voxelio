@@ -147,8 +147,8 @@ function VoxCooksSign() {
 }
 
 // ---------- Vox Cooks Beanie ----------
-// Ribbed black beanie with a folded cuff and "Vox Cooks"
-// in purple across the front of the brim.
+// Ribbed black beanie. The "Vox Cooks" text is baked into the
+// brim texture so it wraps naturally around the cylinder.
 
 function makeBeanieRibTexture(): THREE.CanvasTexture | null {
   if (typeof document === "undefined") return null;
@@ -159,11 +159,9 @@ function makeBeanieRibTexture(): THREE.CanvasTexture | null {
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
 
-  // Base fabric colour
   ctx.fillStyle = "#0A0A0A";
   ctx.fillRect(0, 0, 512, 512);
 
-  // Vertical rib stripes — subtle lighter/darker bands
   const ribCount = 26;
   const ribWidth = 512 / ribCount;
   for (let i = 0; i < ribCount; i++) {
@@ -185,52 +183,76 @@ function makeBeanieRibTexture(): THREE.CanvasTexture | null {
   return tex;
 }
 
-function makeBeanieTextTexture(): THREE.CanvasTexture | null {
+// Brim texture: rib pattern + big "Vox Cooks" text baked in.
+// The canvas is wider than tall so the text wraps naturally
+// around the circumference of the brim cylinder.
+function makeBeanieBrimTexture(): THREE.CanvasTexture | null {
   if (typeof document === "undefined") return null;
 
+  const W = 2048;
+  const H = 512;
   const canvas = document.createElement("canvas");
-  canvas.width = 1024;
-  canvas.height = 512;
+  canvas.width = W;
+  canvas.height = H;
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
 
-  ctx.clearRect(0, 0, 1024, 512);
+  // Base fabric
+  ctx.fillStyle = "#0A0A0A";
+  ctx.fillRect(0, 0, W, H);
 
-  ctx.font = "900 200px 'Arial Black', Arial, sans-serif";
+  // Rib stripes (thicker stripes than crown since brim is wider)
+  const ribCount = 42;
+  const ribWidth = W / ribCount;
+  for (let i = 0; i < ribCount; i++) {
+    const x = i * ribWidth;
+    const grad = ctx.createLinearGradient(x, 0, x + ribWidth, 0);
+    grad.addColorStop(0, "#000000");
+    grad.addColorStop(0.5, "#1E1E1E");
+    grad.addColorStop(1, "#000000");
+    ctx.fillStyle = grad;
+    ctx.fillRect(x, 0, ribWidth, H);
+  }
+
+  // ===== "Vox Cooks" — big, centered horizontally =====
+  // Because we offset the texture by 0.5, the horizontal center
+  // of this canvas faces the front of the beanie.
+  ctx.font = "900 260px 'Arial Black', Arial, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
-  // Black outline for readability
-  ctx.lineWidth = 16;
+  ctx.lineWidth = 22;
   ctx.lineJoin = "round";
   ctx.strokeStyle = "#000000";
-  ctx.strokeText("Vox Cooks", 512, 256);
+  ctx.strokeText("Vox Cooks", W / 2, H / 2);
 
-  // Purple fill
   ctx.fillStyle = "#A855F7";
-  ctx.fillText("Vox Cooks", 512, 256);
+  ctx.fillText("Vox Cooks", W / 2, H / 2);
 
   const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
   tex.anisotropy = 16;
-  tex.minFilter = THREE.LinearFilter;
-  tex.magFilter = THREE.LinearFilter;
   tex.colorSpace = THREE.SRGBColorSpace;
+  // Shift texture so the center of the canvas (where the text is)
+  // lands on the front face of the cylinder (U = 0).
+  tex.offset.x = 0.5;
   tex.needsUpdate = true;
   return tex;
 }
 
 function VoxCooksBeanie() {
+  const brimTexture = useMemo(() => makeBeanieBrimTexture(), []);
   const ribTexture = useMemo(() => makeBeanieRibTexture(), []);
-  const textTexture = useMemo(() => makeBeanieTextTexture(), []);
 
   return (
     <group>
-      {/* ===== FOLDED BRIM (cuff) ===== */}
+      {/* ===== FOLDED BRIM (cuff) — texture includes text and wraps ===== */}
       <mesh position={[0, -0.28, 0]} castShadow>
-        <cylinderGeometry args={[0.52, 0.52, 0.36, 48]} />
+        <cylinderGeometry args={[0.52, 0.52, 0.36, 64]} />
         <meshStandardMaterial
-          color="#0A0A0A"
-          map={ribTexture ?? undefined}
+          color="#FFFFFF"
+          map={brimTexture ?? undefined}
           roughness={0.95}
         />
       </mesh>
@@ -244,19 +266,6 @@ function VoxCooksBeanie() {
           roughness={0.95}
         />
       </mesh>
-
-      {/* ===== "Vox Cooks" TEXT ON FRONT OF BRIM ===== */}
-      {textTexture && (
-        <mesh position={[0, -0.28, 0.53]} renderOrder={10}>
-          <planeGeometry args={[0.88, 0.24]} />
-          <meshBasicMaterial
-            map={textTexture}
-            transparent
-            toneMapped={false}
-            depthWrite={false}
-          />
-        </mesh>
-      )}
     </group>
   );
 }
