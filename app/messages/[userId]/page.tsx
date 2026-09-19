@@ -20,7 +20,7 @@ import {
 import { isOwnerAccount } from "../../../lib/badges";
 import AccountBadge from "../../components/AccountBadge";
 import Avatar from "../../components/Avatar";
-import NavLink from "../../../components/NavLink";
+import NavLink from "../../components/NavLink";
 
 export default function ConversationPage() {
   const params = useParams();
