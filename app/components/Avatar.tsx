@@ -161,10 +161,8 @@ function Character({ config }: { config: AvatarConfig }) {
 
   const isHeadless = bodyParts?.head === "head-headless";
 
-  // Does the equipped accessory require the arm raised?
   const isHolding = Boolean(config.accessory && HELD_ACCESSORIES.includes(config.accessory));
 
-  // Right-arm pivot rotation. 90° forward = arm points straight ahead.
   const armRotation: [number, number, number] = isHolding
     ? [-Math.PI / 2, 0, 0]
     : [0, 0, 0];
@@ -214,7 +212,7 @@ function Character({ config }: { config: AvatarConfig }) {
 
       {/* ==== RIGHT ARM — pivot at shoulder so we can raise it ==== */}
       <BodyPart slot="rightArm" partId={bodyParts?.rightArm}>
-        <group position={[0.6, 1.0, 0]} rotation={armRotation}>
+        <group position={[0.6, 0.85, 0]} rotation={armRotation}>
           {/* Upper arm, positioned relative to the shoulder */}
           <RoundedBox
             args={[0.3, 1, 0.3]}
