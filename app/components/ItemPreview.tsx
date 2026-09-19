@@ -1,7 +1,9 @@
 "use client";
 
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, RoundedBox } from "@react-three/drei";
+import { OrbitControls, RoundedBox, useGLTF } from "@react-three/drei";
+import { Suspense, useMemo } from "react";
+import * as THREE from "three";
 import { Hat3DGeometry } from "./Hats3D";
 import { Shirt3D } from "./Shirts3D";
 import { Accessory3DGeometry } from "./Accessories3D";
@@ -11,19 +13,64 @@ import type { Item } from "../../lib/items";
 // ItemPreview — reusable 3D preview for any catalog item.
 // ============================================================
 
+// ============================================================
+// AutoFitModel — loads a GLB and rescales it to fill the
+// preview box, no matter how big or small the source model is.
+// This is what makes 34 MB Blender exports look the same size
+// as the built-in code-drawn hats.
+// ============================================================
+function AutoFitModel({ item, targetSize = 1.4 }: { item: Item; targetSize?: number }) {
+  const gltf = useGLTF(item.modelPath!);
+
+  const wrapper = useMemo(() => {
+    const cloned = gltf.scene.clone(true);
+    cloned.updateMatrixWorld(true);
+
+    const box = new THREE.Box3().setFromObject(cloned);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+
+    const scale = targetSize / maxDim;
+
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+
+    cloned.scale.setScalar(scale);
+    cloned.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
+
+    const w = new THREE.Group();
+    w.add(cloned);
+    return w;
+  }, [gltf.scene, targetSize]);
+
+  return <primitive object={wrapper} />;
+}
+
 function HatPreview({ item, size }: { item: Item; size: number }) {
+  const isGLB = Boolean(item.modelPath);
+
   return (
     <div
       className="w-full bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] cursor-grab active:cursor-grabbing"
       style={{ height: size }}
     >
-      <Canvas camera={{ position: [0, 0.2, 2], fov: 45 }} dpr={[1, 2]}>
-        <ambientLight intensity={0.7} />
-        <directionalLight position={[3, 5, 4]} intensity={1.1} />
-        <directionalLight position={[-3, 2, -3]} intensity={0.4} />
-        <group position={[0, -0.05, 0]} scale={[1.4, 1.4, 1.4]}>
-          <Hat3DGeometry hatId={item.id} />
-        </group>
+      <Canvas camera={{ position: [0, 0.2, 2.2], fov: 45 }} dpr={[1, 2]}>
+        <ambientLight intensity={0.75} />
+        <directionalLight position={[3, 5, 4]} intensity={1.15} />
+        <directionalLight position={[-3, 2, -3]} intensity={0.5} />
+        <hemisphereLight args={["#ffffff", "#666680", 0.5]} />
+
+        {isGLB ? (
+          <Suspense fallback={null}>
+            <AutoFitModel item={item} targetSize={1.4} />
+          </Suspense>
+        ) : (
+          <group position={[0, -0.05, 0]} scale={[1.4, 1.4, 1.4]}>
+            <Hat3DGeometry hatId={item.id} />
+          </group>
+        )}
+
         <OrbitControls
           enablePan={false}
           enableZoom={false}
@@ -122,6 +169,8 @@ function HeadPreview({ item, size }: { item: Item; size: number }) {
 }
 
 function AccessoryPreview({ item, size }: { item: Item; size: number }) {
+  const isGLB = Boolean(item.modelPath);
+
   return (
     <div
       className="w-full bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] cursor-grab active:cursor-grabbing"
@@ -134,12 +183,15 @@ function AccessoryPreview({ item, size }: { item: Item; size: number }) {
         <directionalLight position={[0, 0, 3]} intensity={0.4} />
         <hemisphereLight args={["#ffffff", "#666680", 0.5]} />
 
-        {/* Sword is drawn around y=0.5 on average. Shift it so
-            its midpoint sits at the origin, and tilt it slightly
-            for a nicer display angle. */}
-        <group position={[0, -0.5, 0]} rotation={[0, 0, -0.15]} scale={[1, 1, 1]}>
-          <Accessory3DGeometry accessoryId={item.id} />
-        </group>
+        {isGLB ? (
+          <Suspense fallback={null}>
+            <AutoFitModel item={item} targetSize={1.6} />
+          </Suspense>
+        ) : (
+          <group position={[0, -0.5, 0]} rotation={[0, 0, -0.15]}>
+            <Accessory3DGeometry accessoryId={item.id} />
+          </group>
+        )}
 
         <OrbitControls
           enablePan={false}

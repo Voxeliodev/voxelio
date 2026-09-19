@@ -68,6 +68,23 @@ export const ITEMS: Item[] = [
     previewEmoji: "🧶",
     creator: "Voxelio",
   },
+  {
+    id: "hat-vox-halloween",
+    name: "Vox Halloween Hat",
+    description: "A spooky Halloween-themed hat. Perfect for October.",
+    price: 100,
+    category: "hats",
+    rarity: "epic",
+    previewEmoji: "🎃",
+    creator: "Voxelio",
+
+    // File is at public/models/Vox_Haloween.glb (one L after "Ha")
+    modelPath: "/models/Vox_Haloween.glb",
+
+    modelScale: 1,
+    modelOffset: [0, 0, 0],
+    modelRotation: [0, 0, 0],
+  },
 
   // ===== HEADS =====
   {
