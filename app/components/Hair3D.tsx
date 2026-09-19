@@ -102,10 +102,13 @@ function Ponytail({ color }: { color: string }) {
         <sphereGeometry args={[0.5, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.55]} />
         <meshStandardMaterial color={color} roughness={0.9} />
       </mesh>
-      <mesh position={[0, 0.05, -0.5]} castShadow>
-        <torusGeometry args={[0.09, 0.03, 8, 16]} rotation={[Math.PI / 2, 0, 0]} />
+
+      {/* Hair tie — rotation is on the mesh, not the geometry */}
+      <mesh position={[0, 0.05, -0.5]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+        <torusGeometry args={[0.09, 0.03, 8, 16]} />
         <meshStandardMaterial color="#E11D48" roughness={0.5} />
       </mesh>
+
       <mesh position={[0, -0.25, -0.55]} rotation={[0.3, 0, 0]} castShadow>
         <cylinderGeometry args={[0.09, 0.13, 0.6, 12]} />
         <meshStandardMaterial color={color} roughness={0.9} />
