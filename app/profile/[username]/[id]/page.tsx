@@ -20,10 +20,11 @@ import {
   subscribeAuth,
   type User,
 } from "../../../../lib/auth";
-import { isOwnerAccount } from "../../../../lib/badges";
+import { isOwnerAccount, getUserBadges } from "../../../../lib/badges";
 import Avatar from "../../../components/Avatar";
 import AccountBadge from "../../../components/AccountBadge";
 import NavLink from "../../../components/NavLink";
+import BadgeTile from "../../../components/BadgeTile";
 
 const MAX_BIO_LENGTH = 200;
 
@@ -207,6 +208,8 @@ export default function ProfilePage() {
     { name: "Avatar", href: "/avatar" },
     { name: "INDEV Club", href: "/indev", special: true },
   ];
+
+  const badges = getUserBadges(profileUser);
 
   return (
     <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans">
@@ -401,13 +404,26 @@ export default function ProfilePage() {
               </div>
 
               <div className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden">
-                <div className="bg-[#6C3CE0] text-white text-sm font-bold px-3 py-2 border-b border-[#4A1FA8]">
-                  Badges
+                <div className="bg-[#6C3CE0] text-white text-sm font-bold px-3 py-2 border-b border-[#4A1FA8] flex items-center justify-between">
+                  <span>Badges</span>
+                  {badges.length > 0 && (
+                    <span className="text-[10px] font-normal text-white/70">
+                      {badges.length}
+                    </span>
+                  )}
                 </div>
-                <div className="p-3 text-center text-xs text-[#888]">
-                  <div className="text-3xl mb-1">🏅</div>
-                  No badges yet
-                </div>
+                {badges.length === 0 ? (
+                  <div className="p-3 text-center text-xs text-[#888]">
+                    <div className="text-3xl mb-1">🏅</div>
+                    No badges yet
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2 p-3">
+                    {badges.map((b) => (
+                      <BadgeTile key={b.id} badge={b} />
+                    ))}
+                  </div>
+                )}
               </div>
             </aside>
 
