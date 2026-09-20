@@ -172,7 +172,9 @@ export function Character({
   const isHolding = !hideAccessory
     && Boolean(config.accessory && HELD_ACCESSORIES.includes(config.accessory));
 
-  const baseArmX = isHolding ? -Math.PI / 2 : 0;
+  // Only the RIGHT arm adopts the "held" pose. Left arm stays at rest.
+  const rightArmBaseX = isHolding ? -Math.PI / 2 : 0;
+  const leftArmBaseX = 0;
   const shoulderY = isHolding ? 0.85 : 1.0;
 
   const hideDefaultFace = Boolean(config.face);
@@ -186,19 +188,17 @@ export function Character({
   const walkAmountRef = useRef(0);
 
   useFrame((_, delta) => {
-    // Smoothly ramp the walk intensity up/down
     const targetAmount = walking ? 1 : 0;
     walkAmountRef.current += (targetAmount - walkAmountRef.current) * Math.min(1, delta * 8);
 
-    // Advance the walk phase only if we're actually walking
     if (walkAmountRef.current > 0.01) {
       walkPhaseRef.current += delta * 10;
     }
 
     const swing = Math.sin(walkPhaseRef.current) * 0.75 * walkAmountRef.current;
 
-    if (leftArmRef.current) leftArmRef.current.rotation.x = baseArmX + swing;
-    if (rightArmRef.current) rightArmRef.current.rotation.x = baseArmX - swing;
+    if (leftArmRef.current) leftArmRef.current.rotation.x = leftArmBaseX + swing;
+    if (rightArmRef.current) rightArmRef.current.rotation.x = rightArmBaseX - swing;
     if (leftLegRef.current) leftLegRef.current.rotation.x = -swing;
     if (rightLegRef.current) rightLegRef.current.rotation.x = swing;
   });
@@ -232,7 +232,7 @@ export function Character({
 
       {config.shirt && <Shirt3D shirtId={config.shirt} skinTone={skin} />}
 
-      {/* LEFT ARM — pivot at shoulder */}
+      {/* LEFT ARM — pivot at shoulder, always at rest unless walking */}
       <BodyPart slot="leftArm" partId={bodyParts?.leftArm}>
         <group ref={leftArmRef} position={[-0.6, 1.0, 0]}>
           <RoundedBox
@@ -282,7 +282,7 @@ export function Character({
           {!hideAccessory && config.accessory && (
             <group
               position={[0, -1.32, 0]}
-              rotation={[-baseArmX, 0, 0]}
+              rotation={[-rightArmBaseX, 0, 0]}
             >
               <Accessory3DGeometry accessoryId={config.accessory} />
             </group>
