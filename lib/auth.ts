@@ -116,9 +116,10 @@ export async function hydrateAuth(): Promise<void> {
       .or(`from_id.eq.${session.user.id},to_id.eq.${session.user.id}`);
     if (msgRows) messagesCache = msgRows.map(rowToMessage);
 
-    // Fire-and-forget daily bonus attempt on hydrate
     if (currentUserCache) {
-      claimDailyBonus(currentUserCache.id).catch(() => {});
+      claimDailyBonus(currentUserCache.id)
+        .then((r) => console.log("[hydrateAuth] bonus result:", r))
+        .catch((e) => console.error("[hydrateAuth] bonus error:", e));
     }
   }
 
@@ -134,7 +135,9 @@ export async function hydrateAuth(): Promise<void> {
       if (msgRows) messagesCache = msgRows.map(rowToMessage);
 
       if (currentUserCache) {
-        claimDailyBonus(currentUserCache.id).catch(() => {});
+        claimDailyBonus(currentUserCache.id)
+          .then((r) => console.log("[onAuthStateChange] bonus result:", r))
+          .catch((e) => console.error("[onAuthStateChange] bonus error:", e));
       }
     } else {
       currentUserCache = null;
@@ -441,8 +444,10 @@ export async function verifyLogin(username: string, password: string):
   currentUserCache = updated;
   notify();
 
-  // Attempt daily bonus — will silently fail if too soon / too new
-  claimDailyBonus(updated.id).catch(() => {});
+  // Attempt daily bonus
+  claimDailyBonus(updated.id)
+    .then((r) => console.log("[verifyLogin] bonus result:", r))
+    .catch((e) => console.error("[verifyLogin] bonus error:", e));
 
   return { success: true, user: updated };
 }
@@ -473,17 +478,21 @@ export async function claimDailyBonus(userId: string): Promise<{
   error?: string;
 }> {
   const user = findUserById(userId);
-  if (!user) return { success: false, error: "Not signed in." };
+  if (!user) {
+    console.log("[claimDailyBonus] not signed in");
+    return { success: false, error: "Not signed in." };
+  }
 
   const now = Date.now();
   const last = user.lastDailyBonus ?? 0;
   const joinedAt = user.joinedAtMs ?? 0;
 
-  // Local prechecks (fast, and useful for UI messaging)
   if (joinedAt && now - joinedAt < DAILY_BONUS_MIN_ACCOUNT_AGE_MS) {
+    console.log("[claimDailyBonus] account too new:", now - joinedAt, "ms");
     return { success: false, error: "Account must be 24h old." };
   }
   if (last && now - last < DAILY_BONUS_COOLDOWN_MS) {
+    console.log("[claimDailyBonus] on cooldown:", now - last, "ms since last");
     return { success: false, error: "Already claimed today." };
   }
 
@@ -492,10 +501,11 @@ export async function claimDailyBonus(userId: string): Promise<{
     p_amount: DAILY_BONUS_AMOUNT,
   });
 
+  console.log("[claimDailyBonus] RPC response:", { data, error });
+
   if (error) return { success: false, error: error.message };
   if (!data?.success) return { success: false, error: data?.error || "Claim failed." };
 
-  // Reflect new balance in the local cache immediately
   const cached = usersCache.find((u) => u.id === userId);
   if (cached) {
     cached.voxbux = (data.newBalance as number) ?? cached.voxbux;
@@ -503,8 +513,8 @@ export async function claimDailyBonus(userId: string): Promise<{
     if (currentUserCache?.id === userId) currentUserCache = cached;
   }
 
-  // Queue the popup notification
   pendingBonusClaim = { amount: DAILY_BONUS_AMOUNT, at: Date.now() };
+  console.log("[claimDailyBonus] queued:", pendingBonusClaim);
 
   notify();
   return { success: true, amount: DAILY_BONUS_AMOUNT };

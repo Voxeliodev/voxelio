@@ -7,9 +7,10 @@ export default function DailyBonusPopup() {
   const [amount, setAmount] = useState<number | null>(null);
 
   useEffect(() => {
-    // Small delay so the page settles before popping
+    console.log("[DailyBonusPopup] mounted");
     const t = setTimeout(() => {
       const amt = consumeDailyBonusNotification();
+      console.log("[DailyBonusPopup] consumed:", amt);
       if (amt) setAmount(amt);
     }, 800);
     return () => clearTimeout(t);
