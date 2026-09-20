@@ -220,7 +220,7 @@ export const ITEMS: Item[] = [
     id: "face-radioactive-power",
     name: "Radioactive Face of Power",
     description:
-      "A glowing radioactive face crackling with pure power. Not available for purchase — obtain it by redeeming a special code!",
+      "A glowing radioactive face crackling with pure power. Not available for purchase — obtain it by redeeming a special code! Only 25 codes will ever be available.",
     price: 0,
     category: "faces",
     rarity: "legendary",
