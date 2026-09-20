@@ -59,6 +59,23 @@ const CHAT_LIFETIME_MS = 5000;
 const CHAT_MAX_LENGTH = 120;
 
 // ============================================================
+// SHARED TOUCH STATE
+// ============================================================
+// Written by the touch UI components, read by LocalPlayer.
+const touchState = {
+  moveX: 0,       // -1 to 1
+  moveZ: 0,       // -1 to 1
+  jumpQueued: false,
+};
+
+// Pending camera-look deltas from the touch look area. Drained
+// once per frame by LocalPlayer.
+const touchLookState = {
+  yawDelta: 0,
+  pitchDelta: 0,
+};
+
+// ============================================================
 // TYPES
 // ============================================================
 type RemotePlayerData = {
@@ -366,6 +383,7 @@ function LocalPlayer({
   chatMessage,
   inputDisabled,
   remotePositions,
+  isTouchDevice,
 }: {
   config: AvatarConfig;
   myId: string;
@@ -374,6 +392,7 @@ function LocalPlayer({
   chatMessage?: ChatMessage | null;
   inputDisabled: boolean;
   remotePositions: React.MutableRefObject<Map<string, THREE.Vector3>>;
+  isTouchDevice: boolean;
 }) {
   const { gl } = useThree();
   const [, getKeys] = useKeyboardControls();
@@ -396,7 +415,11 @@ function LocalPlayer({
   const [walking, setWalking] = useState(false);
   const walkingStateRef = useRef(false);
 
+  // ============================================================
+  // MOUSE CAMERA (desktop only)
+  // ============================================================
   useEffect(() => {
+    if (isTouchDevice) return;
     const canvas = gl.domElement;
 
     let dragging = false;
@@ -461,20 +484,42 @@ function LocalPlayer({
       window.removeEventListener("mouseup", onMouseUp);
       canvas.style.cursor = "";
     };
-  }, [gl]);
+  }, [gl, isTouchDevice]);
 
+  // ============================================================
+  // FRAME UPDATE
+  // ============================================================
   useFrame((state, delta) => {
     if (!groupRef.current) return;
 
     const keys = getKeys();
 
+    // Drain touch look deltas
+    if (isTouchDevice) {
+      cameraYawRef.current += touchLookState.yawDelta;
+      cameraPitchRef.current = Math.max(
+        CAMERA_MIN_PITCH,
+        Math.min(CAMERA_MAX_PITCH, cameraPitchRef.current + touchLookState.pitchDelta)
+      );
+      touchLookState.yawDelta = 0;
+      touchLookState.pitchDelta = 0;
+    }
+
     let localX = 0;
     let localZ = 0;
+
     if (!inputDisabled) {
+      // Desktop keyboard
       if (keys.forward) localZ += 1;
       if (keys.backward) localZ -= 1;
       if (keys.left) localX += 1;
       if (keys.right) localX -= 1;
+
+      // Touch joystick
+      if (isTouchDevice) {
+        if (Math.abs(touchState.moveX) > 0.05) localX = -touchState.moveX;
+        if (Math.abs(touchState.moveZ) > 0.05) localZ = -touchState.moveZ;
+      }
     }
 
     const inputLen = Math.hypot(localX, localZ);
@@ -529,10 +574,15 @@ function LocalPlayer({
       setWalking(isMoving);
     }
 
-    if (!inputDisabled && keys.jump && groundedRef.current) {
+    // Jump — keyboard OR queued touch
+    const wantJump =
+      (!inputDisabled && keys.jump) ||
+      (isTouchDevice && touchState.jumpQueued);
+    if (wantJump && groundedRef.current) {
       velocityYRef.current = JUMP_VELOCITY;
       groundedRef.current = false;
     }
+    if (isTouchDevice) touchState.jumpQueued = false;
 
     velocityYRef.current += GRAVITY * delta;
     positionRef.current.y += velocityYRef.current * delta;
@@ -545,7 +595,8 @@ function LocalPlayer({
     resolveBlockCollisions(positionRef.current, blocks);
     resolvePlayerCollisions(positionRef.current, myId, remotePositions.current);
 
-    const grounded = isGrounded(positionRef.current, blocks) && velocityYRef.current <= 0.01;
+    const grounded =
+      isGrounded(positionRef.current, blocks) && velocityYRef.current <= 0.01;
     groundedRef.current = grounded;
     if (grounded && velocityYRef.current < 0) {
       velocityYRef.current = 0;
@@ -557,6 +608,7 @@ function LocalPlayer({
 
     groupRef.current.position.copy(positionRef.current);
 
+    // ===== CAMERA =====
     const camYaw = cameraYawRef.current;
     const camPitch = cameraPitchRef.current;
     const camDist = cameraDistRef.current;
@@ -579,10 +631,12 @@ function LocalPlayer({
 
     state.camera.lookAt(lookX, lookY, lookZ);
 
+    // ===== BROADCAST =====
     const now = performance.now();
     const sinceLast = now - lastBroadcastRef.current;
 
-    const shouldFast = needsBroadcastRef.current && sinceLast >= BROADCAST_INTERVAL;
+    const shouldFast =
+      needsBroadcastRef.current && sinceLast >= BROADCAST_INTERVAL;
     const shouldHeartbeat = sinceLast >= HEARTBEAT_INTERVAL;
 
     if (shouldFast || shouldHeartbeat) {
@@ -624,6 +678,7 @@ function WorldScene({
   chatMessages,
   onMove,
   inputDisabled,
+  isTouchDevice,
 }: {
   config: AvatarConfig;
   userId: string;
@@ -633,6 +688,7 @@ function WorldScene({
   chatMessages: ChatMessage[];
   onMove: (pos: [number, number, number], rotY: number) => void;
   inputDisabled: boolean;
+  isTouchDevice: boolean;
 }) {
   const layout = getLayout(world.layout);
   const blocks = layout.blocks;
@@ -682,6 +738,7 @@ function WorldScene({
         chatMessage={latestFor(userId)}
         inputDisabled={inputDisabled}
         remotePositions={remotePositions}
+        isTouchDevice={isTouchDevice}
       />
 
       {others.map((p) => (
@@ -697,6 +754,158 @@ function WorldScene({
 }
 
 // ============================================================
+// TOUCH UI
+// ============================================================
+
+function Joystick() {
+  const baseRef = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState(false);
+  const [knobPos, setKnobPos] = useState({ x: 0, y: 0 });
+  const pointerIdRef = useRef<number | null>(null);
+  const baseCenterRef = useRef({ x: 0, y: 0 });
+  const maxDist = 55;
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    if (!baseRef.current) return;
+    const rect = baseRef.current.getBoundingClientRect();
+    baseCenterRef.current = {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    };
+    pointerIdRef.current = e.pointerId;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    setActive(true);
+    updateFromPointer(e.clientX, e.clientY);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (pointerIdRef.current !== e.pointerId) return;
+    e.preventDefault();
+    updateFromPointer(e.clientX, e.clientY);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (pointerIdRef.current !== e.pointerId) return;
+    pointerIdRef.current = null;
+    setActive(false);
+    setKnobPos({ x: 0, y: 0 });
+    touchState.moveX = 0;
+    touchState.moveZ = 0;
+  };
+
+  const updateFromPointer = (clientX: number, clientY: number) => {
+    const dx = clientX - baseCenterRef.current.x;
+    const dy = clientY - baseCenterRef.current.y;
+    const dist = Math.hypot(dx, dy);
+    const clamped = Math.min(dist, maxDist);
+    const nx = dist > 0 ? (dx / dist) * clamped : 0;
+    const ny = dist > 0 ? (dy / dist) * clamped : 0;
+    setKnobPos({ x: nx, y: ny });
+    touchState.moveX = nx / maxDist;
+    touchState.moveZ = ny / maxDist;
+  };
+
+  return (
+    <div
+      ref={baseRef}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      className="fixed bottom-6 left-6 rounded-full border-2 border-white/30 backdrop-blur touch-none select-none z-30"
+      style={{
+        width: 140,
+        height: 140,
+        background: active
+          ? "rgba(108, 60, 224, 0.25)"
+          : "rgba(0, 0, 0, 0.35)",
+      }}
+    >
+      <div
+        className="absolute rounded-full bg-white/80 shadow-lg pointer-events-none"
+        style={{
+          width: 60,
+          height: 60,
+          left: "50%",
+          top: "50%",
+          transform: `translate(calc(-50% + ${knobPos.x}px), calc(-50% + ${knobPos.y}px))`,
+          transition: active ? "none" : "transform 0.15s ease",
+        }}
+      />
+    </div>
+  );
+}
+
+function JumpButton() {
+  const [pressed, setPressed] = useState(false);
+
+  const down = (e: React.PointerEvent) => {
+    e.preventDefault();
+    touchState.jumpQueued = true;
+    setPressed(true);
+  };
+
+  const up = () => {
+    setPressed(false);
+  };
+
+  return (
+    <button
+      onPointerDown={down}
+      onPointerUp={up}
+      onPointerCancel={up}
+      className={`fixed bottom-6 right-6 rounded-full border-2 border-white/30 backdrop-blur touch-none select-none z-30 flex items-center justify-center text-white text-2xl font-black transition ${
+        pressed ? "scale-95 bg-[#22C55E]/60" : "bg-black/40"
+      }`}
+      style={{ width: 90, height: 90 }}
+    >
+      ⬆️
+    </button>
+  );
+}
+
+function TouchLookArea({
+  onLook,
+}: {
+  onLook: (dx: number, dy: number) => void;
+}) {
+  const pointerIdRef = useRef<number | null>(null);
+  const lastRef = useRef({ x: 0, y: 0 });
+
+  const down = (e: React.PointerEvent) => {
+    if (pointerIdRef.current !== null) return;
+    pointerIdRef.current = e.pointerId;
+    lastRef.current = { x: e.clientX, y: e.clientY };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const move = (e: React.PointerEvent) => {
+    if (pointerIdRef.current !== e.pointerId) return;
+    const dx = e.clientX - lastRef.current.x;
+    const dy = e.clientY - lastRef.current.y;
+    lastRef.current = { x: e.clientX, y: e.clientY };
+    onLook(dx, dy);
+  };
+
+  const up = (e: React.PointerEvent) => {
+    if (pointerIdRef.current !== e.pointerId) return;
+    pointerIdRef.current = null;
+  };
+
+  return (
+    <div
+      onPointerDown={down}
+      onPointerMove={move}
+      onPointerUp={up}
+      onPointerCancel={up}
+      className="fixed top-0 right-0 w-1/2 h-full touch-none select-none z-20"
+      style={{ background: "transparent" }}
+    />
+  );
+}
+
+// ============================================================
 // PAGE
 // ============================================================
 export default function WorldPage() {
@@ -707,6 +916,7 @@ export default function WorldPage() {
   const [world, setWorld] = useState<World | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
   const [others, setOthers] = useState<RemotePlayerData[]>([]);
   const [onlineCount, setOnlineCount] = useState(1);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -725,6 +935,14 @@ export default function WorldPage() {
     pos: [0, CHARACTER_Y_OFFSET, 0],
     rotY: 0,
   });
+
+  // ===== Detect touch device =====
+  useEffect(() => {
+    const touch =
+      typeof window !== "undefined" &&
+      ("ontouchstart" in window || navigator.maxTouchPoints > 0);
+    setIsTouchDevice(touch);
+  }, []);
 
   // ===== Load user + world =====
   useEffect(() => {
@@ -990,6 +1208,11 @@ export default function WorldPage() {
     };
   }, [user, worldId, handleMove]);
 
+  const touchLook = useCallback((dx: number, dy: number) => {
+    touchLookState.yawDelta -= dx * 0.005;
+    touchLookState.pitchDelta += dy * 0.005;
+  }, []);
+
   if (!mounted) {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center text-white">
@@ -1064,19 +1287,29 @@ export default function WorldPage() {
             chatMessages={chatMessages}
             onMove={handleMove}
             inputDisabled={chatOpen}
+            isTouchDevice={isTouchDevice}
           />
         </Canvas>
       </KeyboardControls>
 
+      {/* ===== TOUCH OVERLAYS ===== */}
+      {isTouchDevice && !chatOpen && (
+        <>
+          <TouchLookArea onLook={touchLook} />
+          <Joystick />
+          <JumpButton />
+        </>
+      )}
+
       {/* TOP LEFT */}
-      <div className="absolute top-3 left-3 flex items-center gap-2">
+      <div className="absolute top-3 left-3 flex items-center gap-2 z-30">
         <Link
           href="/games"
           className="bg-black/60 hover:bg-black/80 backdrop-blur text-white text-xs font-bold px-3 py-2 rounded border border-white/20"
         >
           ← Exit
         </Link>
-        <div className="bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs flex items-center gap-2">
+        <div className="bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs hidden sm:flex items-center gap-2">
           <span className="text-lg leading-none">{world.thumbnailEmoji}</span>
           <div className="leading-tight">
             <div className="font-bold">{world.name}</div>
@@ -1086,7 +1319,7 @@ export default function WorldPage() {
       </div>
 
       {/* TOP RIGHT */}
-      <div className="absolute top-3 right-3 flex items-center gap-2">
+      <div className="absolute top-3 right-3 flex items-center gap-2 z-30">
         <button
           onClick={handleLike}
           disabled={liking}
@@ -1098,15 +1331,25 @@ export default function WorldPage() {
           } ${liking ? "opacity-70 cursor-wait" : ""}`}
         >
           <span>{liked ? "❤️" : "🤍"}</span>
-          <span>{likeCount}</span>
+          <span className="hidden sm:inline">{likeCount}</span>
         </button>
 
         <div className="bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs flex items-center gap-2">
           <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-          <strong>{onlineCount}</strong> online
+          <strong>{onlineCount}</strong>
         </div>
 
-        <div className="bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs flex items-center gap-2">
+        {isTouchDevice && (
+          <button
+            onClick={() => setChatOpen(true)}
+            className="bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs font-bold"
+            title="Open chat"
+          >
+            💬
+          </button>
+        )}
+
+        <div className="hidden md:flex bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs items-center gap-2">
           <span className="font-bold inline-flex items-center">
             {user.username}
             <AccountBadge username={user.username} userId={user.id} size={12} />
@@ -1116,7 +1359,7 @@ export default function WorldPage() {
       </div>
 
       {/* BOTTOM LEFT — controls */}
-      <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1">
+      <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1 hidden md:block z-30">
         <p className="font-bold mb-1">🎮 Controls</p>
         <p>
           <kbd className="bg-white/10 px-1 rounded">W</kbd>{" "}
@@ -1135,9 +1378,9 @@ export default function WorldPage() {
         </p>
       </div>
 
-      {/* BOTTOM RIGHT — players in world */}
+      {/* BOTTOM RIGHT — players */}
       {others.length > 0 && (
-        <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1 max-w-[180px]">
+        <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1 max-w-[180px] hidden md:block z-30">
           <p className="font-bold mb-1">👥 In this world</p>
           {others.slice(0, 8).map((p) => (
             <p key={p.id} className="truncate text-white/80 flex items-center gap-1">
@@ -1153,7 +1396,7 @@ export default function WorldPage() {
 
       {/* CHAT INPUT */}
       {chatOpen && (
-        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 w-[min(560px,90vw)]">
+        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 w-[min(560px,90vw)] z-40">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -1167,14 +1410,17 @@ export default function WorldPage() {
               type="text"
               value={draft}
               onChange={(e) => setDraft(e.target.value.slice(0, CHAT_MAX_LENGTH))}
-              placeholder="Type a message and press Enter…"
+              placeholder="Type a message…"
               className="flex-1 bg-transparent text-white text-sm outline-none placeholder-white/40"
               maxLength={CHAT_MAX_LENGTH}
               autoComplete="off"
             />
-            <span className="text-[10px] text-white/40 flex-shrink-0">
-              {draft.length}/{CHAT_MAX_LENGTH}
-            </span>
+            <button
+              type="submit"
+              className="text-white bg-[#6C3CE0] hover:bg-[#5A2FC7] text-xs font-bold px-3 py-1.5 rounded flex-shrink-0"
+            >
+              Send
+            </button>
             <button
               type="button"
               onClick={cancelChat}
@@ -1185,14 +1431,14 @@ export default function WorldPage() {
             </button>
           </form>
           <p className="text-[10px] text-white/50 text-center mt-1">
-            Enter to send · Esc to cancel
+            Esc to cancel
           </p>
         </div>
       )}
 
-      {/* CHAT HINT (when closed) */}
-      {!chatOpen && (
-        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-none">
+      {/* CHAT HINT */}
+      {!chatOpen && !isTouchDevice && (
+        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-none z-20">
           <div className="bg-black/40 backdrop-blur px-3 py-1 rounded-full text-white/50 text-[10px]">
             Press <kbd className="bg-white/10 px-1 rounded">T</kbd> to chat
           </div>
