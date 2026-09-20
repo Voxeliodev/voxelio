@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, Suspense, useEffect } from "react";
+import { useMemo, Suspense, useEffect, useRef } from "react";
 import * as THREE from "three";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, useGLTF } from "@react-three/drei";
 import type { AvatarConfig } from "../../lib/auth";
 import { Hat3D } from "./Hats3D";
@@ -19,9 +19,6 @@ import { getBodyPart, type BodyPartSlot } from "../../lib/bodyParts";
 
 const HELD_ACCESSORIES = ["accessory-vox-sword"];
 
-// ============================================================
-// SceneExporter — grabs the R3F scene and hands it to the parent
-// ============================================================
 function SceneExporter({
   onSceneReady,
 }: {
@@ -138,17 +135,17 @@ function BodyPart({
 // ============================================================
 // CHARACTER
 // ============================================================
-// hideAccessory:
-//   When true, held accessories (swords, etc.) are not rendered
-//   and the arm stays in the relaxed pose. Used in the game/world
-//   view so held items don't clip through blocks or look wrong.
+// hideAccessory: when true, held items aren't shown (game view)
+// walking:       when true, arms + legs swing in a walk cycle
 // ============================================================
 export function Character({
   config,
   hideAccessory = false,
+  walking = false,
 }: {
   config: AvatarConfig;
   hideAccessory?: boolean;
+  walking?: boolean;
 }) {
   const skin = config.skinTone;
   const pants = config.pantsColor;
@@ -172,16 +169,39 @@ export function Character({
   const isHeadless = bodyParts?.head === "head-headless";
   const isRoundHead = bodyParts?.head === "head-round";
 
-  // If accessories are hidden, the arm stays relaxed
   const isHolding = !hideAccessory
     && Boolean(config.accessory && HELD_ACCESSORIES.includes(config.accessory));
 
-  const armRotation: [number, number, number] = isHolding
-    ? [-Math.PI / 2, 0, 0]
-    : [0, 0, 0];
+  const baseArmX = isHolding ? -Math.PI / 2 : 0;
   const shoulderY = isHolding ? 0.85 : 1.0;
 
   const hideDefaultFace = Boolean(config.face);
+
+  // ===== Animation refs =====
+  const leftArmRef = useRef<THREE.Group>(null);
+  const rightArmRef = useRef<THREE.Group>(null);
+  const leftLegRef = useRef<THREE.Group>(null);
+  const rightLegRef = useRef<THREE.Group>(null);
+  const walkPhaseRef = useRef(0);
+  const walkAmountRef = useRef(0);
+
+  useFrame((_, delta) => {
+    // Smoothly ramp the walk intensity up/down
+    const targetAmount = walking ? 1 : 0;
+    walkAmountRef.current += (targetAmount - walkAmountRef.current) * Math.min(1, delta * 8);
+
+    // Advance the walk phase only if we're actually walking
+    if (walkAmountRef.current > 0.01) {
+      walkPhaseRef.current += delta * 10;
+    }
+
+    const swing = Math.sin(walkPhaseRef.current) * 0.75 * walkAmountRef.current;
+
+    if (leftArmRef.current) leftArmRef.current.rotation.x = baseArmX + swing;
+    if (rightArmRef.current) rightArmRef.current.rotation.x = baseArmX - swing;
+    if (leftLegRef.current) leftLegRef.current.rotation.x = -swing;
+    if (rightLegRef.current) rightLegRef.current.rotation.x = swing;
+  });
 
   return (
     <group name="VoxelioCharacter" position={[0, -0.6, 0]}>
@@ -212,13 +232,14 @@ export function Character({
 
       {config.shirt && <Shirt3D shirtId={config.shirt} skinTone={skin} />}
 
+      {/* LEFT ARM — pivot at shoulder */}
       <BodyPart slot="leftArm" partId={bodyParts?.leftArm}>
-        <group>
+        <group ref={leftArmRef} position={[-0.6, 1.0, 0]}>
           <RoundedBox
             args={[0.3, 1, 0.3]}
             radius={0.06}
             smoothness={4}
-            position={[-0.6, 0.5, 0]}
+            position={[0, -0.5, 0]}
             castShadow
           >
             <meshStandardMaterial color={leftArmColor} roughness={0.7} />
@@ -227,7 +248,7 @@ export function Character({
             args={[0.3, 0.3, 0.3]}
             radius={0.06}
             smoothness={4}
-            position={[-0.6, -0.15, 0]}
+            position={[0, -1.15, 0]}
             castShadow
           >
             <meshStandardMaterial color={leftHandColor} roughness={0.6} />
@@ -235,8 +256,9 @@ export function Character({
         </group>
       </BodyPart>
 
+      {/* RIGHT ARM — pivot at shoulder, holds accessories */}
       <BodyPart slot="rightArm" partId={bodyParts?.rightArm}>
-        <group position={[0.6, shoulderY, 0]} rotation={armRotation}>
+        <group ref={rightArmRef} position={[0.6, shoulderY, 0]}>
           <RoundedBox
             args={[0.3, 1, 0.3]}
             radius={0.06}
@@ -260,7 +282,7 @@ export function Character({
           {!hideAccessory && config.accessory && (
             <group
               position={[0, -1.32, 0]}
-              rotation={[-armRotation[0], 0, 0]}
+              rotation={[-baseArmX, 0, 0]}
             >
               <Accessory3DGeometry accessoryId={config.accessory} />
             </group>
@@ -268,13 +290,14 @@ export function Character({
         </group>
       </BodyPart>
 
+      {/* LEFT LEG — pivot at hip */}
       <BodyPart slot="leftLeg" partId={bodyParts?.leftLeg}>
-        <group>
+        <group ref={leftLegRef} position={[-0.25, 0, 0]}>
           <RoundedBox
             args={[0.35, 0.8, 0.4]}
             radius={0.05}
             smoothness={4}
-            position={[-0.25, -0.4, 0]}
+            position={[0, -0.4, 0]}
             castShadow
           >
             <meshStandardMaterial color={leftLegColor} roughness={0.7} />
@@ -283,7 +306,7 @@ export function Character({
             args={[0.35, 0.2, 0.55]}
             radius={0.05}
             smoothness={4}
-            position={[-0.25, -0.9, 0.08]}
+            position={[0, -0.9, 0.08]}
             castShadow
           >
             <meshStandardMaterial color={leftLegColor} roughness={0.7} />
@@ -291,13 +314,14 @@ export function Character({
         </group>
       </BodyPart>
 
+      {/* RIGHT LEG — pivot at hip */}
       <BodyPart slot="rightLeg" partId={bodyParts?.rightLeg}>
-        <group>
+        <group ref={rightLegRef} position={[0.25, 0, 0]}>
           <RoundedBox
             args={[0.35, 0.8, 0.4]}
             radius={0.05}
             smoothness={4}
-            position={[0.25, -0.4, 0]}
+            position={[0, -0.4, 0]}
             castShadow
           >
             <meshStandardMaterial color={rightLegColor} roughness={0.7} />
@@ -306,7 +330,7 @@ export function Character({
             args={[0.35, 0.2, 0.55]}
             radius={0.05}
             smoothness={4}
-            position={[0.25, -0.9, 0.08]}
+            position={[0, -0.9, 0.08]}
             castShadow
           >
             <meshStandardMaterial color={rightLegColor} roughness={0.7} />

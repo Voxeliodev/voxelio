@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import * as THREE from "three";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { KeyboardControls, useKeyboardControls, Sky, Text } from "@react-three/drei";
@@ -21,6 +21,7 @@ const KEY_MAP = [
   { name: "backward", keys: ["s", "S", "ArrowDown"] },
   { name: "left", keys: ["a", "A", "ArrowLeft"] },
   { name: "right", keys: ["d", "D", "ArrowRight"] },
+  { name: "jump", keys: [" ", "Space"] },
 ];
 
 const MOVE_SPEED = 6;
@@ -30,11 +31,106 @@ const CAMERA_LOOK_HEIGHT = 1.2;
 const ROTATION_LERP = 12;
 const CHARACTER_Y_OFFSET = 1.6;
 
-const BROADCAST_INTERVAL = 50; // ms between position broadcasts (~20/s)
-const STALE_TIMEOUT = 5000; // remove a player if we haven't heard from them for 5s
+const GRAVITY = -25;
+const JUMP_VELOCITY = 9;
+
+const PLAYER_RADIUS = 0.4;
+const PLAYER_HEIGHT = 1.8;
+
+const BROADCAST_INTERVAL = 50;
+const STALE_TIMEOUT = 5000;
 
 // ============================================================
-// REMOTE PLAYER — interpolates toward the last received position
+// BLOCKS — shared between rendering and collision
+// ============================================================
+const BLOCKS: {
+  position: [number, number, number];
+  size: [number, number, number];
+  color: string;
+}[] = [
+  { position: [5, 1, -5], size: [2, 2, 2], color: "#7B2FF7" },
+  { position: [-8, 1.5, -3], size: [3, 3, 3], color: "#00B8D4" },
+  { position: [10, 0.75, 8], size: [1.5, 1.5, 1.5], color: "#FFD700" },
+  { position: [-4, 2, 6], size: [4, 4, 4], color: "#EC4899" },
+  { position: [0, 3, -15], size: [6, 6, 6], color: "#4B5563" },
+  { position: [15, 2, 0], size: [4, 4, 1], color: "#22C55E" },
+  { position: [-15, 2, -10], size: [4, 4, 1], color: "#EF4444" },
+];
+
+// ============================================================
+// COLLISION HELPERS
+// ============================================================
+function resolveCollisions(pos: THREE.Vector3): void {
+  for (let iter = 0; iter < 4; iter++) {
+    let anyResolved = false;
+
+    for (const b of BLOCKS) {
+      const [bx, by, bz] = b.position;
+      const [sx, sy, sz] = b.size;
+
+      const bMinX = bx - sx / 2;
+      const bMaxX = bx + sx / 2;
+      const bMinY = by - sy / 2;
+      const bMaxY = by + sy / 2;
+      const bMinZ = bz - sz / 2;
+      const bMaxZ = bz + sz / 2;
+
+      const pMinX = pos.x - PLAYER_RADIUS;
+      const pMaxX = pos.x + PLAYER_RADIUS;
+      const pFeetY = pos.y - CHARACTER_Y_OFFSET;
+      const pTopY = pFeetY + PLAYER_HEIGHT;
+      const pMinZ = pos.z - PLAYER_RADIUS;
+      const pMaxZ = pos.z + PLAYER_RADIUS;
+
+      if (
+        pMaxX <= bMinX ||
+        pMinX >= bMaxX ||
+        pTopY <= bMinY ||
+        pFeetY >= bMaxY ||
+        pMaxZ <= bMinZ ||
+        pMinZ >= bMaxZ
+      ) {
+        continue;
+      }
+
+      const penX = Math.min(pMaxX - bMinX, bMaxX - pMinX);
+      const penY = Math.min(pTopY - bMinY, bMaxY - pFeetY);
+      const penZ = Math.min(pMaxZ - bMinZ, bMaxZ - pMinZ);
+
+      if (penX <= penY && penX <= penZ) {
+        pos.x += pos.x < bx ? -penX : penX;
+      } else if (penY <= penZ) {
+        pos.y += pos.y < by + CHARACTER_Y_OFFSET ? -penY : penY;
+      } else {
+        pos.z += pos.z < bz ? -penZ : penZ;
+      }
+
+      anyResolved = true;
+    }
+
+    if (!anyResolved) break;
+  }
+}
+
+function isGrounded(pos: THREE.Vector3): boolean {
+  const feetY = pos.y - CHARACTER_Y_OFFSET;
+  if (feetY <= 0.08) return true;
+
+  for (const b of BLOCKS) {
+    const topY = b.position[1] + b.size[1] / 2;
+    if (
+      Math.abs(feetY - topY) < 0.12 &&
+      Math.abs(pos.x - b.position[0]) < b.size[0] / 2 + PLAYER_RADIUS * 0.7 &&
+      Math.abs(pos.z - b.position[2]) < b.size[2] / 2 + PLAYER_RADIUS * 0.7
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// ============================================================
+// REMOTE PLAYER
 // ============================================================
 type RemotePlayerData = {
   id: string;
@@ -50,26 +146,42 @@ function RemotePlayer({ data }: { data: RemotePlayerData }) {
   const groupRef = useRef<THREE.Group>(null);
   const currentRef = useRef(new THREE.Vector3(...data.targetPos));
   const currentRotRef = useRef(data.targetRotY);
+  const lastTargetRef = useRef(new THREE.Vector3(...data.targetPos));
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
 
-    // Lerp position toward target
+    const target = new THREE.Vector3(...data.targetPos);
     const lerp = Math.min(1, delta * 10);
-    currentRef.current.lerp(new THREE.Vector3(...data.targetPos), lerp);
+    currentRef.current.lerp(target, lerp);
     groupRef.current.position.copy(currentRef.current);
 
-    // Lerp rotation — handle wrap-around
     let diff = data.targetRotY - currentRotRef.current;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
     currentRotRef.current += diff * Math.min(1, delta * 12);
     groupRef.current.rotation.y = currentRotRef.current;
+
+    lastTargetRef.current.copy(target);
+  });
+
+  // Determine if they're walking based on movement over time
+  const isMoving = useRef(false);
+
+  useFrame((_, delta) => {
+    const target = new THREE.Vector3(...data.targetPos);
+    const moved = target.distanceTo(lastTargetRef.current) > 0.02;
+    if (moved !== isMoving.current) {
+      // update on next frame based on target delta
+    }
+    // Simple heuristic: if position is far from current, they're moving
+    const behindBy = target.distanceTo(currentRef.current);
+    isMoving.current = behindBy > 0.05;
+    void delta;
   });
 
   return (
     <group ref={groupRef} position={data.targetPos}>
-      {/* Nametag */}
       <group position={[0, 2.6, 0]}>
         <Text
           fontSize={0.28}
@@ -83,13 +195,13 @@ function RemotePlayer({ data }: { data: RemotePlayerData }) {
         </Text>
       </group>
 
-      <Character config={data.avatarConfig} hideAccessory />
+      <Character config={data.avatarConfig} hideAccessory walking={isMoving.current} />
     </group>
   );
 }
 
 // ============================================================
-// LOCAL PLAYER — WASD movement + broadcasts position
+// LOCAL PLAYER
 // ============================================================
 function LocalPlayer({
   config,
@@ -102,8 +214,12 @@ function LocalPlayer({
   const groupRef = useRef<THREE.Group>(null);
   const positionRef = useRef(new THREE.Vector3(0, CHARACTER_Y_OFFSET, 0));
   const facingRef = useRef(0);
+  const velocityYRef = useRef(0);
+  const groundedRef = useRef(true);
   const lastBroadcastRef = useRef(0);
   const needsBroadcastRef = useRef(false);
+
+  const [walking, setWalking] = useState(false);
 
   useFrame((state, delta) => {
     if (!groupRef.current) return;
@@ -118,12 +234,13 @@ function LocalPlayer({
     if (keys.right) dx += 1;
 
     const len = Math.hypot(dx, dz);
+    const isMoving = len > 0;
+    setWalking(isMoving);
 
-    if (len > 0) {
+    if (isMoving) {
       dx /= len;
       dz /= len;
 
-      const speed = MOVE_SPEED;
       const targetAngle = Math.atan2(dx, dz);
 
       const current = groupRef.current.rotation.y;
@@ -133,20 +250,47 @@ function LocalPlayer({
       groupRef.current.rotation.y = current + diff * Math.min(1, delta * ROTATION_LERP);
       facingRef.current = groupRef.current.rotation.y;
 
-      positionRef.current.x += Math.sin(facingRef.current) * speed * delta;
-      positionRef.current.z += Math.cos(facingRef.current) * speed * delta;
-
-      // Clamp to world bounds
-      const bound = 95;
-      positionRef.current.x = Math.max(-bound, Math.min(bound, positionRef.current.x));
-      positionRef.current.z = Math.max(-bound, Math.min(bound, positionRef.current.z));
+      positionRef.current.x += Math.sin(facingRef.current) * MOVE_SPEED * delta;
+      positionRef.current.z += Math.cos(facingRef.current) * MOVE_SPEED * delta;
 
       needsBroadcastRef.current = true;
     }
 
+    // Jump input
+    if (keys.jump && groundedRef.current) {
+      velocityYRef.current = JUMP_VELOCITY;
+      groundedRef.current = false;
+    }
+
+    // Gravity
+    velocityYRef.current += GRAVITY * delta;
+    positionRef.current.y += velocityYRef.current * delta;
+
+    // Floor check
+    if (positionRef.current.y < CHARACTER_Y_OFFSET) {
+      positionRef.current.y = CHARACTER_Y_OFFSET;
+      velocityYRef.current = 0;
+    }
+
+    // Collide with blocks
+    resolveCollisions(positionRef.current);
+
+    // Recompute grounded state for next frame
+    groundedRef.current = isGrounded(positionRef.current) && velocityYRef.current <= 0.01;
+    if (groundedRef.current && velocityYRef.current > 0) {
+      // Just landed; kill downward velocity
+      if (velocityYRef.current < 0) velocityYRef.current = 0;
+    }
+
+    // World bounds
+    const bound = 95;
+    positionRef.current.x = Math.max(-bound, Math.min(bound, positionRef.current.x));
+    positionRef.current.z = Math.max(-bound, Math.min(bound, positionRef.current.z));
+
+    // Apply to group
     groupRef.current.position.copy(positionRef.current);
 
-    // Camera follow
+    // Camera
     const targetCamX = positionRef.current.x - Math.sin(facingRef.current) * CAMERA_DISTANCE;
     const targetCamZ = positionRef.current.z - Math.cos(facingRef.current) * CAMERA_DISTANCE;
     const targetCamY = positionRef.current.y + CAMERA_HEIGHT;
@@ -162,10 +306,10 @@ function LocalPlayer({
       positionRef.current.z
     );
 
-    // Broadcast position at ~20fps
+    // Broadcast
     const now = performance.now();
     if (
-      needsBroadcastRef.current &&
+      (needsBroadcastRef.current || !groundedRef.current) &&
       now - lastBroadcastRef.current >= BROADCAST_INTERVAL
     ) {
       lastBroadcastRef.current = now;
@@ -179,36 +323,19 @@ function LocalPlayer({
 
   return (
     <group ref={groupRef} position={[0, CHARACTER_Y_OFFSET, 0]}>
-      <Character config={config} hideAccessory />
+      <Character config={config} hideAccessory walking={walking} />
     </group>
   );
 }
 
 // ============================================================
-// WORLD SCENE
+// SCENE
 // ============================================================
 function Ground() {
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
       <planeGeometry args={[200, 200]} />
       <meshStandardMaterial color="#4ADE80" roughness={0.95} />
-    </mesh>
-  );
-}
-
-function Block({
-  position,
-  size,
-  color,
-}: {
-  position: [number, number, number];
-  size: [number, number, number];
-  color: string;
-}) {
-  return (
-    <mesh position={position} castShadow receiveShadow>
-      <boxGeometry args={size} />
-      <meshStandardMaterial color={color} roughness={0.75} />
     </mesh>
   );
 }
@@ -241,14 +368,12 @@ function WorldScene({
 
       <Ground />
 
-      {/* Decorative blocks */}
-      <Block position={[5, 1, -5]} size={[2, 2, 2]} color="#7B2FF7" />
-      <Block position={[-8, 1.5, -3]} size={[3, 3, 3]} color="#00B8D4" />
-      <Block position={[10, 0.75, 8]} size={[1.5, 1.5, 1.5]} color="#FFD700" />
-      <Block position={[-4, 2, 6]} size={[4, 4, 4]} color="#EC4899" />
-      <Block position={[0, 3, -15]} size={[6, 6, 6]} color="#4B5563" />
-      <Block position={[15, 2, 0]} size={[4, 4, 1]} color="#22C55E" />
-      <Block position={[-15, 2, -10]} size={[4, 4, 1]} color="#EF4444" />
+      {BLOCKS.map((b, i) => (
+        <mesh key={i} position={b.position} castShadow receiveShadow>
+          <boxGeometry args={b.size} />
+          <meshStandardMaterial color={b.color} roughness={0.75} />
+        </mesh>
+      ))}
 
       <LocalPlayer config={config} onMove={onMove} />
 
@@ -264,7 +389,6 @@ function WorldScene({
 // ============================================================
 export default function WorldPage() {
   const params = useParams();
-  const router = useRouter();
   const worldId = (params.id as string) || "";
 
   const [user, setUser] = useState<User | null>(null);
@@ -276,7 +400,6 @@ export default function WorldPage() {
 
   const channelRef = useRef<any>(null);
 
-  // ===== Load user + world =====
   useEffect(() => {
     const u = getCurrentUser();
     setUser(u);
@@ -291,7 +414,6 @@ export default function WorldPage() {
     });
   }, [worldId]);
 
-  // ===== Realtime channel =====
   const handleMove = useCallback(
     (pos: [number, number, number], rotY: number) => {
       const channel = channelRef.current;
@@ -352,20 +474,17 @@ export default function WorldPage() {
       })
       .subscribe((status: string) => {
         if (status === "SUBSCRIBED") {
-          // Announce ourselves
           channel.track({ id: user.id, username: user.username });
         }
       });
 
     channelRef.current = channel;
 
-    // Cleanup old/stale players
     const staleTimer = setInterval(() => {
       const now = Date.now();
       setOthers((prev) => prev.filter((p) => now - p.lastSeen < STALE_TIMEOUT));
     }, 2000);
 
-    // Send initial move so we show up for others quickly
     setTimeout(() => {
       handleMove([0, CHARACTER_Y_OFFSET, 0], 0);
     }, 500);
@@ -378,7 +497,6 @@ export default function WorldPage() {
     };
   }, [user, worldId, handleMove]);
 
-  // ===== Guards =====
   if (!mounted) {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center text-white">
@@ -392,9 +510,7 @@ export default function WorldPage() {
       <div className="fixed inset-0 bg-[#1A1A2E] flex flex-col items-center justify-center text-white p-6">
         <div className="text-6xl mb-4">🔒</div>
         <h1 className="text-2xl font-black mb-2">Sign in to play</h1>
-        <p className="text-sm text-white/70 mb-6">
-          You need an account to enter worlds.
-        </p>
+        <p className="text-sm text-white/70 mb-6">You need an account to enter worlds.</p>
         <div className="flex gap-2">
           <Link
             href="/signin"
@@ -418,9 +534,7 @@ export default function WorldPage() {
       <div className="fixed inset-0 bg-[#1A1A2E] flex flex-col items-center justify-center text-white p-6">
         <div className="text-6xl mb-4">🌍</div>
         <h1 className="text-2xl font-black mb-2">World Not Found</h1>
-        <p className="text-sm text-white/70 mb-6">
-          This world doesn't exist or was removed.
-        </p>
+        <p className="text-sm text-white/70 mb-6">This world doesn't exist or was removed.</p>
         <Link
           href="/games"
           className="bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white font-bold text-sm px-6 py-2.5 rounded border border-[#4A1FA8] hover:from-[#8B5FFF] hover:to-[#6A3FD7] transition"
@@ -441,7 +555,6 @@ export default function WorldPage() {
 
   return (
     <div className="fixed inset-0 bg-black overflow-hidden">
-
       <KeyboardControls map={KEY_MAP}>
         <Canvas
           shadows
@@ -457,7 +570,7 @@ export default function WorldPage() {
         </Canvas>
       </KeyboardControls>
 
-      {/* TOP LEFT — World info + exit */}
+      {/* TOP LEFT */}
       <div className="absolute top-3 left-3 flex items-center gap-2">
         <Link
           href="/games"
@@ -474,7 +587,7 @@ export default function WorldPage() {
         </div>
       </div>
 
-      {/* TOP RIGHT — Player count + balance */}
+      {/* TOP RIGHT */}
       <div className="absolute top-3 right-3 flex items-center gap-2">
         <div className="bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs flex items-center gap-2">
           <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
@@ -489,7 +602,7 @@ export default function WorldPage() {
         </div>
       </div>
 
-      {/* BOTTOM LEFT — Controls */}
+      {/* BOTTOM LEFT */}
       <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1">
         <p className="font-bold mb-1">🎮 Controls</p>
         <p>
@@ -498,9 +611,12 @@ export default function WorldPage() {
           <kbd className="bg-white/10 px-1 rounded">S</kbd>{" "}
           <kbd className="bg-white/10 px-1 rounded">D</kbd> — Move
         </p>
+        <p>
+          <kbd className="bg-white/10 px-1 rounded">Space</kbd> — Jump
+        </p>
       </div>
 
-      {/* BOTTOM RIGHT — Other players in this world */}
+      {/* BOTTOM RIGHT */}
       {others.length > 0 && (
         <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1 max-w-[180px]">
           <p className="font-bold mb-1">👥 In this world</p>
