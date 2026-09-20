@@ -398,7 +398,7 @@ export default function Home() {
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {featuredWorlds.slice(0, 6).map((world) => (
+                {featuredWorlds.slice(0, 3).map((world) => (
                   <Link
                     key={world.id}
                     href={`/games/${world.id}`}
