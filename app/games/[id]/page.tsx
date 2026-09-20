@@ -726,7 +726,7 @@ export default function WorldPage() {
     rotY: 0,
   });
 
-  // ===== Load user + world (with visit dedupe) =====
+  // ===== Load user + world =====
   useEffect(() => {
     const u = getCurrentUser();
     setUser(u);
@@ -740,10 +740,8 @@ export default function WorldPage() {
       setWorld(w);
       setLikeCount(w.likes);
 
-      // Check if user has already liked this world
       hasLikedWorld(worldId).then((yes) => setLiked(yes));
 
-      // Only count a visit once per session per world
       if (typeof window === "undefined") return;
       const visitKey = `voxelio-visited-${worldId}`;
       if (sessionStorage.getItem(visitKey) !== "1") {
@@ -781,12 +779,13 @@ export default function WorldPage() {
     };
   }, [user, worldId]);
 
+  // ===== Chat hotkey: T to open, Escape to close =====
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const active = document.activeElement as HTMLElement | null;
       const inInput = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA");
 
-      if (e.key === "Enter" && !chatOpen && !inInput) {
+      if ((e.key === "t" || e.key === "T") && !chatOpen && !inInput) {
         e.preventDefault();
         setChatOpen(true);
       } else if (e.key === "Escape" && chatOpen) {
@@ -867,7 +866,6 @@ export default function WorldPage() {
     const wasLiked = liked;
     const prevCount = likeCount;
 
-    // Optimistic update
     setLiked(!wasLiked);
     setLikeCount(wasLiked ? Math.max(0, prevCount - 1) : prevCount + 1);
 
@@ -876,7 +874,6 @@ export default function WorldPage() {
       : await likeWorld(worldId);
 
     if (!ok) {
-      // Revert on failure
       setLiked(wasLiked);
       setLikeCount(prevCount);
     }
@@ -1118,7 +1115,7 @@ export default function WorldPage() {
         </div>
       </div>
 
-      {/* BOTTOM LEFT */}
+      {/* BOTTOM LEFT — controls */}
       <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1">
         <p className="font-bold mb-1">🎮 Controls</p>
         <p>
@@ -1134,11 +1131,11 @@ export default function WorldPage() {
           🖱️ <strong>Drag</strong> to look around · <strong>Scroll</strong> to zoom
         </p>
         <p>
-          <kbd className="bg-white/10 px-1 rounded">Enter</kbd> — Chat
+          <kbd className="bg-white/10 px-1 rounded">T</kbd> — Chat
         </p>
       </div>
 
-      {/* BOTTOM RIGHT */}
+      {/* BOTTOM RIGHT — players in world */}
       {others.length > 0 && (
         <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1 max-w-[180px]">
           <p className="font-bold mb-1">👥 In this world</p>
@@ -1193,11 +1190,11 @@ export default function WorldPage() {
         </div>
       )}
 
-      {/* CHAT HINT */}
+      {/* CHAT HINT (when closed) */}
       {!chatOpen && (
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-none">
           <div className="bg-black/40 backdrop-blur px-3 py-1 rounded-full text-white/50 text-[10px]">
-            Press <kbd className="bg-white/10 px-1 rounded">Enter</kbd> to chat
+            Press <kbd className="bg-white/10 px-1 rounded">T</kbd> to chat
           </div>
         </div>
       )}
