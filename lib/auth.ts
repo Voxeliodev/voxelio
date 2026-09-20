@@ -432,6 +432,21 @@ export async function signOut(): Promise<void> {
 }
 
 // ============================================================
+// ITEM SALES COUNTERS
+// ============================================================
+export async function fetchItemSales(): Promise<Record<string, number>> {
+  const { data, error } = await supabase.from("item_sales").select("item_id, sales");
+  if (error || !data) return {};
+  const out: Record<string, number> = {};
+  for (const row of data) out[row.item_id] = row.sales;
+  return out;
+}
+
+async function bumpItemSale(itemId: string): Promise<void> {
+  await supabase.rpc("increment_item_sale", { p_item_id: itemId });
+}
+
+// ============================================================
 // SHOP / INDEV
 // ============================================================
 export function ownsItem(userId: string, itemId: string): boolean {
@@ -451,6 +466,7 @@ export function buyItem(userId: string, itemId: string, price: number): { succes
   if (user.voxbux < price) return { success: false, error: `Not enough Voxbux. You need ${price - user.voxbux} more.` };
   const updated: User = { ...user, voxbux: user.voxbux - price, ownedItems: [...user.ownedItems, itemId] };
   updateUser(updated);
+  bumpItemSale(itemId);
   return { success: true, newBalance: updated.voxbux };
 }
 export function subscribeIndev(userId: string, tier: IndevTier): { success: boolean; error?: string; newBalance?: number; expiresAt?: number } {
@@ -487,6 +503,7 @@ export async function grantItem(userId: string, itemId: string): Promise<{ succe
   if (error) return { success: false, error: error.message };
   if (!data?.success) return { success: false, error: data?.error || "Grant failed." };
 
+  bumpItemSale(itemId);
   return { success: true };
 }
 
@@ -737,7 +754,6 @@ export async function redeemCode(inputCode: string): Promise<{
   } else if (rewardType === "item") {
     const itemId = rewardValue.itemId as string | undefined;
     if (itemId && !user.ownedItems.includes(itemId)) {
-      // Use the atomic RPC so we don't clobber other fields
       await grantItem(user.id, itemId);
       rewardText = `Item unlocked!`;
     } else {

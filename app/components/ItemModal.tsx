@@ -10,10 +10,12 @@ export default function ItemModal({
   item,
   onClose,
   onPurchase,
+  salesCount,
 }: {
   item: Item;
   onClose: () => void;
   onPurchase: () => void;
+  salesCount?: number;
 }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [toast, setToast] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -105,7 +107,7 @@ export default function ItemModal({
           <div className="lg:col-span-2 space-y-3">
             <div className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden">
               <div className="p-3 border-b border-[#E5E7F0]">
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
                   <span
                     className="text-[10px] font-bold px-2 py-0.5 rounded text-white uppercase"
                     style={{ backgroundColor: RARITY_COLORS[item.rarity] }}
@@ -121,6 +123,12 @@ export default function ItemModal({
                     </span>
                   )}
                 </div>
+
+                {salesCount !== undefined && salesCount > 0 && (
+                  <p className="text-[11px] text-[#FF6B6B] font-bold mt-1 mb-2">
+                    🔥 {salesCount.toLocaleString()} sold
+                  </p>
+                )}
 
                 <div className="flex items-center gap-2 pt-2 border-t border-[#E5E7F0]">
                   <div className="w-8 h-8 rounded bg-gradient-to-br from-[#6C3CE0] to-[#5A2FC7] flex items-center justify-center text-white text-sm font-black">

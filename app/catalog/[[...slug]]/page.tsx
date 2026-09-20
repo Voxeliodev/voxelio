@@ -8,6 +8,7 @@ import {
   formatVoxbux,
   getUnreadCount,
   subscribeAuth,
+  fetchItemSales,
   type User,
 } from "../../../lib/auth";
 import { isOwnerAccount } from "../../../lib/badges";
@@ -57,6 +58,7 @@ export default function CatalogPage() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [sort, setSort] = useState("relevance");
+  const [sales, setSales] = useState<Record<string, number>>({});
 
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
 
@@ -64,6 +66,7 @@ export default function CatalogPage() {
 
   useEffect(() => {
     refreshUser();
+    fetchItemSales().then(setSales);
 
     const syncFromUrl = () => {
       const slug = getSlugFromUrl();
@@ -134,6 +137,7 @@ export default function CatalogPage() {
           item={selectedItem}
           onClose={closeItem}
           onPurchase={refreshUser}
+          salesCount={sales[selectedItem.id] || 0}
         />
       )}
 
@@ -324,6 +328,7 @@ export default function CatalogPage() {
                 {items.map((item) => {
                   const owned = currentUser?.ownedItems.includes(item.id) || false;
                   const offSale = item.forSale === false;
+                  const soldCount = sales[item.id] || 0;
 
                   return (
                     <div
@@ -353,8 +358,11 @@ export default function CatalogPage() {
                             {RARITY_LABELS[item.rarity]}
                           </span>
                         </div>
-                        <p className="text-[10px] text-[#888] mb-2">
-                          by <strong className="text-[#4A1FA8]">{item.creator}</strong>
+                        <p className="text-[10px] text-[#888] mb-2 flex items-center gap-2 flex-wrap">
+                          <span>by <strong className="text-[#4A1FA8]">{item.creator}</strong></span>
+                          <span className="text-[#FF6B6B] font-bold">
+                            🔥 {soldCount.toLocaleString()} sold
+                          </span>
                         </p>
                         <p className="text-xs text-[#666] mb-3 line-clamp-2" style={{ minHeight: "32px" }}>
                           {item.description}
