@@ -30,14 +30,13 @@ const ACCEL = 60;
 const DECEL = 80;
 const ROTATION_LERP = 18;
 
-// Camera defaults (user adjustable)
 const CAMERA_MIN_DIST = 3;
 const CAMERA_MAX_DIST = 18;
 const CAMERA_DEFAULT_DIST = 9;
 const CAMERA_DEFAULT_PITCH = 0.32;
 const CAMERA_MIN_PITCH = -0.25;
 const CAMERA_MAX_PITCH = 1.15;
-const CAMERA_LOOK_OFFSET = -0.2; // relative to player group y
+const CAMERA_LOOK_OFFSET = -0.2;
 const CAMERA_LERP = 10;
 
 const CHARACTER_Y_OFFSET = 1.6;
@@ -307,7 +306,7 @@ function RemotePlayer({
 }
 
 // ============================================================
-// LOCAL PLAYER — Roblox-style camera
+// LOCAL PLAYER
 // ============================================================
 function LocalPlayer({
   config,
@@ -338,7 +337,6 @@ function LocalPlayer({
   const lastBroadcastRef = useRef(0);
   const needsBroadcastRef = useRef(true);
 
-  // Camera state (in refs so mouse updates don't cause re-renders)
   const cameraYawRef = useRef(0);
   const cameraPitchRef = useRef(CAMERA_DEFAULT_PITCH);
   const cameraDistRef = useRef(CAMERA_DEFAULT_DIST);
@@ -347,7 +345,7 @@ function LocalPlayer({
   const walkingStateRef = useRef(false);
 
   // ============================================================
-  // MOUSE CAMERA CONTROLS
+  // MOUSE CAMERA
   // ============================================================
   useEffect(() => {
     const canvas = gl.domElement;
@@ -355,13 +353,10 @@ function LocalPlayer({
     let dragging = false;
     let lastX = 0;
     let lastY = 0;
-    let activeButton = -1;
 
     const onMouseDown = (e: MouseEvent) => {
-      // Left or right click starts a drag
       if (e.button === 0 || e.button === 2) {
         dragging = true;
-        activeButton = e.button;
         lastX = e.clientX;
         lastY = e.clientY;
         canvas.style.cursor = "grabbing";
@@ -386,7 +381,6 @@ function LocalPlayer({
     const onMouseUp = () => {
       if (dragging) {
         dragging = false;
-        activeButton = -1;
         canvas.style.cursor = "grab";
       }
     };
@@ -428,14 +422,15 @@ function LocalPlayer({
 
     const keys = getKeys();
 
-    // ===== INPUT (local, relative to camera) =====
+    // ===== INPUT — note A/D are flipped from the input
+    // keys so that D moves right on screen (see transform below)
     let localX = 0;
     let localZ = 0;
     if (!inputDisabled) {
       if (keys.forward) localZ += 1;
       if (keys.backward) localZ -= 1;
-      if (keys.right) localX += 1;
-      if (keys.left) localX -= 1;
+      if (keys.left) localX += 1;    // A → +1
+      if (keys.right) localX -= 1;   // D → -1
     }
 
     const inputLen = Math.hypot(localX, localZ);
@@ -446,7 +441,7 @@ function LocalPlayer({
       localZ /= inputLen;
     }
 
-    // ===== CONVERT TO WORLD SPACE (rotate by camera yaw) =====
+    // ===== CONVERT TO WORLD SPACE =====
     const yaw = cameraYawRef.current;
     const cosY = Math.cos(yaw);
     const sinY = Math.sin(yaw);
@@ -525,7 +520,7 @@ function LocalPlayer({
 
     groupRef.current.position.copy(positionRef.current);
 
-    // ===== CAMERA (orbits around player using yaw/pitch/dist) =====
+    // ===== CAMERA =====
     const camYaw = cameraYawRef.current;
     const camPitch = cameraPitchRef.current;
     const camDist = cameraDistRef.current;
@@ -540,11 +535,6 @@ function LocalPlayer({
     const targetCamX = lookX - Math.sin(camYaw) * horizDist;
     const targetCamY = lookY + vertDist;
     const targetCamZ = lookZ - Math.cos(camYaw) * horizDist;
-
-    // Clamp camera Y so it doesn't go underground
-    if (targetCamY < 0.5) {
-      // keep it above ground
-    }
 
     const camLerp = Math.min(1, delta * CAMERA_LERP);
     state.camera.position.x += (targetCamX - state.camera.position.x) * camLerp;
@@ -1012,7 +1002,7 @@ export default function WorldPage() {
         </div>
       </div>
 
-      {/* BOTTOM LEFT — controls */}
+      {/* BOTTOM LEFT */}
       <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1">
         <p className="font-bold mb-1">🎮 Controls</p>
         <p>
@@ -1032,7 +1022,7 @@ export default function WorldPage() {
         </p>
       </div>
 
-      {/* BOTTOM RIGHT — players in world */}
+      {/* BOTTOM RIGHT */}
       {others.length > 0 && (
         <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1 max-w-[180px]">
           <p className="font-bold mb-1">👥 In this world</p>
