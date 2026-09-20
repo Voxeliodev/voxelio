@@ -135,7 +135,7 @@ function BodyPart({
   return <>{children}</>;
 }
 
-function Character({ config }: { config: AvatarConfig }) {
+export function Character({ config }: { config: AvatarConfig }) {
   const skin = config.skinTone;
   const pants = config.pantsColor;
   const bodyParts = config.bodyParts;

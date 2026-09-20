@@ -13,41 +13,67 @@ import {
 import { isOwnerAccount } from "../../lib/badges";
 import AccountBadge from "../components/AccountBadge";
 import NavLink from "../components/NavLink";
+import { fetchWorlds, type World } from "../../lib/worlds";
 
-type FilterTab = "popular" | "top-rated" | "new" | "featured";
-
-const FILTER_TABS: { id: FilterTab; label: string; emoji: string }[] = [
-  { id: "popular", label: "Popular", emoji: "🔥" },
-  { id: "top-rated", label: "Top Rated", emoji: "⭐" },
-  { id: "new", label: "New", emoji: "🆕" },
-  { id: "featured", label: "Featured", emoji: "✨" },
-];
+type Sort = "popular" | "top" | "new";
 
 const CATEGORIES = [
-  { id: "all", name: "All Categories", emoji: "🌐" },
+  { id: "all", name: "All", emoji: "🌐" },
   { id: "adventure", name: "Adventure", emoji: "🗺️" },
-  { id: "obstacle", name: "Obstacle", emoji: "🏃" },
+  { id: "obstacle", name: "Obby", emoji: "🏃" },
   { id: "roleplay", name: "Roleplay", emoji: "🎭" },
   { id: "building", name: "Building", emoji: "🏗️" },
   { id: "horror", name: "Horror", emoji: "👻" },
   { id: "tycoon", name: "Tycoon", emoji: "💰" },
   { id: "pvp", name: "PvP", emoji: "⚔️" },
+  { id: "racing", name: "Racing", emoji: "🏎️" },
   { id: "social", name: "Social", emoji: "💬" },
 ];
 
+function formatCount(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}K`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
+}
+
 export default function GamesPage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [filter, setFilter] = useState<FilterTab>("popular");
+  const [worlds, setWorlds] = useState<World[]>([]);
+  const [featured, setFeatured] = useState<World[]>([]);
+  const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState("all");
+  const [sort, setSort] = useState<Sort>("popular");
   const [search, setSearch] = useState("");
 
-  const refresh = () => setCurrentUser(getCurrentUser());
+  const refreshUser = () => setCurrentUser(getCurrentUser());
 
   useEffect(() => {
-    refresh();
-    const unsub = subscribeAuth(() => refresh());
+    refreshUser();
+    const unsub = subscribeAuth(() => refreshUser());
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+
+    const timer = setTimeout(() => {
+      Promise.all([
+        fetchWorlds({ sort, category, search }),
+        fetchWorlds({ featuredOnly: true, sort: "popular" }),
+      ]).then(([list, feats]) => {
+        if (cancelled) return;
+        setWorlds(list);
+        setFeatured(feats.slice(0, 5));
+        setLoading(false);
+      });
+    }, 200);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [sort, category, search]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -121,7 +147,7 @@ export default function GamesPage() {
               onChange={(e) => setSearch(e.target.value)}
               className="bg-transparent text-white placeholder-white/60 text-sm outline-none w-48"
             />
-            <button className="text-white text-sm">🔍</button>
+            <span className="text-white text-sm">🔍</span>
           </div>
         </div>
       </header>
@@ -157,32 +183,32 @@ export default function GamesPage() {
       <main className="max-w-6xl mx-auto px-3 py-6">
 
         {/* HERO */}
-        <div className="bg-gradient-to-r from-[#6C3CE0] via-[#7B4FF7] to-[#00B8D4] rounded border-2 border-[#4A1FA8] p-8 text-white relative overflow-hidden mb-6">
+        <div className="bg-gradient-to-r from-[#6C3CE0] via-[#7B4FF7] to-[#00B8D4] rounded border-2 border-[#4A1FA8] p-6 md:p-8 text-white relative overflow-hidden mb-6">
           <div className="relative z-10 max-w-2xl">
             <div className="inline-block bg-white/20 backdrop-blur-sm px-3 py-1 rounded-full text-[11px] font-bold mb-3">
-              🎮 COMING SOON
+              🎮 {worlds.length} WORLDS LIVE
             </div>
             <h1
               className="text-3xl md:text-5xl font-black mb-3"
               style={{ textShadow: "2px 2px 0 rgba(0,0,0,0.3)" }}
             >
-              Explore Worlds
+              Discover Worlds
             </h1>
             <p className="text-white/90 mb-5 text-sm md:text-base max-w-xl">
-              Discover incredible worlds created by the Voxelio community. Adventure, obstacle courses, tycoons, roleplay, and more — all built with pure creativity.
+              Jump into any world with your custom avatar. Meet other players, build, race, explore — all in real time.
             </p>
             <div className="flex gap-2 flex-wrap">
+              <Link
+                href={`/games/${featured[0]?.id || "voxelio-plaza"}`}
+                className="bg-gradient-to-b from-[#22C55E] to-[#16A34A] text-white font-bold text-sm px-5 py-2.5 rounded border-2 border-[#15803D] hover:from-[#4ADE80] hover:to-[#22C55E] transition shadow-md inline-block"
+              >
+                🎮 Quick Play
+              </Link>
               <Link
                 href="/#create"
                 className="bg-white text-[#4A1FA8] font-bold text-sm px-5 py-2.5 rounded border-2 border-[#4A1FA8] hover:bg-[#F0E8FF] transition shadow-md inline-block"
               >
                 🛠️ Create a World
-              </Link>
-              <Link
-                href="/catalog"
-                className="bg-[#1A1A2E] text-white font-bold text-sm px-5 py-2.5 rounded border-2 border-white/30 hover:bg-[#2A2A4E] transition shadow-md inline-block"
-              >
-                🛍️ Browse Catalog
               </Link>
             </div>
           </div>
@@ -191,150 +217,183 @@ export default function GamesPage() {
           </div>
         </div>
 
-        {/* FILTER TABS */}
-        <div className="bg-white border-2 border-[#C5C8D6] rounded p-2 mb-4 flex flex-wrap gap-2">
-          {FILTER_TABS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setFilter(t.id)}
-              className={`px-4 py-2 text-sm font-bold rounded border transition flex items-center gap-1.5 ${
-                filter === t.id
-                  ? "bg-[#6C3CE0] text-white border-[#4A1FA8]"
-                  : "bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE]"
-              }`}
-            >
-              <span>{t.emoji}</span>
-              <span>{t.label}</span>
-            </button>
-          ))}
-        </div>
+        {/* FEATURED ROW */}
+        {featured.length > 0 && (
+          <section className="mb-6">
+            <div className="flex items-center justify-between mb-3 border-b-2 border-[#C5C8D6] pb-1">
+              <h2 className="text-lg font-black text-[#4A1FA8] flex items-center gap-2">
+                ✨ Featured
+              </h2>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+              {featured.map((world) => (
+                <WorldCard key={world.id} world={world} compact />
+              ))}
+            </div>
+          </section>
+        )}
 
-        {/* CATEGORY CHIPS */}
-        <div className="bg-white border-2 border-[#C5C8D6] rounded p-3 mb-6">
-          <p className="text-[10px] font-bold text-[#666] uppercase tracking-wide mb-2">Categories</p>
-          <div className="flex flex-wrap gap-1.5">
-            {CATEGORIES.map((cat) => (
-              <button
-                key={cat.id}
-                onClick={() => setCategory(cat.id)}
-                className={`px-3 py-1.5 text-xs font-bold rounded-full border transition flex items-center gap-1.5 ${
-                  category === cat.id
-                    ? "bg-[#6C3CE0] text-white border-[#4A1FA8]"
-                    : "bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE]"
-                }`}
-              >
-                <span>{cat.emoji}</span>
-                <span>{cat.name}</span>
-              </button>
-            ))}
+        {/* FILTERS */}
+        <div className="bg-white border-2 border-[#C5C8D6] rounded p-3 mb-4 space-y-3">
+          <div>
+            <p className="text-[10px] font-bold text-[#666] uppercase tracking-wide mb-2">Sort by</p>
+            <div className="flex flex-wrap gap-1.5">
+              {([
+                { id: "popular" as const, label: "Popular", emoji: "🔥" },
+                { id: "top" as const, label: "Top Rated", emoji: "⭐" },
+                { id: "new" as const, label: "New", emoji: "🆕" },
+              ]).map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setSort(t.id)}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-full border transition flex items-center gap-1.5 ${
+                    sort === t.id
+                      ? "bg-[#6C3CE0] text-white border-[#4A1FA8]"
+                      : "bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE]"
+                  }`}
+                >
+                  <span>{t.emoji}</span>
+                  <span>{t.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-bold text-[#666] uppercase tracking-wide mb-2">Category</p>
+            <div className="flex flex-wrap gap-1.5">
+              {CATEGORIES.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setCategory(cat.id)}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-full border transition flex items-center gap-1.5 ${
+                    category === cat.id
+                      ? "bg-[#6C3CE0] text-white border-[#4A1FA8]"
+                      : "bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE]"
+                  }`}
+                >
+                  <span>{cat.emoji}</span>
+                  <span>{cat.name}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* EMPTY STATE */}
-        <div className="bg-white border-2 border-dashed border-[#C5C8D6] rounded p-16 text-center mb-6">
-          <div className="text-7xl mb-4">🌍</div>
-          <h2 className="font-black text-2xl text-[#1A1A2E] mb-2">No Worlds Yet</h2>
-          <p className="text-sm text-[#666] max-w-lg mx-auto mb-6">
-            The Voxelio universe is still being built. Worlds will start appearing here as soon as creators like you start building them.
-          </p>
-          <div className="flex gap-2 justify-center flex-wrap">
-            <Link
-              href="/#create"
-              className="inline-block bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white font-bold text-sm px-6 py-2.5 rounded border border-[#4A1FA8] hover:from-[#8B5FFF] hover:to-[#6A3FD7] transition shadow-md"
-            >
-              🛠️ Be the First Creator
-            </Link>
-            {!currentUser && (
-              <Link
-                href="/signup"
-                className="inline-block bg-[#EEF0F7] text-[#4A1FA8] font-bold text-sm px-6 py-2.5 rounded border border-[#C5C8D6] hover:bg-[#E0E3EE] transition"
-              >
-                Sign Up Free
-              </Link>
-            )}
+        {/* MAIN GRID */}
+        <section>
+          <div className="flex items-center justify-between mb-3 border-b-2 border-[#C5C8D6] pb-1">
+            <h2 className="text-lg font-black text-[#4A1FA8] flex items-center gap-2">
+              🌍 All Worlds
+            </h2>
+            <span className="text-xs text-[#666] font-semibold">
+              {loading ? "Loading…" : `${worlds.length} ${worlds.length === 1 ? "world" : "worlds"}`}
+            </span>
           </div>
-        </div>
 
-        {/* WHAT'S COMING */}
-        <div className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden">
-          <div className="bg-[#6C3CE0] text-white text-sm font-bold px-3 py-2 border-b border-[#4A1FA8]">
-            🚧 What's Coming
-          </div>
-          <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-            {[
-              { emoji: "🎯", title: "Featured Worlds", desc: "Hand-picked creations from the Voxelio team" },
-              { emoji: "🔥", title: "Trending Now", desc: "See what everyone's playing right this second" },
-              { emoji: "⭐", title: "Like & Rate", desc: "Rate worlds and help great creations rise to the top" },
-              { emoji: "👥", title: "Play with Friends", desc: "Join your friends' worlds with a single click" },
-              { emoji: "🏆", title: "Creator Leaderboards", desc: "Top creators earn exclusive badges and Voxbux" },
-              { emoji: "🛡️", title: "Safe & Moderated", desc: "Advanced chat filtering and parental controls" },
-            ].map((item) => (
-              <div
-                key={item.title}
-                className="flex items-start gap-3 bg-[#EEF0F7] border border-[#C5C8D6] rounded p-3"
-              >
-                <div className="text-3xl flex-shrink-0">{item.emoji}</div>
-                <div>
-                  <h3 className="font-black text-sm text-[#1A1A2E]">{item.title}</h3>
-                  <p className="text-xs text-[#666]">{item.desc}</p>
+          {loading ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {[...Array(8)].map((_, i) => (
+                <div key={i} className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden">
+                  <div className="aspect-square bg-[#EEF0F7] animate-pulse" />
+                  <div className="p-2 space-y-1">
+                    <div className="h-3 bg-[#EEF0F7] rounded animate-pulse" />
+                    <div className="h-2 bg-[#EEF0F7] rounded animate-pulse w-2/3" />
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </div>
+              ))}
+            </div>
+          ) : worlds.length === 0 ? (
+            <div className="bg-white border-2 border-dashed border-[#C5C8D6] rounded p-16 text-center">
+              <div className="text-7xl mb-4">🔍</div>
+              <h3 className="font-black text-2xl text-[#1A1A2E] mb-2">No Worlds Found</h3>
+              <p className="text-sm text-[#666] max-w-lg mx-auto mb-6">
+                Try a different search, sort, or category.
+              </p>
+              <button
+                onClick={() => { setSearch(""); setCategory("all"); setSort("popular"); }}
+                className="text-xs font-bold text-[#6C3CE0] hover:underline"
+              >
+                Clear filters
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {worlds.map((world) => (
+                <WorldCard key={world.id} world={world} />
+              ))}
+            </div>
+          )}
+        </section>
       </main>
 
       <footer className="bg-[#1A1A2E] text-white mt-8 border-t-4 border-[#4A1FA8]">
-        <div className="max-w-6xl mx-auto px-3 py-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-sm">
-            <div>
-              <h4 className="font-bold mb-2 text-[#00E5FF]">Voxelio</h4>
-              <ul className="space-y-1 text-gray-400 text-xs">
-                <li><Link href="#" className="hover:text-white">About Us</Link></li>
-                <li><Link href="#" className="hover:text-white">Careers</Link></li>
-                <li><Link href="#" className="hover:text-white">Press</Link></li>
-                <li><Link href="#" className="hover:text-white">Blog</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-bold mb-2 text-[#00E5FF]">Community</h4>
-              <ul className="space-y-1 text-gray-400 text-xs">
-                <li><Link href="#" className="hover:text-white">Forums</Link></li>
-                <li><Link href="#" className="hover:text-white">Discord</Link></li>
-                <li><Link href="#" className="hover:text-white">Events</Link></li>
-                <li><Link href="#" className="hover:text-white">Developer Hub</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-bold mb-2 text-[#00E5FF]">Support</h4>
-              <ul className="space-y-1 text-gray-400 text-xs">
-                <li><Link href="#" className="hover:text-white">Help Center</Link></li>
-                <li><Link href="#" className="hover:text-white">Safety</Link></li>
-                <li><Link href="#" className="hover:text-white">Report Abuse</Link></li>
-                <li><Link href="#" className="hover:text-white">Parental Controls</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-bold mb-2 text-[#00E5FF]">Legal</h4>
-              <ul className="space-y-1 text-gray-400 text-xs">
-                <li><Link href="#" className="hover:text-white">Terms of Service</Link></li>
-                <li><Link href="#" className="hover:text-white">Privacy Policy</Link></li>
-                <li><Link href="#" className="hover:text-white">DMCA</Link></li>
-                <li><Link href="#" className="hover:text-white">Cookies</Link></li>
-              </ul>
-            </div>
-          </div>
-          <div className="border-t border-gray-700 mt-6 pt-4 flex flex-col md:flex-row justify-between items-center gap-2 text-xs text-gray-500">
-            <p>© 2026 Voxelio. All rights reserved. Voxelio is not affiliated with any other platform.</p>
-            <div className="flex gap-3">
-              <Link href="#" className="hover:text-white">𝕏</Link>
-              <Link href="#" className="hover:text-white">▶</Link>
-              <Link href="#" className="hover:text-white">💬</Link>
-              <Link href="#" className="hover:text-white">♪</Link>
-            </div>
-          </div>
+        <div className="max-w-6xl mx-auto px-3 py-6 text-center text-xs text-gray-500">
+          © 2026 Voxelio. Voxelio is not affiliated with any other platform.
         </div>
       </footer>
     </div>
   );
+}
+
+// ============================================================
+// WORLD CARD
+// ============================================================
+function WorldCard({ world, compact = false }: { world: World; compact?: boolean }) {
+  return (
+    <Link
+      href={`/games/${world.id}`}
+      className="group bg-white border-2 border-[#C5C8D6] rounded overflow-hidden hover:border-[#6C3CE0] hover:shadow-lg transition"
+    >
+      {/* Thumbnail */}
+      <div
+        className="aspect-square flex items-center justify-center relative overflow-hidden"
+        style={{
+          background: `linear-gradient(135deg, ${world.thumbnailColor} 0%, ${shade(world.thumbnailColor, -30)} 100%)`,
+        }}
+      >
+        <span className="text-6xl md:text-7xl select-none drop-shadow-lg group-hover:scale-110 transition-transform duration-300">
+          {world.thumbnailEmoji}
+        </span>
+
+        {world.featured && (
+          <span className="absolute top-1.5 left-1.5 bg-[#FFD700] text-[#1A1A2E] text-[9px] font-black px-1.5 py-0.5 rounded">
+            ⭐ FEATURED
+          </span>
+        )}
+
+        <span className="absolute top-1.5 right-1.5 bg-black/50 backdrop-blur text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
+          {world.category}
+        </span>
+      </div>
+
+      {/* Info */}
+      <div className={`p-2 ${compact ? "" : "space-y-1"}`}>
+        <h3 className="font-black text-xs text-[#1A1A2E] truncate leading-tight">
+          {world.name}
+        </h3>
+        <p className="text-[10px] text-[#666] truncate">
+          by <strong className="text-[#4A1FA8]">{world.creator}</strong>
+        </p>
+
+        {!compact && (
+          <div className="flex items-center justify-between text-[10px] text-[#666] pt-1 border-t border-[#E5E7F0]">
+            <span title="Likes">👍 {formatCount(world.likes)}</span>
+            <span title="Visits">👥 {formatCount(world.visits)}</span>
+          </div>
+        )}
+      </div>
+    </Link>
+  );
+}
+
+// Lighten or darken a hex color by a percent (-100..100)
+function shade(hex: string, percent: number): string {
+  const clean = hex.replace("#", "");
+  const num = parseInt(clean, 16);
+  const amt = Math.round(2.55 * percent);
+  const r = Math.max(0, Math.min(255, (num >> 16) + amt));
+  const g = Math.max(0, Math.min(255, ((num >> 8) & 0x00ff) + amt));
+  const b = Math.max(0, Math.min(255, (num & 0x0000ff) + amt));
+  return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 }
