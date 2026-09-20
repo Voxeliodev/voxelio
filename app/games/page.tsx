@@ -86,7 +86,7 @@ export default function GamesPage() {
   const navTabs: any[] = [
     { name: "Home", href: "/" },
     { name: "Games", href: "/games", active: true },
-    { name: "Create", href: "/#create" },
+    { name: "Create", href: "/create" },
     { name: "Catalog", href: "/catalog" },
     ...(isOwner ? [{ name: "Dev", href: "/dev", dev: true }] : []),
     { name: "Friends", href: "/friends" },
@@ -205,7 +205,7 @@ export default function GamesPage() {
                 🎮 Quick Play
               </Link>
               <Link
-                href="/#create"
+                href="/create"
                 className="bg-white text-[#4A1FA8] font-bold text-sm px-5 py-2.5 rounded border-2 border-[#4A1FA8] hover:bg-[#F0E8FF] transition shadow-md inline-block"
               >
                 🛠️ Create a World
@@ -345,7 +345,6 @@ function WorldCard({ world, compact = false }: { world: World; compact?: boolean
       href={`/games/${world.id}`}
       className="group bg-white border-2 border-[#C5C8D6] rounded overflow-hidden hover:border-[#6C3CE0] hover:shadow-lg transition"
     >
-      {/* Thumbnail */}
       <div
         className="aspect-square flex items-center justify-center relative overflow-hidden"
         style={{
@@ -367,7 +366,6 @@ function WorldCard({ world, compact = false }: { world: World; compact?: boolean
         </span>
       </div>
 
-      {/* Info */}
       <div className={`p-2 ${compact ? "" : "space-y-1"}`}>
         <h3 className="font-black text-xs text-[#1A1A2E] truncate leading-tight">
           {world.name}

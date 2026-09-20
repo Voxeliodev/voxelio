@@ -13,6 +13,7 @@ export type World = {
   thumbnailEmoji: string;
   thumbnailColor: string;
   category: string;
+  layout: string;
   creator: string;
   maxPlayers: number;
   visits: number;
@@ -30,6 +31,7 @@ function rowToWorld(row: any): World {
     thumbnailEmoji: row.thumbnail_emoji || "🌍",
     thumbnailColor: row.thumbnail_color || "#7B2FF7",
     category: row.category || "adventure",
+    layout: row.layout || "plaza",
     creator: row.creator || "Voxelio",
     maxPlayers: row.max_players ?? 20,
     visits: Number(row.visits) || 0,
@@ -85,6 +87,54 @@ export async function fetchWorldById(id: string): Promise<World | null> {
 }
 
 export async function incrementWorldVisits(id: string): Promise<void> {
-  // Fire and forget; if it fails we don't care
   await supabase.rpc("increment_world_visits", { world_id: id }).then(() => {});
+}
+
+// ============================================================
+// CREATE
+// ============================================================
+export async function createWorld(input: {
+  name: string;
+  description: string;
+  category: string;
+  layout: string;
+  thumbnailEmoji: string;
+  thumbnailColor: string;
+  creator: string;
+  maxPlayers?: number;
+}): Promise<{ success: boolean; error?: string; world?: World }> {
+  // Generate a clean, readable ID
+  const slug = input.name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 40);
+
+  const suffix = Math.random().toString(36).slice(2, 7);
+  const id = `${slug || "world"}-${suffix}`;
+
+  const row = {
+    id,
+    name: input.name.trim().slice(0, 60),
+    description: input.description.trim().slice(0, 240),
+    thumbnail_emoji: input.thumbnailEmoji || "🌍",
+    thumbnail_color: input.thumbnailColor || "#7B2FF7",
+    category: input.category || "adventure",
+    layout: input.layout || "plaza",
+    creator: input.creator,
+    max_players: input.maxPlayers ?? 20,
+  };
+
+  const { data, error } = await supabase
+    .from("worlds")
+    .insert(row)
+    .select()
+    .single();
+
+  if (error) {
+    console.error("createWorld error:", error.message);
+    return { success: false, error: error.message };
+  }
+  return { success: true, world: rowToWorld(data) };
 }

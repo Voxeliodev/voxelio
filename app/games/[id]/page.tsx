@@ -11,6 +11,7 @@ import AccountBadge from "../../components/AccountBadge";
 import { getCurrentUser, formatVoxbux, type User, type AvatarConfig } from "../../../lib/auth";
 import { supabase } from "../../../lib/supabase";
 import { fetchWorldById, incrementWorldVisits, type World } from "../../../lib/worlds";
+import { getLayout, type BlockData } from "../../../lib/worldLayouts";
 
 // ============================================================
 // VOXELIO MULTIPLAYER WORLD
@@ -44,23 +45,6 @@ const CHAT_LIFETIME_MS = 5000;
 const CHAT_MAX_LENGTH = 120;
 
 // ============================================================
-// BLOCKS
-// ============================================================
-const BLOCKS: {
-  position: [number, number, number];
-  size: [number, number, number];
-  color: string;
-}[] = [
-  { position: [5, 1, -5], size: [2, 2, 2], color: "#7B2FF7" },
-  { position: [-8, 1.5, -3], size: [3, 3, 3], color: "#00B8D4" },
-  { position: [10, 0.75, 8], size: [1.5, 1.5, 1.5], color: "#FFD700" },
-  { position: [-4, 2, 6], size: [4, 4, 4], color: "#EC4899" },
-  { position: [0, 3, -15], size: [6, 6, 6], color: "#4B5563" },
-  { position: [15, 2, 0], size: [4, 4, 1], color: "#22C55E" },
-  { position: [-15, 2, -10], size: [4, 4, 1], color: "#EF4444" },
-];
-
-// ============================================================
 // TYPES
 // ============================================================
 type RemotePlayerData = {
@@ -84,11 +68,11 @@ type ChatMessage = {
 // ============================================================
 // COLLISION
 // ============================================================
-function resolveCollisions(pos: THREE.Vector3): void {
+function resolveCollisions(pos: THREE.Vector3, blocks: BlockData[]): void {
   for (let iter = 0; iter < 4; iter++) {
     let anyResolved = false;
 
-    for (const b of BLOCKS) {
+    for (const b of blocks) {
       const [bx, by, bz] = b.position;
       const [sx, sy, sz] = b.size;
 
@@ -136,11 +120,11 @@ function resolveCollisions(pos: THREE.Vector3): void {
   }
 }
 
-function isGrounded(pos: THREE.Vector3): boolean {
+function isGrounded(pos: THREE.Vector3, blocks: BlockData[]): boolean {
   const feetY = pos.y - CHARACTER_Y_OFFSET;
   if (feetY <= 0.08) return true;
 
-  for (const b of BLOCKS) {
+  for (const b of blocks) {
     const topY = b.position[1] + b.size[1] / 2;
     if (
       Math.abs(feetY - topY) < 0.12 &&
@@ -154,7 +138,7 @@ function isGrounded(pos: THREE.Vector3): boolean {
 }
 
 // ============================================================
-// CHAT BUBBLE — floats above a player's head
+// CHAT BUBBLE
 // ============================================================
 function ChatBubble({ username, text }: { username: string; text: string }) {
   return (
@@ -190,7 +174,6 @@ function RemotePlayer({
   const currentRef = useRef(new THREE.Vector3(...data.targetPos));
   const currentRotRef = useRef(data.targetRotY);
   const walkingRef = useRef(false);
-  const lastPosRef = useRef(new THREE.Vector3(...data.targetPos));
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
@@ -206,11 +189,8 @@ function RemotePlayer({
     currentRotRef.current += diff * Math.min(1, delta * 12);
     groupRef.current.rotation.y = currentRotRef.current;
 
-    // Walking heuristic: distance between rendered pos and target
     const dist = currentRef.current.distanceTo(target);
     walkingRef.current = dist > 0.04;
-
-    lastPosRef.current.copy(currentRef.current);
   });
 
   return (
@@ -243,12 +223,14 @@ function RemotePlayer({
 function LocalPlayer({
   config,
   username,
+  blocks,
   onMove,
   chatMessage,
   inputDisabled,
 }: {
   config: AvatarConfig;
   username: string;
+  blocks: BlockData[];
   onMove: (pos: [number, number, number], rotY: number) => void;
   chatMessage?: ChatMessage | null;
   inputDisabled: boolean;
@@ -271,7 +253,6 @@ function LocalPlayer({
 
     let dx = 0;
     let dz = 0;
-    // Ignore movement while chat input is focused
     if (!inputDisabled) {
       if (keys.forward) dz -= 1;
       if (keys.backward) dz += 1;
@@ -302,38 +283,32 @@ function LocalPlayer({
       needsBroadcastRef.current = true;
     }
 
-    // Jump
     if (!inputDisabled && keys.jump && groundedRef.current) {
       velocityYRef.current = JUMP_VELOCITY;
       groundedRef.current = false;
     }
 
-    // Gravity
     velocityYRef.current += GRAVITY * delta;
     positionRef.current.y += velocityYRef.current * delta;
 
-    // Floor
     if (positionRef.current.y < CHARACTER_Y_OFFSET) {
       positionRef.current.y = CHARACTER_Y_OFFSET;
       velocityYRef.current = 0;
     }
 
-    // Collide with blocks
-    resolveCollisions(positionRef.current);
+    resolveCollisions(positionRef.current, blocks);
 
-    groundedRef.current = isGrounded(positionRef.current) && velocityYRef.current <= 0.01;
+    groundedRef.current = isGrounded(positionRef.current, blocks) && velocityYRef.current <= 0.01;
     if (groundedRef.current && velocityYRef.current < 0) {
       velocityYRef.current = 0;
     }
 
-    // Bounds
     const bound = 95;
     positionRef.current.x = Math.max(-bound, Math.min(bound, positionRef.current.x));
     positionRef.current.z = Math.max(-bound, Math.min(bound, positionRef.current.z));
 
     groupRef.current.position.copy(positionRef.current);
 
-    // Camera
     const targetCamX = positionRef.current.x - Math.sin(facingRef.current) * CAMERA_DISTANCE;
     const targetCamZ = positionRef.current.z - Math.cos(facingRef.current) * CAMERA_DISTANCE;
     const targetCamY = positionRef.current.y + CAMERA_HEIGHT;
@@ -349,7 +324,6 @@ function LocalPlayer({
       positionRef.current.z
     );
 
-    // Broadcast
     const now = performance.now();
     if (
       (needsBroadcastRef.current || !groundedRef.current) &&
@@ -377,11 +351,11 @@ function LocalPlayer({
 // ============================================================
 // SCENE
 // ============================================================
-function Ground() {
+function Ground({ color }: { color: string }) {
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
       <planeGeometry args={[200, 200]} />
-      <meshStandardMaterial color="#4ADE80" roughness={0.95} />
+      <meshStandardMaterial color={color} roughness={0.95} />
     </mesh>
   );
 }
@@ -390,6 +364,7 @@ function WorldScene({
   config,
   userId,
   username,
+  world,
   others,
   chatMessages,
   onMove,
@@ -398,11 +373,15 @@ function WorldScene({
   config: AvatarConfig;
   userId: string;
   username: string;
+  world: World;
   others: RemotePlayerData[];
   chatMessages: ChatMessage[];
   onMove: (pos: [number, number, number], rotY: number) => void;
   inputDisabled: boolean;
 }) {
+  const layout = getLayout(world.layout);
+  const blocks = layout.blocks;
+
   const latestFor = (id: string): ChatMessage | null => {
     let best: ChatMessage | null = null;
     for (const m of chatMessages) {
@@ -429,9 +408,9 @@ function WorldScene({
       />
       <hemisphereLight args={["#ffffff", "#88aa88", 0.4]} />
 
-      <Ground />
+      <Ground color={layout.groundColor} />
 
-      {BLOCKS.map((b, i) => (
+      {blocks.map((b, i) => (
         <mesh key={i} position={b.position} castShadow receiveShadow>
           <boxGeometry args={b.size} />
           <meshStandardMaterial color={b.color} roughness={0.75} />
@@ -441,6 +420,7 @@ function WorldScene({
       <LocalPlayer
         config={config}
         username={username}
+        blocks={blocks}
         onMove={onMove}
         chatMessage={latestFor(userId)}
         inputDisabled={inputDisabled}
@@ -472,14 +452,12 @@ export default function WorldPage() {
   const [onlineCount, setOnlineCount] = useState(1);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
-  // Chat UI state
   const [chatOpen, setChatOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   const channelRef = useRef<any>(null);
 
-  // ===== Load user + world =====
   useEffect(() => {
     const u = getCurrentUser();
     setUser(u);
@@ -494,7 +472,6 @@ export default function WorldPage() {
     });
   }, [worldId]);
 
-  // ===== Chat: Enter opens, Escape cancels =====
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const active = document.activeElement as HTMLElement | null;
@@ -513,14 +490,12 @@ export default function WorldPage() {
     return () => window.removeEventListener("keydown", handler);
   }, [chatOpen]);
 
-  // Focus chat input when opened
   useEffect(() => {
     if (chatOpen && inputRef.current) {
       inputRef.current.focus();
     }
   }, [chatOpen]);
 
-  // Prune expired chat bubbles
   useEffect(() => {
     const timer = setInterval(() => {
       const now = Date.now();
@@ -529,11 +504,10 @@ export default function WorldPage() {
     return () => clearInterval(timer);
   }, []);
 
-  // ===== Send chat =====
   const sendChat = useCallback(() => {
     const me = user;
     const text = draft.trim();
-    if (!me || !text || text.length === 0) {
+    if (!me || !text) {
       setChatOpen(false);
       setDraft("");
       return;
@@ -552,10 +526,8 @@ export default function WorldPage() {
       expiresAt: Date.now() + CHAT_LIFETIME_MS,
     };
 
-    // Show locally immediately
     setChatMessages((prev) => [...prev, msg]);
 
-    // Broadcast
     const channel = channelRef.current;
     if (channel) {
       channel.send({
@@ -579,7 +551,6 @@ export default function WorldPage() {
     setDraft("");
   }, []);
 
-  // ===== Realtime =====
   const handleMove = useCallback(
     (pos: [number, number, number], rotY: number) => {
       const channel = channelRef.current;
@@ -679,7 +650,6 @@ export default function WorldPage() {
     };
   }, [user, worldId, handleMove]);
 
-  // ===== Guards =====
   if (!mounted) {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center text-white">
@@ -749,6 +719,7 @@ export default function WorldPage() {
             config={user.avatarConfig}
             userId={user.id}
             username={user.username}
+            world={world}
             others={others}
             chatMessages={chatMessages}
             onMove={handleMove}
@@ -757,7 +728,7 @@ export default function WorldPage() {
         </Canvas>
       </KeyboardControls>
 
-      {/* TOP LEFT — World info + exit */}
+      {/* TOP LEFT */}
       <div className="absolute top-3 left-3 flex items-center gap-2">
         <Link
           href="/games"
@@ -774,7 +745,7 @@ export default function WorldPage() {
         </div>
       </div>
 
-      {/* TOP RIGHT — Players + balance */}
+      {/* TOP RIGHT */}
       <div className="absolute top-3 right-3 flex items-center gap-2">
         <div className="bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs flex items-center gap-2">
           <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
@@ -789,7 +760,7 @@ export default function WorldPage() {
         </div>
       </div>
 
-      {/* BOTTOM LEFT — Controls */}
+      {/* BOTTOM LEFT */}
       <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1">
         <p className="font-bold mb-1">🎮 Controls</p>
         <p>
@@ -806,7 +777,7 @@ export default function WorldPage() {
         </p>
       </div>
 
-      {/* BOTTOM RIGHT — Players in world */}
+      {/* BOTTOM RIGHT */}
       {others.length > 0 && (
         <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1 max-w-[180px]">
           <p className="font-bold mb-1">👥 In this world</p>
@@ -860,7 +831,7 @@ export default function WorldPage() {
         </div>
       )}
 
-      {/* CHAT HINT (when closed) */}
+      {/* CHAT HINT */}
       {!chatOpen && (
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-none">
           <div className="bg-black/40 backdrop-blur px-3 py-1 rounded-full text-white/50 text-[10px]">
