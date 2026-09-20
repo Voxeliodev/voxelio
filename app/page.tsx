@@ -9,6 +9,7 @@ import { fetchWorlds, type World } from "../lib/worlds";
 import Avatar from "./components/Avatar";
 import AccountBadge from "./components/AccountBadge";
 import NavLink from "./components/NavLink";
+import DailyBonusPopup from "./components/DailyBonusPopup";
 
 function formatCount(n: number): string {
   if (n < 1000) return String(n);
@@ -89,6 +90,9 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans">
+
+      {/* DAILY BONUS POPUP */}
+      <DailyBonusPopup />
 
       {/* TOP UTILITY BAR */}
       <div className="bg-[#1A1A2E] text-white text-xs">

@@ -27,6 +27,10 @@ export const DEFAULT_AVATAR_CONFIG: AvatarConfig = {
 
 export const DEFAULT_VOXBUX = 0;
 
+export const DAILY_BONUS_AMOUNT = 50;
+export const DAILY_BONUS_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+export const DAILY_BONUS_MIN_ACCOUNT_AGE_MS = 24 * 60 * 60 * 1000;
+
 export type IndevTier = "monthly" | "yearly";
 export type IndevClub = { tier: IndevTier; startedAt: number; expiresAt: number };
 
@@ -44,6 +48,8 @@ export type User = {
   incomingRequests: string[]; outgoingRequests: string[]; voxbux: number;
   ownedItems: string[]; bannedUntil?: number | null; banReason?: string;
   indevClub?: IndevClub | null; lastSeen?: number;
+  lastDailyBonus?: number;
+  joinedAtMs?: number;
 };
 
 export type Message = {
@@ -78,6 +84,16 @@ let hydrated = false;
 const listeners = new Set<() => void>();
 function notify() { for (const fn of listeners) fn(); }
 
+// One-shot daily bonus notification
+let pendingBonusClaim: { amount: number; at: number } | null = null;
+
+export function consumeDailyBonusNotification(): number | null {
+  if (!pendingBonusClaim) return null;
+  const amt = pendingBonusClaim.amount;
+  pendingBonusClaim = null;
+  return amt;
+}
+
 export function subscribeAuth(fn: () => void): () => void {
   listeners.add(fn);
   return () => { listeners.delete(fn); };
@@ -99,6 +115,11 @@ export async function hydrateAuth(): Promise<void> {
       .select("*")
       .or(`from_id.eq.${session.user.id},to_id.eq.${session.user.id}`);
     if (msgRows) messagesCache = msgRows.map(rowToMessage);
+
+    // Fire-and-forget daily bonus attempt on hydrate
+    if (currentUserCache) {
+      claimDailyBonus(currentUserCache.id).catch(() => {});
+    }
   }
 
   notify();
@@ -111,6 +132,10 @@ export async function hydrateAuth(): Promise<void> {
         .select("*")
         .or(`from_id.eq.${session.user.id},to_id.eq.${session.user.id}`);
       if (msgRows) messagesCache = msgRows.map(rowToMessage);
+
+      if (currentUserCache) {
+        claimDailyBonus(currentUserCache.id).catch(() => {});
+      }
     } else {
       currentUserCache = null;
       messagesCache = [];
@@ -209,6 +234,7 @@ function normalizeAvatarConfig(raw: any): AvatarConfig {
 function rowToUser(row: any): User {
   const d = row.data || {};
   const friendIds = Array.isArray(d.friendIds) ? d.friendIds : [];
+  const createdMs = row.created_at ? new Date(row.created_at).getTime() : 0;
   return {
     id: row.id,
     displayId: typeof row.display_id === "number" ? row.display_id : null,
@@ -227,6 +253,8 @@ function rowToUser(row: any): User {
     banReason: typeof d.banReason === "string" ? d.banReason : undefined,
     indevClub: d.indevClub && typeof d.indevClub === "object" ? d.indevClub : null,
     lastSeen: typeof d.lastSeen === "number" ? d.lastSeen : 0,
+    lastDailyBonus: typeof d.lastDailyBonus === "number" ? d.lastDailyBonus : 0,
+    joinedAtMs: createdMs,
   };
 }
 
@@ -244,6 +272,7 @@ function userToRow(u: User) {
       ownedItems: u.ownedItems, bannedUntil: u.bannedUntil,
       banReason: u.banReason, indevClub: u.indevClub,
       lastSeen: u.lastSeen ?? Date.now(),
+      lastDailyBonus: u.lastDailyBonus ?? 0,
     },
   };
 }
@@ -377,7 +406,7 @@ export async function createUser(data: { username: string; email: string; passwo
     avatarConfig: { ...DEFAULT_AVATAR_CONFIG, bodyParts: { ...DEFAULT_BODY_PARTS }, partColors: {} },
     friends: 0, friendIds: [], incomingRequests: [], outgoingRequests: [],
     voxbux: DEFAULT_VOXBUX, ownedItems: [], bannedUntil: null, indevClub: null,
-    lastSeen: Date.now(),
+    lastSeen: Date.now(), lastDailyBonus: 0,
   };
 
   const { data: inserted, error: insertError } = await supabase
@@ -411,6 +440,10 @@ export async function verifyLogin(username: string, password: string):
   updateUser(updated);
   currentUserCache = updated;
   notify();
+
+  // Attempt daily bonus — will silently fail if too soon / too new
+  claimDailyBonus(updated.id).catch(() => {});
+
   return { success: true, user: updated };
 }
 
@@ -429,6 +462,52 @@ export async function signOut(): Promise<void> {
   currentUserCache = null;
   messagesCache = [];
   notify();
+}
+
+// ============================================================
+// DAILY BONUS
+// ============================================================
+export async function claimDailyBonus(userId: string): Promise<{
+  success: boolean;
+  amount?: number;
+  error?: string;
+}> {
+  const user = findUserById(userId);
+  if (!user) return { success: false, error: "Not signed in." };
+
+  const now = Date.now();
+  const last = user.lastDailyBonus ?? 0;
+  const joinedAt = user.joinedAtMs ?? 0;
+
+  // Local prechecks (fast, and useful for UI messaging)
+  if (joinedAt && now - joinedAt < DAILY_BONUS_MIN_ACCOUNT_AGE_MS) {
+    return { success: false, error: "Account must be 24h old." };
+  }
+  if (last && now - last < DAILY_BONUS_COOLDOWN_MS) {
+    return { success: false, error: "Already claimed today." };
+  }
+
+  const { data, error } = await supabase.rpc("claim_daily_bonus", {
+    p_user_id: userId,
+    p_amount: DAILY_BONUS_AMOUNT,
+  });
+
+  if (error) return { success: false, error: error.message };
+  if (!data?.success) return { success: false, error: data?.error || "Claim failed." };
+
+  // Reflect new balance in the local cache immediately
+  const cached = usersCache.find((u) => u.id === userId);
+  if (cached) {
+    cached.voxbux = (data.newBalance as number) ?? cached.voxbux;
+    cached.lastDailyBonus = now;
+    if (currentUserCache?.id === userId) currentUserCache = cached;
+  }
+
+  // Queue the popup notification
+  pendingBonusClaim = { amount: DAILY_BONUS_AMOUNT, at: Date.now() };
+
+  notify();
+  return { success: true, amount: DAILY_BONUS_AMOUNT };
 }
 
 // ============================================================
