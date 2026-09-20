@@ -23,6 +23,7 @@ export default function Home() {
   const [filter, setFilter] = useState<"all" | "online" | "friends">("all");
   const [featuredWorlds, setFeaturedWorlds] = useState<World[]>([]);
   const [worldsLoading, setWorldsLoading] = useState(true);
+  const [totalWorlds, setTotalWorlds] = useState(0);
 
   const refresh = () => {
     setUsers(getUsers());
@@ -35,14 +36,18 @@ export default function Home() {
     return () => unsub();
   }, []);
 
-  // ===== Load featured worlds =====
+  // ===== Load featured worlds + total count =====
   useEffect(() => {
     let cancelled = false;
     setWorldsLoading(true);
 
-    fetchWorlds({ featuredOnly: true, sort: "popular" }).then((list) => {
+    Promise.all([
+      fetchWorlds({ featuredOnly: true, sort: "popular" }),
+      fetchWorlds({ sort: "popular" }),
+    ]).then(([featured, all]) => {
       if (cancelled) return;
-      setFeaturedWorlds(list);
+      setFeaturedWorlds(featured);
+      setTotalWorlds(all.length);
       setWorldsLoading(false);
     });
 
@@ -249,7 +254,7 @@ export default function Home() {
               </div>
               <div className="flex justify-between">
                 <span className="text-[#666]">Worlds:</span>
-                <strong className="text-[#4A1FA8]">{featuredWorlds.length}</strong>
+                <strong className="text-[#4A1FA8]">{totalWorlds}</strong>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#666]">Members:</span>
