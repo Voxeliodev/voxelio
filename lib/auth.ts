@@ -232,7 +232,10 @@ function rowToUser(row: any): User {
 function userToRow(u: User) {
   return {
     id: u.id,
-    display_id: u.displayId ?? null,
+    // FIX: use `undefined` instead of `null` so that new accounts
+    // OMIT the field entirely on INSERT — letting Postgres apply its
+    // DEFAULT nextval('profile_display_id_seq') and auto-assign an ID.
+    display_id: u.displayId ?? undefined,
     username: u.username,
     email: u.email,
     data: {
