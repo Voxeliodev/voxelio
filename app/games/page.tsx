@@ -206,9 +206,10 @@ export default function GamesPage() {
               </Link>
               <Link
                 href="/create"
-                className="bg-white text-[#4A1FA8] font-bold text-sm px-5 py-2.5 rounded border-2 border-[#4A1FA8] hover:bg-[#F0E8FF] transition shadow-md inline-block"
+                title="Coming soon — world creation is locked for now"
+                className="bg-white/50 text-[#4A1FA8]/60 font-bold text-sm px-5 py-2.5 rounded border-2 border-[#4A1FA8]/40 transition shadow-md inline-block cursor-not-allowed"
               >
-                🛠️ Create a World
+                🔒 Create a World
               </Link>
             </div>
           </div>
