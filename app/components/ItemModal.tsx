@@ -47,6 +47,10 @@ export default function ItemModal({
       showToast("error", "Sign in to buy items.");
       return;
     }
+    if (item.forSale === false) {
+      showToast("error", "This item is no longer for sale.");
+      return;
+    }
     const result = buyItem(currentUser.id, item.id, item.price);
     if (result.success) {
       showToast("success", `Purchased ${item.name}! You now have ${formatVoxbux(result.newBalance ?? 0)}.`);
@@ -59,6 +63,7 @@ export default function ItemModal({
 
   const owned = currentUser?.ownedItems.includes(item.id) || false;
   const canAfford = (currentUser?.voxbux ?? 0) >= item.price;
+  const offSale = item.forSale === false;
 
   return (
     <div
@@ -110,6 +115,11 @@ export default function ItemModal({
                   <span className="text-[10px] font-bold text-[#666] uppercase">
                     {item.category}
                   </span>
+                  {offSale && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-red-500 text-white uppercase">
+                      Off Sale
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2 pt-2 border-t border-[#E5E7F0]">
@@ -126,10 +136,18 @@ export default function ItemModal({
               <div className="p-3 space-y-3">
                 <div>
                   <p className="text-[10px] text-[#888] uppercase font-bold mb-1">Price</p>
-                  <p className="text-3xl font-black text-[#FFD700]">
-                    {item.price === 0 ? "FREE" : `${item.price} V$`}
+                  <p
+                    className={`text-3xl font-black ${
+                      offSale ? "text-red-500" : "text-[#FFD700]"
+                    }`}
+                  >
+                    {offSale
+                      ? "Off Sale"
+                      : item.price === 0
+                      ? "FREE"
+                      : `${item.price} V$`}
                   </p>
-                  {currentUser && (
+                  {currentUser && !offSale && (
                     <p className="text-xs text-[#666] mt-1">
                       Your balance: <strong className="text-[#4A1FA8]">{formatVoxbux(currentUser.voxbux)}</strong>
                     </p>
@@ -147,6 +165,12 @@ export default function ItemModal({
                     >
                       🎨 Equip
                     </Link>
+                  </div>
+                ) : offSale ? (
+                  <div className="bg-red-50 border-2 border-red-300 rounded p-3 text-center">
+                    <p className="text-xs font-bold text-red-700">
+                      🚫 This item is no longer available for purchase.
+                    </p>
                   </div>
                 ) : !currentUser ? (
                   <Link
@@ -192,8 +216,8 @@ export default function ItemModal({
                   <span>Created by <strong className="text-[#4A1FA8]">{item.creator}</strong></span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span>🔒</span>
-                  <span>Yours forever after purchase</span>
+                  <span>{offSale ? "🚫" : "🔒"}</span>
+                  <span>{offSale ? "No longer available for purchase" : "Yours forever after purchase"}</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span>🎨</span>

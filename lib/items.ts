@@ -22,6 +22,9 @@ export type Item = {
   previewEmoji: string;
   creator: string;
 
+  // If false, item can't be purchased (still ownable via admin/redeem)
+  forSale?: boolean;
+
   modelPath?: string;
   modelScale?: number;
   modelOffset?: [number, number, number];
@@ -192,12 +195,13 @@ export const ITEMS: Item[] = [
     id: "face-golden-times",
     name: "Face of Golden Times",
     description:
-      "A radiant golden face that glows with nostalgia. For those who remember the golden era of Voxelio.",
+      "A radiant golden face that glows with nostalgia. For those who remember the golden era of Voxelio. This item is no longer for sale.",
     price: 250,
     category: "faces",
     rarity: "epic",
     previewEmoji: "🌟",
     creator: "Voxelio",
+    forSale: false,
     faceImageUrl: "/faces/face-of-golden-times.png",
   },
   {

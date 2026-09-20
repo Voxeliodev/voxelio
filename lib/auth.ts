@@ -4,6 +4,7 @@ import { supabase } from "./supabase";
 import { OWNER_USERNAME } from "./badges";
 import { filterMessage } from "./chatFilter";
 import { DEFAULT_BODY_PARTS, type BodyPartSlot } from "./bodyParts";
+import { getItem } from "./items";
 
 export type BodyPartColors = {
   head?: string; torso?: string; leftArm?: string; rightArm?: string;
@@ -232,9 +233,9 @@ function rowToUser(row: any): User {
 function userToRow(u: User) {
   return {
     id: u.id,
-    // FIX: use `undefined` instead of `null` so that new accounts
-    // OMIT the field entirely on INSERT — letting Postgres apply its
-    // DEFAULT nextval('profile_display_id_seq') and auto-assign an ID.
+    // `undefined` (not `null`) so new signups OMIT the field entirely,
+    // letting Postgres apply its DEFAULT nextval('profile_display_id_seq')
+    // and auto-assign a display ID.
     display_id: u.displayId ?? undefined,
     username: u.username,
     email: u.email,
@@ -444,6 +445,13 @@ export function buyItem(userId: string, itemId: string, price: number): { succes
   if (!user) return { success: false, error: "You must be signed in." };
   if (isUserBanned(user)) return { success: false, error: "This account is banned." };
   if (user.ownedItems.includes(itemId)) return { success: false, error: "You already own this item." };
+
+  // Block off-sale items
+  const item = getItem(itemId);
+  if (item && item.forSale === false) {
+    return { success: false, error: "This item is no longer for sale." };
+  }
+
   if (user.voxbux < price) return { success: false, error: `Not enough Voxbux. You need ${price - user.voxbux} more.` };
   const updated: User = { ...user, voxbux: user.voxbux - price, ownedItems: [...user.ownedItems, itemId] };
   updateUser(updated);

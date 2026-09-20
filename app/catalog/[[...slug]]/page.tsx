@@ -323,13 +323,18 @@ export default function CatalogPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {items.map((item) => {
                   const owned = currentUser?.ownedItems.includes(item.id) || false;
+                  const offSale = item.forSale === false;
 
                   return (
                     <div
                       key={item.id}
                       onClick={() => openItem(item)}
                       className={`bg-white border-2 rounded overflow-hidden transition cursor-pointer ${
-                        owned ? "border-green-400 hover:border-green-500" : "border-[#C5C8D6] hover:border-[#6C3CE0]"
+                        owned
+                          ? "border-green-400 hover:border-green-500"
+                          : offSale
+                          ? "border-red-300 hover:border-red-400"
+                          : "border-[#C5C8D6] hover:border-[#6C3CE0]"
                       }`}
                     >
                       <div className="pointer-events-none">
@@ -356,11 +361,23 @@ export default function CatalogPage() {
                         </p>
 
                         <div className="flex items-center justify-between gap-2 border-t border-[#E5E7F0] pt-2">
-                          <span className="font-black text-sm text-[#FFD700]">
-                            {item.price === 0 ? "FREE" : `${item.price} V$`}
+                          <span
+                            className={`font-black text-sm ${
+                              offSale ? "text-red-500" : "text-[#FFD700]"
+                            }`}
+                          >
+                            {offSale
+                              ? "Off Sale"
+                              : item.price === 0
+                              ? "FREE"
+                              : `${item.price} V$`}
                           </span>
 
-                          {owned ? (
+                          {offSale && !owned ? (
+                            <span className="text-xs font-bold py-1.5 px-3 rounded border bg-[#EEF0F7] text-[#999] border-[#C5C8D6] cursor-not-allowed">
+                              Unavailable
+                            </span>
+                          ) : owned ? (
                             <a
                               href="/avatar"
                               onClick={(e) => e.stopPropagation()}
