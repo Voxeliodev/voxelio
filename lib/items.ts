@@ -229,6 +229,19 @@ export const ITEMS: Item[] = [
     forSale: false,
     faceImageUrl: "/faces/radioactive-face-of-power.png",
   },
+  {
+    id: "face-ruby-anger",
+    name: "Ruby Anger Face",
+    description:
+      "A furious ruby-red face that radiates pure rage. Created by CrazyVox. Not available for purchase.",
+    price: 0,
+    category: "faces",
+    rarity: "legendary",
+    previewEmoji: "😡",
+    creator: "CrazyVox",
+    forSale: false,
+    faceImageUrl: "/faces/ruby-anger-face.png",
+  },
 ];
 
 export function getItem(id: string): Item | undefined {
