@@ -22,6 +22,11 @@ import { getLayout, type BlockData } from "../../../lib/worldLayouts";
 import { filterMessage } from "../../../lib/chatFilter";
 
 // ============================================================
+// KILL SWITCHES
+// ============================================================
+const ENABLE_OWNER_BADGE_DETECTION = true;
+
+// ============================================================
 // VOXELIO MULTIPLAYER WORLD
 // ============================================================
 
@@ -60,9 +65,6 @@ const CHAT_LIFETIME_MS = 5000;
 const CHAT_MAX_LENGTH = 120;
 const CHAT_MIN_INTERVAL_MS = 500;
 
-// ============================================================
-// SHARED TOUCH STATE
-// ============================================================
 const touchState = {
   moveX: 0,
   moveZ: 0,
@@ -74,9 +76,6 @@ const touchLookState = {
   pitchDelta: 0,
 };
 
-// ============================================================
-// TYPES
-// ============================================================
 type RemotePlayerData = {
   id: string;
   username: string;
@@ -95,9 +94,6 @@ type ChatMessage = {
   expiresAt: number;
 };
 
-// ============================================================
-// SAFE SPAWN
-// ============================================================
 function findSafeSpawn(blocks: BlockData[]): THREE.Vector3 {
   const spawn = new THREE.Vector3(0, CHARACTER_Y_OFFSET, 0);
   const maxIter = blocks.length + 2;
@@ -138,9 +134,6 @@ function findSafeSpawn(blocks: BlockData[]): THREE.Vector3 {
   return spawn;
 }
 
-// ============================================================
-// COLLISION
-// ============================================================
 function resolveBlockCollisions(pos: THREE.Vector3, blocks: BlockData[]): void {
   for (let iter = 0; iter < 4; iter++) {
     let anyResolved = false;
@@ -242,16 +235,7 @@ function resolvePlayerCollisions(
   }
 }
 
-// ============================================================
-// NAMETAG
-// ============================================================
-function Nametag({
-  username,
-  userId,
-}: {
-  username: string;
-  userId: string;
-}) {
+function Nametag({ username, userId }: { username: string; userId: string }) {
   return (
     <Html
       position={[0, 2.55, 0]}
@@ -275,8 +259,7 @@ function Nametag({
             fontWeight: 700,
             fontSize: 14,
             lineHeight: 1,
-            textShadow:
-              "0 0 2px #000, 0 0 2px #000, 0 0 2px #000, 0 0 2px #000",
+            textShadow: "0 0 2px #000, 0 0 2px #000, 0 0 2px #000, 0 0 2px #000",
           }}
         >
           {username}
@@ -287,9 +270,6 @@ function Nametag({
   );
 }
 
-// ============================================================
-// CHAT BUBBLE
-// ============================================================
 function ChatBubble({ text }: { text: string }) {
   return (
     <Html
@@ -320,9 +300,6 @@ function ChatBubble({ text }: { text: string }) {
   );
 }
 
-// ============================================================
-// REMOTE PLAYER
-// ============================================================
 function RemotePlayer({
   data,
   chatMessage,
@@ -371,9 +348,6 @@ function RemotePlayer({
   );
 }
 
-// ============================================================
-// LOCAL PLAYER
-// ============================================================
 function LocalPlayer({
   config,
   myId,
@@ -644,9 +618,6 @@ function LocalPlayer({
   );
 }
 
-// ============================================================
-// SCENE
-// ============================================================
 function Ground({ color }: { color: string }) {
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
@@ -739,10 +710,6 @@ function WorldScene({
     </>
   );
 }
-
-// ============================================================
-// TOUCH UI
-// ============================================================
 
 function Joystick() {
   const baseRef = useRef<HTMLDivElement>(null);
@@ -852,11 +819,7 @@ function JumpButton() {
   );
 }
 
-function TouchLookArea({
-  onLook,
-}: {
-  onLook: (dx: number, dy: number) => void;
-}) {
+function TouchLookArea({ onLook }: { onLook: (dx: number, dy: number) => void }) {
   const pointerIdRef = useRef<number | null>(null);
   const lastRef = useRef({ x: 0, y: 0 });
 
@@ -983,62 +946,87 @@ export default function WorldPage() {
     };
   }, [user, worldId]);
 
-  // ===== Award "Played with the Owner" if owner is in the same world =====
+  // ===== Award "Played with the Owner" (fully guarded) =====
   useEffect(() => {
+    if (!ENABLE_OWNER_BADGE_DETECTION) return;
     if (!user || !worldId) return;
-    // The owner doesn't award it to themselves
     if (user.username.toLowerCase() === "voxelio") return;
 
     let cancelled = false;
+    let attachedHandler: (() => void) | null = null;
+    let attachedLobby: any = null;
 
-    const checkOwner = async () => {
+    const checkOwner = () => {
       if (cancelled) return;
-      const lobby = lobbyRef.current;
-      if (!lobby) return;
+      try {
+        const lobby = lobbyRef.current;
+        if (!lobby || typeof lobby.presenceState !== "function") return;
 
-      const state = lobby.presenceState?.() || {};
-      let ownerPresent = false;
+        const state = lobby.presenceState() as Record<string, any[]>;
+        if (!state || typeof state !== "object") return;
 
-      for (const key of Object.keys(state)) {
-        const entries = state[key] as any[];
-        for (const e of entries) {
-          if (!e) continue;
-          const name = String(e.username || "").toLowerCase();
-          if (name === "voxelio" && e.worldId === worldId) {
-            ownerPresent = true;
-            break;
+        let ownerPresent = false;
+
+        for (const key of Object.keys(state)) {
+          const entries = state[key];
+          if (!Array.isArray(entries)) continue;
+          for (const e of entries) {
+            if (!e || typeof e !== "object") continue;
+            const name = String((e as any).username || "").toLowerCase();
+            const wid = (e as any).worldId;
+            if (name === "voxelio" && wid === worldId) {
+              ownerPresent = true;
+              break;
+            }
+          }
+          if (ownerPresent) break;
+        }
+
+        if (ownerPresent) {
+          try {
+            Promise.resolve(awardPlayedWithOwner(user.id)).catch(() => {});
+          } catch {
+            // swallow
           }
         }
-        if (ownerPresent) break;
-      }
-
-      if (ownerPresent) {
-        await awardPlayedWithOwner(user.id);
+      } catch (err) {
+        // Never crash the page over this
+        if (typeof console !== "undefined") {
+          console.warn("[owner-badge] check failed:", err);
+        }
       }
     };
 
-    // Poll a few times — presence takes a moment to sync
     const timers = [
-      setTimeout(checkOwner, 500),
-      setTimeout(checkOwner, 1500),
-      setTimeout(checkOwner, 3000),
+      setTimeout(checkOwner, 800),
+      setTimeout(checkOwner, 2000),
+      setTimeout(checkOwner, 4000),
     ];
 
-    // Also react to live presence changes
-    const lobby = lobbyRef.current;
-    let handler: any = null;
-    if (lobby) {
-      handler = () => checkOwner();
-      lobby.on("presence", { event: "sync" }, handler);
-      lobby.on("presence", { event: "join" }, handler);
+    try {
+      const lobby = lobbyRef.current;
+      if (lobby && typeof lobby.on === "function") {
+        attachedHandler = () => { checkOwner(); };
+        attachedLobby = lobby;
+        lobby.on("presence", { event: "sync" }, attachedHandler);
+        lobby.on("presence", { event: "join" }, attachedHandler);
+      }
+    } catch (err) {
+      if (typeof console !== "undefined") {
+        console.warn("[owner-badge] listener attach failed:", err);
+      }
     }
 
     return () => {
       cancelled = true;
-      timers.forEach(clearTimeout);
-      if (lobby && handler) {
-        lobby.off("presence", { event: "sync" }, handler);
-        lobby.off("presence", { event: "join" }, handler);
+      timers.forEach((t) => clearTimeout(t));
+      try {
+        if (attachedLobby && attachedHandler) {
+          attachedLobby.off("presence", { event: "sync" }, attachedHandler);
+          attachedLobby.off("presence", { event: "join" }, attachedHandler);
+        }
+      } catch {
+        // ignore
       }
     };
   }, [user, worldId]);
