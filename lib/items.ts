@@ -188,6 +188,30 @@ export const ITEMS: Item[] = [
     creator: "Voxelio",
     faceImageUrl: "/faces/casual-person.png",
   },
+  {
+    id: "face-golden-times",
+    name: "Face of Golden Times",
+    description:
+      "A radiant golden face that glows with nostalgia. For those who remember the golden era of Voxelio.",
+    price: 250,
+    category: "faces",
+    rarity: "epic",
+    previewEmoji: "🌟",
+    creator: "Voxelio",
+    faceImageUrl: "/faces/face-of-golden-times.png",
+  },
+  {
+    id: "face-yellow-sparkle-times",
+    name: "Face of Yellow Sparkle Times",
+    description:
+      "A cheerful yellow face covered in sparkles. Bright, happy, and impossible to miss.",
+    price: 250,
+    category: "faces",
+    rarity: "epic",
+    previewEmoji: "✨",
+    creator: "Voxelio",
+    faceImageUrl: "/faces/face-of-yellow-sparkle-times.png",
+  },
 ];
 
 export function getItem(id: string): Item | undefined {
