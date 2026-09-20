@@ -21,14 +21,7 @@ import {
 import { getLayout, type BlockData } from "../../../lib/worldLayouts";
 import { filterMessage } from "../../../lib/chatFilter";
 
-// ============================================================
-// KILL SWITCHES
-// ============================================================
 const ENABLE_OWNER_BADGE_DETECTION = true;
-
-// ============================================================
-// VOXELIO MULTIPLAYER WORLD
-// ============================================================
 
 const KEY_MAP = [
   { name: "forward", keys: ["w", "W", "ArrowUp"] },
@@ -65,16 +58,8 @@ const CHAT_LIFETIME_MS = 5000;
 const CHAT_MAX_LENGTH = 120;
 const CHAT_MIN_INTERVAL_MS = 500;
 
-const touchState = {
-  moveX: 0,
-  moveZ: 0,
-  jumpQueued: false,
-};
-
-const touchLookState = {
-  yawDelta: 0,
-  pitchDelta: 0,
-};
+const touchState = { moveX: 0, moveZ: 0, jumpQueued: false };
+const touchLookState = { yawDelta: 0, pitchDelta: 0 };
 
 type RemotePlayerData = {
   id: string;
@@ -100,7 +85,6 @@ function findSafeSpawn(blocks: BlockData[]): THREE.Vector3 {
 
   for (let iter = 0; iter < maxIter; iter++) {
     let pushedUp = false;
-
     const pFeetY = spawn.y - CHARACTER_Y_OFFSET;
     const pTopY = pFeetY + PLAYER_HEIGHT;
     const pMinX = spawn.x - PLAYER_RADIUS;
@@ -111,25 +95,20 @@ function findSafeSpawn(blocks: BlockData[]): THREE.Vector3 {
     for (const b of blocks) {
       const [bx, by, bz] = b.position;
       const [sx, sy, sz] = b.size;
-
       const bMinX = bx - sx / 2;
       const bMaxX = bx + sx / 2;
       const bMinY = by - sy / 2;
       const bMaxY = by + sy / 2;
       const bMinZ = bz - sz / 2;
       const bMaxZ = bz + sz / 2;
-
       if (pMaxX <= bMinX || pMinX >= bMaxX) continue;
       if (pMaxZ <= bMinZ || pMinZ >= bMaxZ) continue;
       if (pTopY <= bMinY || pFeetY >= bMaxY) continue;
-
       spawn.y = Math.max(spawn.y, bMaxY + CHARACTER_Y_OFFSET + 0.05);
       pushedUp = true;
     }
-
     if (!pushedUp) break;
   }
-
   if (spawn.y > 60) spawn.y = 60;
   return spawn;
 }
@@ -137,51 +116,30 @@ function findSafeSpawn(blocks: BlockData[]): THREE.Vector3 {
 function resolveBlockCollisions(pos: THREE.Vector3, blocks: BlockData[]): void {
   for (let iter = 0; iter < 4; iter++) {
     let anyResolved = false;
-
     for (const b of blocks) {
       const [bx, by, bz] = b.position;
       const [sx, sy, sz] = b.size;
-
       const bMinX = bx - sx / 2;
       const bMaxX = bx + sx / 2;
       const bMinY = by - sy / 2;
       const bMaxY = by + sy / 2;
       const bMinZ = bz - sz / 2;
       const bMaxZ = bz + sz / 2;
-
       const pMinX = pos.x - PLAYER_RADIUS;
       const pMaxX = pos.x + PLAYER_RADIUS;
       const pFeetY = pos.y - CHARACTER_Y_OFFSET;
       const pTopY = pFeetY + PLAYER_HEIGHT;
       const pMinZ = pos.z - PLAYER_RADIUS;
       const pMaxZ = pos.z + PLAYER_RADIUS;
-
-      if (
-        pMaxX <= bMinX ||
-        pMinX >= bMaxX ||
-        pTopY <= bMinY ||
-        pFeetY >= bMaxY ||
-        pMaxZ <= bMinZ ||
-        pMinZ >= bMaxZ
-      ) {
-        continue;
-      }
-
+      if (pMaxX <= bMinX || pMinX >= bMaxX || pTopY <= bMinY || pFeetY >= bMaxY || pMaxZ <= bMinZ || pMinZ >= bMaxZ) continue;
       const penX = Math.min(pMaxX - bMinX, bMaxX - pMinX);
       const penY = Math.min(pTopY - bMinY, bMaxY - pFeetY);
       const penZ = Math.min(pMaxZ - bMinZ, bMaxZ - pMinZ);
-
-      if (penX <= penY && penX <= penZ) {
-        pos.x += pos.x < bx ? -penX : penX;
-      } else if (penY <= penZ) {
-        pos.y += pos.y < by + CHARACTER_Y_OFFSET ? -penY : penY;
-      } else {
-        pos.z += pos.z < bz ? -penZ : penZ;
-      }
-
+      if (penX <= penY && penX <= penZ) pos.x += pos.x < bx ? -penX : penX;
+      else if (penY <= penZ) pos.y += pos.y < by + CHARACTER_Y_OFFSET ? -penY : penY;
+      else pos.z += pos.z < bz ? -penZ : penZ;
       anyResolved = true;
     }
-
     if (!anyResolved) break;
   }
 }
@@ -189,46 +147,26 @@ function resolveBlockCollisions(pos: THREE.Vector3, blocks: BlockData[]): void {
 function isGrounded(pos: THREE.Vector3, blocks: BlockData[]): boolean {
   const feetY = pos.y - CHARACTER_Y_OFFSET;
   if (feetY <= 0.08) return true;
-
   for (const b of blocks) {
     const topY = b.position[1] + b.size[1] / 2;
-    if (
-      Math.abs(feetY - topY) < 0.15 &&
-      Math.abs(pos.x - b.position[0]) < b.size[0] / 2 + PLAYER_RADIUS * 0.7 &&
-      Math.abs(pos.z - b.position[2]) < b.size[2] / 2 + PLAYER_RADIUS * 0.7
-    ) {
-      return true;
-    }
+    if (Math.abs(feetY - topY) < 0.15 && Math.abs(pos.x - b.position[0]) < b.size[0] / 2 + PLAYER_RADIUS * 0.7 && Math.abs(pos.z - b.position[2]) < b.size[2] / 2 + PLAYER_RADIUS * 0.7) return true;
   }
   return false;
 }
 
-function resolvePlayerCollisions(
-  pos: THREE.Vector3,
-  myId: string,
-  remotePositions: Map<string, THREE.Vector3>
-): void {
+function resolvePlayerCollisions(pos: THREE.Vector3, myId: string, remotePositions: Map<string, THREE.Vector3>): void {
   const minDist = PLAYER_RADIUS * 2;
-
   for (const [id, other] of remotePositions) {
     if (id === myId) continue;
-
     const myFeetY = pos.y - CHARACTER_Y_OFFSET;
     const otherFeetY = other.y - CHARACTER_Y_OFFSET;
     if (Math.abs(myFeetY - otherFeetY) > PLAYER_HEIGHT * 0.9) continue;
-
     const dx = pos.x - other.x;
     const dz = pos.z - other.z;
     const distSq = dx * dx + dz * dz;
-
     if (distSq >= minDist * minDist) continue;
-
     const dist = Math.sqrt(distSq);
-    if (dist < 0.001) {
-      pos.x += minDist * 0.5;
-      continue;
-    }
-
+    if (dist < 0.001) { pos.x += minDist * 0.5; continue; }
     const overlap = minDist - dist;
     pos.x += (dx / dist) * overlap;
     pos.z += (dz / dist) * overlap;
@@ -237,33 +175,9 @@ function resolvePlayerCollisions(
 
 function Nametag({ username, userId }: { username: string; userId: string }) {
   return (
-    <Html
-      position={[0, 2.55, 0]}
-      center
-      distanceFactor={10}
-      zIndexRange={[10, 0]}
-      style={{ pointerEvents: "none", overflow: "visible" }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-          whiteSpace: "nowrap",
-          fontFamily: "system-ui, -apple-system, sans-serif",
-        }}
-      >
-        <span
-          style={{
-            color: "#FFFFFF",
-            fontWeight: 700,
-            fontSize: 14,
-            lineHeight: 1,
-            textShadow: "0 0 2px #000, 0 0 2px #000, 0 0 2px #000, 0 0 2px #000",
-          }}
-        >
-          {username}
-        </span>
+    <Html position={[0, 2.55, 0]} center distanceFactor={10} zIndexRange={[10, 0]} style={{ pointerEvents: "none", overflow: "visible" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap", fontFamily: "system-ui, -apple-system, sans-serif" }}>
+        <span style={{ color: "#FFFFFF", fontWeight: 700, fontSize: 14, lineHeight: 1, textShadow: "0 0 2px #000, 0 0 2px #000, 0 0 2px #000, 0 0 2px #000" }}>{username}</span>
         <AccountBadge username={username} userId={userId} size={16} />
       </div>
     </Html>
@@ -272,28 +186,8 @@ function Nametag({ username, userId }: { username: string; userId: string }) {
 
 function ChatBubble({ text }: { text: string }) {
   return (
-    <Html
-      position={[0, 3.2, 0]}
-      center
-      distanceFactor={10}
-      zIndexRange={[15, 10]}
-      style={{ pointerEvents: "none", overflow: "visible" }}
-    >
-      <div
-        style={{
-          display: "inline-block",
-          whiteSpace: "nowrap",
-          background: "rgba(26, 26, 46, 0.92)",
-          color: "#FFFFFF",
-          padding: "6px 12px",
-          borderRadius: 10,
-          border: "1px solid rgba(255,255,255,0.2)",
-          fontSize: 14,
-          lineHeight: 1.2,
-          boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
-          fontFamily: "system-ui, -apple-system, sans-serif",
-        }}
-      >
+    <Html position={[0, 3.2, 0]} center distanceFactor={10} zIndexRange={[15, 10]} style={{ pointerEvents: "none", overflow: "visible" }}>
+      <div style={{ display: "inline-block", whiteSpace: "nowrap", background: "rgba(26, 26, 46, 0.92)", color: "#FFFFFF", padding: "6px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.2)", fontSize: 14, lineHeight: 1.2, boxShadow: "0 4px 12px rgba(0,0,0,0.4)", fontFamily: "system-ui, -apple-system, sans-serif" }}>
         {text}
       </div>
     </Html>
@@ -301,9 +195,7 @@ function ChatBubble({ text }: { text: string }) {
 }
 
 function RemotePlayer({
-  data,
-  chatMessage,
-  remotePositions,
+  data, chatMessage, remotePositions,
 }: {
   data: RemotePlayerData;
   chatMessage?: ChatMessage | null;
@@ -316,25 +208,20 @@ function RemotePlayer({
 
   useEffect(() => {
     remotePositions.current.set(data.id, currentRef.current);
-    return () => {
-      remotePositions.current.delete(data.id);
-    };
+    return () => { remotePositions.current.delete(data.id); };
   }, [data.id, remotePositions]);
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
-
     const target = new THREE.Vector3(...data.targetPos);
     const lerp = Math.min(1, delta * 12);
     currentRef.current.lerp(target, lerp);
     groupRef.current.position.copy(currentRef.current);
-
     let diff = data.targetRotY - currentRotRef.current;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
     currentRotRef.current += diff * Math.min(1, delta * 14);
     groupRef.current.rotation.y = currentRotRef.current;
-
     const dist = currentRef.current.distanceTo(target);
     walkingRef.current = dist > 0.05;
   });
@@ -349,14 +236,7 @@ function RemotePlayer({
 }
 
 function LocalPlayer({
-  config,
-  myId,
-  blocks,
-  onMove,
-  chatMessage,
-  inputDisabled,
-  remotePositions,
-  isTouchDevice,
+  config, myId, blocks, onMove, chatMessage, inputDisabled, remotePositions, isTouchDevice,
 }: {
   config: AvatarConfig;
   myId: string;
@@ -369,7 +249,6 @@ function LocalPlayer({
 }) {
   const { gl } = useThree();
   const [, getKeys] = useKeyboardControls();
-
   const safeSpawn = useMemo(() => findSafeSpawn(blocks), [blocks]);
 
   const groupRef = useRef<THREE.Group>(null);
@@ -391,7 +270,6 @@ function LocalPlayer({
   useEffect(() => {
     if (isTouchDevice) return;
     const canvas = gl.domElement;
-
     let dragging = false;
     let lastX = 0;
     let lastY = 0;
@@ -412,12 +290,8 @@ function LocalPlayer({
       const dy = e.clientY - lastY;
       lastX = e.clientX;
       lastY = e.clientY;
-
       cameraYawRef.current -= dx * 0.005;
-      cameraPitchRef.current = Math.max(
-        CAMERA_MIN_PITCH,
-        Math.min(CAMERA_MAX_PITCH, cameraPitchRef.current + dy * 0.005)
-      );
+      cameraPitchRef.current = Math.max(CAMERA_MIN_PITCH, Math.min(CAMERA_MAX_PITCH, cameraPitchRef.current + dy * 0.005));
     };
 
     const onMouseUp = () => {
@@ -427,16 +301,11 @@ function LocalPlayer({
       }
     };
 
-    const onContextMenu = (e: MouseEvent) => {
-      e.preventDefault();
-    };
+    const onContextMenu = (e: MouseEvent) => e.preventDefault();
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      cameraDistRef.current = Math.max(
-        CAMERA_MIN_DIST,
-        Math.min(CAMERA_MAX_DIST, cameraDistRef.current + e.deltaY * 0.01)
-      );
+      cameraDistRef.current = Math.max(CAMERA_MIN_DIST, Math.min(CAMERA_MAX_DIST, cameraDistRef.current + e.deltaY * 0.01));
     };
 
     canvas.style.cursor = "grab";
@@ -458,15 +327,11 @@ function LocalPlayer({
 
   useFrame((state, delta) => {
     if (!groupRef.current) return;
-
     const keys = getKeys();
 
     if (isTouchDevice) {
       cameraYawRef.current += touchLookState.yawDelta;
-      cameraPitchRef.current = Math.max(
-        CAMERA_MIN_PITCH,
-        Math.min(CAMERA_MAX_PITCH, cameraPitchRef.current + touchLookState.pitchDelta)
-      );
+      cameraPitchRef.current = Math.max(CAMERA_MIN_PITCH, Math.min(CAMERA_MAX_PITCH, cameraPitchRef.current + touchLookState.pitchDelta));
       touchLookState.yawDelta = 0;
       touchLookState.pitchDelta = 0;
     }
@@ -479,7 +344,6 @@ function LocalPlayer({
       if (keys.backward) localZ -= 1;
       if (keys.left) localX += 1;
       if (keys.right) localX -= 1;
-
       if (isTouchDevice) {
         if (Math.abs(touchState.moveX) > 0.05) localX = -touchState.moveX;
         if (Math.abs(touchState.moveZ) > 0.05) localZ = -touchState.moveZ;
@@ -488,16 +352,11 @@ function LocalPlayer({
 
     const inputLen = Math.hypot(localX, localZ);
     const hasInput = inputLen > 0.001;
-
-    if (hasInput) {
-      localX /= inputLen;
-      localZ /= inputLen;
-    }
+    if (hasInput) { localX /= inputLen; localZ /= inputLen; }
 
     const yaw = cameraYawRef.current;
     const cosY = Math.cos(yaw);
     const sinY = Math.sin(yaw);
-
     const worldX = localX * cosY + localZ * sinY;
     const worldZ = -localX * sinY + localZ * cosY;
 
@@ -518,7 +377,6 @@ function LocalPlayer({
     const dvx = targetVX - velocityRef.current.x;
     const dvz = targetVZ - velocityRef.current.y;
     const dvLen = Math.hypot(dvx, dvz);
-
     if (dvLen > 0.001) {
       const step = Math.min(rate * delta, dvLen);
       velocityRef.current.x += (dvx / dvLen) * step;
@@ -538,9 +396,7 @@ function LocalPlayer({
       setWalking(isMoving);
     }
 
-    const wantJump =
-      (!inputDisabled && keys.jump) ||
-      (isTouchDevice && touchState.jumpQueued);
+    const wantJump = (!inputDisabled && keys.jump) || (isTouchDevice && touchState.jumpQueued);
     if (wantJump && groundedRef.current) {
       velocityYRef.current = JUMP_VELOCITY;
       groundedRef.current = false;
@@ -558,30 +414,23 @@ function LocalPlayer({
     resolveBlockCollisions(positionRef.current, blocks);
     resolvePlayerCollisions(positionRef.current, myId, remotePositions.current);
 
-    const grounded =
-      isGrounded(positionRef.current, blocks) && velocityYRef.current <= 0.01;
+    const grounded = isGrounded(positionRef.current, blocks) && velocityYRef.current <= 0.01;
     groundedRef.current = grounded;
-    if (grounded && velocityYRef.current < 0) {
-      velocityYRef.current = 0;
-    }
+    if (grounded && velocityYRef.current < 0) velocityYRef.current = 0;
 
     const bound = 95;
     positionRef.current.x = Math.max(-bound, Math.min(bound, positionRef.current.x));
     positionRef.current.z = Math.max(-bound, Math.min(bound, positionRef.current.z));
-
     groupRef.current.position.copy(positionRef.current);
 
     const camYaw = cameraYawRef.current;
     const camPitch = cameraPitchRef.current;
     const camDist = cameraDistRef.current;
-
     const horizDist = camDist * Math.cos(camPitch);
     const vertDist = camDist * Math.sin(camPitch);
-
     const lookX = positionRef.current.x;
     const lookY = positionRef.current.y + CAMERA_LOOK_OFFSET;
     const lookZ = positionRef.current.z;
-
     const targetCamX = lookX - Math.sin(camYaw) * horizDist;
     const targetCamY = lookY + vertDist;
     const targetCamZ = lookZ - Math.cos(camYaw) * horizDist;
@@ -590,23 +439,17 @@ function LocalPlayer({
     state.camera.position.x += (targetCamX - state.camera.position.x) * camLerp;
     state.camera.position.y += (Math.max(0.5, targetCamY) - state.camera.position.y) * camLerp;
     state.camera.position.z += (targetCamZ - state.camera.position.z) * camLerp;
-
     state.camera.lookAt(lookX, lookY, lookZ);
 
     const now = performance.now();
     const sinceLast = now - lastBroadcastRef.current;
-
-    const shouldFast =
-      needsBroadcastRef.current && sinceLast >= BROADCAST_INTERVAL;
+    const shouldFast = needsBroadcastRef.current && sinceLast >= BROADCAST_INTERVAL;
     const shouldHeartbeat = sinceLast >= HEARTBEAT_INTERVAL;
 
     if (shouldFast || shouldHeartbeat) {
       lastBroadcastRef.current = now;
       needsBroadcastRef.current = false;
-      onMove(
-        [positionRef.current.x, positionRef.current.y, positionRef.current.z],
-        facingRef.current
-      );
+      onMove([positionRef.current.x, positionRef.current.y, positionRef.current.z], facingRef.current);
     }
   });
 
@@ -628,15 +471,7 @@ function Ground({ color }: { color: string }) {
 }
 
 function WorldScene({
-  config,
-  userId,
-  username,
-  world,
-  others,
-  chatMessages,
-  onMove,
-  inputDisabled,
-  isTouchDevice,
+  config, userId, username, world, others, chatMessages, onMove, inputDisabled, isTouchDevice,
 }: {
   config: AvatarConfig;
   userId: string;
@@ -650,7 +485,6 @@ function WorldScene({
 }) {
   const layout = getLayout(world.layout);
   const blocks = layout.blocks;
-
   const remotePositions = useRef<Map<string, THREE.Vector3>>(new Map());
 
   const latestFor = (id: string): ChatMessage | null => {
@@ -666,46 +500,18 @@ function WorldScene({
     <>
       <Sky sunPosition={[100, 50, 100]} />
       <ambientLight intensity={0.6} />
-      <directionalLight
-        position={[20, 30, 20]}
-        intensity={1.15}
-        castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-camera-left={-50}
-        shadow-camera-right={50}
-        shadow-camera-top={50}
-        shadow-camera-bottom={-50}
-      />
+      <directionalLight position={[20, 30, 20]} intensity={1.15} castShadow shadow-mapSize-width={2048} shadow-mapSize-height={2048} shadow-camera-left={-50} shadow-camera-right={50} shadow-camera-top={50} shadow-camera-bottom={-50} />
       <hemisphereLight args={["#ffffff", "#88aa88", 0.4]} />
-
       <Ground color={layout.groundColor} />
-
       {blocks.map((b, i) => (
         <mesh key={i} position={b.position} castShadow receiveShadow>
           <boxGeometry args={b.size} />
           <meshStandardMaterial color={b.color} roughness={0.75} />
         </mesh>
       ))}
-
-      <LocalPlayer
-        config={config}
-        myId={userId}
-        blocks={blocks}
-        onMove={onMove}
-        chatMessage={latestFor(userId)}
-        inputDisabled={inputDisabled}
-        remotePositions={remotePositions}
-        isTouchDevice={isTouchDevice}
-      />
-
+      <LocalPlayer config={config} myId={userId} blocks={blocks} onMove={onMove} chatMessage={latestFor(userId)} inputDisabled={inputDisabled} remotePositions={remotePositions} isTouchDevice={isTouchDevice} />
       {others.map((p) => (
-        <RemotePlayer
-          key={p.id}
-          data={p}
-          chatMessage={latestFor(p.id)}
-          remotePositions={remotePositions}
-        />
+        <RemotePlayer key={p.id} data={p} chatMessage={latestFor(p.id)} remotePositions={remotePositions} />
       ))}
     </>
   );
@@ -723,10 +529,7 @@ function Joystick() {
     e.preventDefault();
     if (!baseRef.current) return;
     const rect = baseRef.current.getBoundingClientRect();
-    baseCenterRef.current = {
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2,
-    };
+    baseCenterRef.current = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     pointerIdRef.current = e.pointerId;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     setActive(true);
@@ -761,75 +564,35 @@ function Joystick() {
   };
 
   return (
-    <div
-      ref={baseRef}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
+    <div ref={baseRef} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp}
       className="fixed bottom-6 left-6 rounded-full border-2 border-white/30 backdrop-blur touch-none select-none z-30"
-      style={{
-        width: 140,
-        height: 140,
-        background: active
-          ? "rgba(108, 60, 224, 0.25)"
-          : "rgba(0, 0, 0, 0.35)",
-      }}
-    >
-      <div
-        className="absolute rounded-full bg-white/80 shadow-lg pointer-events-none"
-        style={{
-          width: 60,
-          height: 60,
-          left: "50%",
-          top: "50%",
-          transform: `translate(calc(-50% + ${knobPos.x}px), calc(-50% + ${knobPos.y}px))`,
-          transition: active ? "none" : "transform 0.15s ease",
-        }}
-      />
+      style={{ width: 140, height: 140, background: active ? "rgba(108, 60, 224, 0.25)" : "rgba(0, 0, 0, 0.35)" }}>
+      <div className="absolute rounded-full bg-white/80 shadow-lg pointer-events-none"
+        style={{ width: 60, height: 60, left: "50%", top: "50%", transform: `translate(calc(-50% + ${knobPos.x}px), calc(-50% + ${knobPos.y}px))`, transition: active ? "none" : "transform 0.15s ease" }} />
     </div>
   );
 }
 
 function JumpButton() {
   const [pressed, setPressed] = useState(false);
-
-  const down = (e: React.PointerEvent) => {
-    e.preventDefault();
-    touchState.jumpQueued = true;
-    setPressed(true);
-  };
-
-  const up = () => {
-    setPressed(false);
-  };
-
+  const down = (e: React.PointerEvent) => { e.preventDefault(); touchState.jumpQueued = true; setPressed(true); };
+  const up = () => setPressed(false);
   return (
-    <button
-      onPointerDown={down}
-      onPointerUp={up}
-      onPointerCancel={up}
-      className={`fixed bottom-6 right-6 rounded-full border-2 border-white/30 backdrop-blur touch-none select-none z-30 flex items-center justify-center text-white text-2xl font-black transition ${
-        pressed ? "scale-95 bg-[#22C55E]/60" : "bg-black/40"
-      }`}
-      style={{ width: 90, height: 90 }}
-    >
-      ⬆️
-    </button>
+    <button onPointerDown={down} onPointerUp={up} onPointerCancel={up}
+      className={`fixed bottom-6 right-6 rounded-full border-2 border-white/30 backdrop-blur touch-none select-none z-30 flex items-center justify-center text-white text-2xl font-black transition ${pressed ? "scale-95 bg-[#22C55E]/60" : "bg-black/40"}`}
+      style={{ width: 90, height: 90 }}>⬆️</button>
   );
 }
 
 function TouchLookArea({ onLook }: { onLook: (dx: number, dy: number) => void }) {
   const pointerIdRef = useRef<number | null>(null);
   const lastRef = useRef({ x: 0, y: 0 });
-
   const down = (e: React.PointerEvent) => {
     if (pointerIdRef.current !== null) return;
     pointerIdRef.current = e.pointerId;
     lastRef.current = { x: e.clientX, y: e.clientY };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   };
-
   const move = (e: React.PointerEvent) => {
     if (pointerIdRef.current !== e.pointerId) return;
     const dx = e.clientX - lastRef.current.x;
@@ -837,27 +600,13 @@ function TouchLookArea({ onLook }: { onLook: (dx: number, dy: number) => void })
     lastRef.current = { x: e.clientX, y: e.clientY };
     onLook(dx, dy);
   };
-
   const up = (e: React.PointerEvent) => {
     if (pointerIdRef.current !== e.pointerId) return;
     pointerIdRef.current = null;
   };
-
-  return (
-    <div
-      onPointerDown={down}
-      onPointerMove={move}
-      onPointerUp={up}
-      onPointerCancel={up}
-      className="fixed top-0 right-0 w-1/2 h-full touch-none select-none z-20"
-      style={{ background: "transparent" }}
-    />
-  );
+  return <div onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} className="fixed top-0 right-0 w-1/2 h-full touch-none select-none z-20" style={{ background: "transparent" }} />;
 }
 
-// ============================================================
-// PAGE
-// ============================================================
 export default function WorldPage() {
   const params = useParams();
   const worldId = (params.id as string) || "";
@@ -882,15 +631,10 @@ export default function WorldPage() {
 
   const channelRef = useRef<any>(null);
   const lobbyRef = useRef<any>(null);
-  const localPosRef = useRef<{ pos: [number, number, number]; rotY: number }>({
-    pos: [0, CHARACTER_Y_OFFSET, 0],
-    rotY: 0,
-  });
+  const localPosRef = useRef<{ pos: [number, number, number]; rotY: number }>({ pos: [0, CHARACTER_Y_OFFSET, 0], rotY: 0 });
 
   useEffect(() => {
-    const touch =
-      typeof window !== "undefined" &&
-      ("ontouchstart" in window || navigator.maxTouchPoints > 0);
+    const touch = typeof window !== "undefined" && ("ontouchstart" in window || navigator.maxTouchPoints > 0);
     setIsTouchDevice(touch);
   }, []);
 
@@ -898,17 +642,11 @@ export default function WorldPage() {
     const u = getCurrentUser();
     setUser(u);
     setMounted(true);
-
     fetchWorldById(worldId).then((w) => {
-      if (!w) {
-        setNotFound(true);
-        return;
-      }
+      if (!w) { setNotFound(true); return; }
       setWorld(w);
       setLikeCount(w.likes);
-
       hasLikedWorld(worldId).then((yes) => setLiked(yes));
-
       if (typeof window === "undefined") return;
       const visitKey = `voxelio-visited-${worldId}`;
       if (sessionStorage.getItem(visitKey) !== "1") {
@@ -918,27 +656,15 @@ export default function WorldPage() {
     });
   }, [worldId]);
 
-  // ===== Join lobby presence =====
   useEffect(() => {
     if (!user || !worldId) return;
-
-    const lobby = supabase.channel("world-lobby", {
-      config: { presence: { key: user.id } },
-    });
-
+    const lobby = supabase.channel("world-lobby", { config: { presence: { key: user.id } } });
     lobby.subscribe((status: string) => {
       if (status === "SUBSCRIBED") {
-        lobby.track({
-          userId: user.id,
-          username: user.username,
-          worldId,
-          joinedAt: Date.now(),
-        });
+        lobby.track({ userId: user.id, username: user.username, worldId, joinedAt: Date.now() });
       }
     });
-
     lobbyRef.current = lobby;
-
     return () => {
       lobby.untrack();
       supabase.removeChannel(lobby);
@@ -946,114 +672,77 @@ export default function WorldPage() {
     };
   }, [user, worldId]);
 
-  // ===== Award "Played with the Owner" (fully guarded) =====
+  // ===== Award "Played with the Owner" =====
   useEffect(() => {
     if (!ENABLE_OWNER_BADGE_DETECTION) return;
     if (!user || !worldId) return;
     if (user.username.toLowerCase() === "voxelio") return;
+    if (user.playedWithOwner) return;
 
     let cancelled = false;
-    let attachedHandler: (() => void) | null = null;
-    let attachedLobby: any = null;
+    let awarded = false;
 
-    const checkOwner = () => {
-      if (cancelled) return;
+    const checkOwner = async () => {
+      if (cancelled || awarded) return;
       try {
-        const lobby = lobbyRef.current;
-        if (!lobby || typeof lobby.presenceState !== "function") return;
-
-        const state = lobby.presenceState() as Record<string, any[]>;
-        if (!state || typeof state !== "object") return;
-
+        const candidates = [channelRef.current, lobbyRef.current].filter(
+          (c) => c && typeof c.presenceState === "function"
+        );
         let ownerPresent = false;
 
-        for (const key of Object.keys(state)) {
-          const entries = state[key];
-          if (!Array.isArray(entries)) continue;
-          for (const e of entries) {
-            if (!e || typeof e !== "object") continue;
-            const name = String((e as any).username || "").toLowerCase();
-            const wid = (e as any).worldId;
-            if (name === "voxelio" && wid === worldId) {
-              ownerPresent = true;
-              break;
+        for (const ch of candidates) {
+          let state: Record<string, any[]> = {};
+          try { state = ch.presenceState() as Record<string, any[]>; } catch { continue; }
+          if (!state || typeof state !== "object") continue;
+
+          for (const key of Object.keys(state)) {
+            const entries = state[key];
+            if (!Array.isArray(entries)) continue;
+            for (const e of entries) {
+              if (!e || typeof e !== "object") continue;
+              const name = String((e as any).username || "").toLowerCase();
+              const wid = (e as any).worldId;
+              if (name === "voxelio" && (!wid || wid === worldId)) {
+                ownerPresent = true;
+                break;
+              }
             }
+            if (ownerPresent) break;
           }
           if (ownerPresent) break;
         }
 
         if (ownerPresent) {
+          awarded = true;
           try {
-            Promise.resolve(awardPlayedWithOwner(user.id)).catch(() => {});
+            await awardPlayedWithOwner(user.id);
           } catch {
-            // swallow
+            awarded = false;
           }
         }
       } catch (err) {
-        // Never crash the page over this
-        if (typeof console !== "undefined") {
-          console.warn("[owner-badge] check failed:", err);
-        }
+        if (typeof console !== "undefined") console.warn("[owner-badge] check failed:", err);
       }
     };
 
-    const timers = [
-      setTimeout(checkOwner, 800),
-      setTimeout(checkOwner, 2000),
-      setTimeout(checkOwner, 4000),
-    ];
+    const interval = setInterval(checkOwner, 3000);
+    checkOwner();
 
-    try {
-      const lobby = lobbyRef.current;
-      if (lobby && typeof lobby.on === "function") {
-        attachedHandler = () => { checkOwner(); };
-        attachedLobby = lobby;
-        lobby.on("presence", { event: "sync" }, attachedHandler);
-        lobby.on("presence", { event: "join" }, attachedHandler);
-      }
-    } catch (err) {
-      if (typeof console !== "undefined") {
-        console.warn("[owner-badge] listener attach failed:", err);
-      }
-    }
-
-    return () => {
-      cancelled = true;
-      timers.forEach((t) => clearTimeout(t));
-      try {
-        if (attachedLobby && attachedHandler) {
-          attachedLobby.off("presence", { event: "sync" }, attachedHandler);
-          attachedLobby.off("presence", { event: "join" }, attachedHandler);
-        }
-      } catch {
-        // ignore
-      }
-    };
+    return () => { cancelled = true; clearInterval(interval); };
   }, [user, worldId]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const active = document.activeElement as HTMLElement | null;
       const inInput = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA");
-
-      if ((e.key === "t" || e.key === "T") && !chatOpen && !inInput) {
-        e.preventDefault();
-        setChatOpen(true);
-      } else if (e.key === "Escape" && chatOpen) {
-        e.preventDefault();
-        setChatOpen(false);
-        setDraft("");
-      }
+      if ((e.key === "t" || e.key === "T") && !chatOpen && !inInput) { e.preventDefault(); setChatOpen(true); }
+      else if (e.key === "Escape" && chatOpen) { e.preventDefault(); setChatOpen(false); setDraft(""); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [chatOpen]);
 
-  useEffect(() => {
-    if (chatOpen && inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [chatOpen]);
+  useEffect(() => { if (chatOpen && inputRef.current) inputRef.current.focus(); }, [chatOpen]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -1066,132 +755,56 @@ export default function WorldPage() {
   const sendChat = useCallback(() => {
     const me = user;
     const text = draft.trim();
-    if (!me || !text) {
-      setChatOpen(false);
-      setDraft("");
-      return;
-    }
-
+    if (!me || !text) { setChatOpen(false); setDraft(""); return; }
     const now = Date.now();
-    if (now - lastChatSentRef.current < CHAT_MIN_INTERVAL_MS) {
-      return;
-    }
+    if (now - lastChatSentRef.current < CHAT_MIN_INTERVAL_MS) return;
     lastChatSentRef.current = now;
-
     const filtered = filterMessage(text.slice(0, CHAT_MAX_LENGTH));
-
-    const id =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-    const msg: ChatMessage = {
-      id,
-      userId: me.id,
-      username: me.username,
-      text: filtered,
-      expiresAt: Date.now() + CHAT_LIFETIME_MS,
-    };
-
+    const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const msg: ChatMessage = { id, userId: me.id, username: me.username, text: filtered, expiresAt: Date.now() + CHAT_LIFETIME_MS };
     setChatMessages((prev) => [...prev, msg]);
-
     const channel = channelRef.current;
     if (channel) {
-      channel.send({
-        type: "broadcast",
-        event: "chat",
-        payload: {
-          id: msg.id,
-          userId: msg.userId,
-          username: msg.username,
-          text: msg.text,
-        },
-      });
+      channel.send({ type: "broadcast", event: "chat", payload: { id: msg.id, userId: msg.userId, username: msg.username, text: msg.text } });
     }
-
-    setDraft("");
-    setChatOpen(false);
+    setDraft(""); setChatOpen(false);
   }, [draft, user]);
 
-  const cancelChat = useCallback(() => {
-    setChatOpen(false);
-    setDraft("");
-  }, []);
+  const cancelChat = useCallback(() => { setChatOpen(false); setDraft(""); }, []);
 
   const handleLike = useCallback(async () => {
     if (!user || liking) return;
     setLiking(true);
-
     const wasLiked = liked;
     const prevCount = likeCount;
-
     setLiked(!wasLiked);
     setLikeCount(wasLiked ? Math.max(0, prevCount - 1) : prevCount + 1);
-
-    const ok = wasLiked
-      ? await unlikeWorld(worldId)
-      : await likeWorld(worldId);
-
-    if (!ok) {
-      setLiked(wasLiked);
-      setLikeCount(prevCount);
-    }
-
+    const ok = wasLiked ? await unlikeWorld(worldId) : await likeWorld(worldId);
+    if (!ok) { setLiked(wasLiked); setLikeCount(prevCount); }
     setLiking(false);
   }, [user, liking, liked, likeCount, worldId]);
 
-  const handleMove = useCallback(
-    (pos: [number, number, number], rotY: number) => {
-      localPosRef.current = { pos, rotY };
-      const channel = channelRef.current;
-      const me = user;
-      if (!channel || !me) return;
-
-      channel.send({
-        type: "broadcast",
-        event: "move",
-        payload: {
-          id: me.id,
-          username: me.username,
-          displayId: me.displayId ?? null,
-          avatarConfig: me.avatarConfig,
-          pos,
-          rotY,
-        },
-      });
-    },
-    [user]
-  );
+  const handleMove = useCallback((pos: [number, number, number], rotY: number) => {
+    localPosRef.current = { pos, rotY };
+    const channel = channelRef.current;
+    const me = user;
+    if (!channel || !me) return;
+    channel.send({ type: "broadcast", event: "move", payload: { id: me.id, username: me.username, displayId: me.displayId ?? null, avatarConfig: me.avatarConfig, pos, rotY } });
+  }, [user]);
 
   useEffect(() => {
     if (!user || !worldId) return;
-
-    const channel = supabase.channel(`world-${worldId}`, {
-      config: {
-        broadcast: { self: false },
-        presence: { key: user.id },
-      },
-    });
+    const channel = supabase.channel(`world-${worldId}`, { config: { broadcast: { self: false }, presence: { key: user.id } } });
 
     channel
       .on("broadcast", { event: "move" }, ({ payload }) => {
         if (!payload || payload.id === user.id) return;
         setOthers((prev) => {
           const existing = prev.findIndex((p) => p.id === payload.id);
-          const next: RemotePlayerData = {
-            id: payload.id,
-            username: payload.username,
-            displayId: payload.displayId,
-            avatarConfig: payload.avatarConfig,
-            targetPos: payload.pos,
-            targetRotY: payload.rotY,
-            lastSeen: Date.now(),
-          };
-          if (existing >= 0) {
-            const copy = [...prev];
-            copy[existing] = next;
-            return copy;
-          }
+          const next: RemotePlayerData = { id: payload.id, username: payload.username, displayId: payload.displayId, avatarConfig: payload.avatarConfig, targetPos: payload.pos, targetRotY: payload.rotY, lastSeen: Date.now() };
+          if (existing >= 0) { const copy = [...prev]; copy[existing] = next; return copy; }
           return [...prev, next];
         });
       })
@@ -1199,40 +812,18 @@ export default function WorldPage() {
         if (!payload || payload.userId === user.id) return;
         setChatMessages((prev) => {
           if (prev.some((m) => m.id === payload.id)) return prev;
-          return [
-            ...prev,
-            {
-              id: payload.id,
-              userId: payload.userId,
-              username: payload.username,
-              text: filterMessage(
-                String(payload.text || "").slice(0, CHAT_MAX_LENGTH)
-              ),
-              expiresAt: Date.now() + CHAT_LIFETIME_MS,
-            },
-          ];
+          return [...prev, { id: payload.id, userId: payload.userId, username: payload.username, text: filterMessage(String(payload.text || "").slice(0, CHAT_MAX_LENGTH)), expiresAt: Date.now() + CHAT_LIFETIME_MS }];
         });
       })
       .on("presence", { event: "sync" }, () => {
         const state = channel.presenceState();
         setOnlineCount(Object.keys(state).length);
         const me = localPosRef.current;
-        channel.send({
-          type: "broadcast",
-          event: "move",
-          payload: {
-            id: user.id,
-            username: user.username,
-            displayId: user.displayId ?? null,
-            avatarConfig: user.avatarConfig,
-            pos: me.pos,
-            rotY: me.rotY,
-          },
-        });
+        channel.send({ type: "broadcast", event: "move", payload: { id: user.id, username: user.username, displayId: user.displayId ?? null, avatarConfig: user.avatarConfig, pos: me.pos, rotY: me.rotY } });
       })
       .subscribe((status: string) => {
         if (status === "SUBSCRIBED") {
-          channel.track({ id: user.id, username: user.username });
+          channel.track({ id: user.id, username: user.username, worldId });
         }
       });
 
@@ -1256,13 +847,7 @@ export default function WorldPage() {
     touchLookState.pitchDelta += dy * 0.005;
   }, []);
 
-  if (!mounted) {
-    return (
-      <div className="fixed inset-0 bg-black flex items-center justify-center text-white">
-        Loading…
-      </div>
-    );
-  }
+  if (!mounted) return <div className="fixed inset-0 bg-black flex items-center justify-center text-white">Loading…</div>;
 
   if (!user) {
     return (
@@ -1271,18 +856,8 @@ export default function WorldPage() {
         <h1 className="text-2xl font-black mb-2">Sign in to play</h1>
         <p className="text-sm text-white/70 mb-6">You need an account to enter worlds.</p>
         <div className="flex gap-2">
-          <Link
-            href="/signin"
-            className="bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white font-bold text-sm px-6 py-2.5 rounded border border-[#4A1FA8] hover:from-[#8B5FFF] hover:to-[#6A3FD7] transition"
-          >
-            Sign In
-          </Link>
-          <Link
-            href="/games"
-            className="bg-white/10 text-white font-bold text-sm px-6 py-2.5 rounded border border-white/20 hover:bg-white/20 transition"
-          >
-            ← Back
-          </Link>
+          <Link href="/signin" className="bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white font-bold text-sm px-6 py-2.5 rounded border border-[#4A1FA8] hover:from-[#8B5FFF] hover:to-[#6A3FD7] transition">Sign In</Link>
+          <Link href="/games" className="bg-white/10 text-white font-bold text-sm px-6 py-2.5 rounded border border-white/20 hover:bg-white/20 transition">← Back</Link>
         </div>
       </div>
     );
@@ -1294,190 +869,81 @@ export default function WorldPage() {
         <div className="text-6xl mb-4">🌍</div>
         <h1 className="text-2xl font-black mb-2">World Not Found</h1>
         <p className="text-sm text-white/70 mb-6">This world doesn't exist or was removed.</p>
-        <Link
-          href="/games"
-          className="bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white font-bold text-sm px-6 py-2.5 rounded border border-[#4A1FA8] hover:from-[#8B5FFF] hover:to-[#6A3FD7] transition"
-        >
-          ← Back to Games
-        </Link>
+        <Link href="/games" className="bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white font-bold text-sm px-6 py-2.5 rounded border border-[#4A1FA8] hover:from-[#8B5FFF] hover:to-[#6A3FD7] transition">← Back to Games</Link>
       </div>
     );
   }
 
-  if (!world) {
-    return (
-      <div className="fixed inset-0 bg-black flex items-center justify-center text-white">
-        Loading world…
-      </div>
-    );
-  }
+  if (!world) return <div className="fixed inset-0 bg-black flex items-center justify-center text-white">Loading world…</div>;
 
   return (
     <div className="fixed inset-0 bg-black overflow-hidden">
       <KeyboardControls map={KEY_MAP}>
-        <Canvas
-          shadows
-          camera={{ position: [0, 5, 9], fov: 55 }}
-          dpr={[1, 2]}
-          style={{ background: "#87CEEB" }}
-        >
-          <WorldScene
-            config={user.avatarConfig}
-            userId={user.id}
-            username={user.username}
-            world={world}
-            others={others}
-            chatMessages={chatMessages}
-            onMove={handleMove}
-            inputDisabled={chatOpen}
-            isTouchDevice={isTouchDevice}
-          />
+        <Canvas shadows camera={{ position: [0, 5, 9], fov: 55 }} dpr={[1, 2]} style={{ background: "#87CEEB" }}>
+          <WorldScene config={user.avatarConfig} userId={user.id} username={user.username} world={world} others={others} chatMessages={chatMessages} onMove={handleMove} inputDisabled={chatOpen} isTouchDevice={isTouchDevice} />
         </Canvas>
       </KeyboardControls>
 
-      {isTouchDevice && !chatOpen && (
-        <>
-          <TouchLookArea onLook={touchLook} />
-          <Joystick />
-          <JumpButton />
-        </>
-      )}
+      {isTouchDevice && !chatOpen && (<><TouchLookArea onLook={touchLook} /><Joystick /><JumpButton /></>)}
 
       <div className="absolute top-3 left-3 flex items-center gap-2 z-30">
-        <Link
-          href="/games"
-          className="bg-black/60 hover:bg-black/80 backdrop-blur text-white text-xs font-bold px-3 py-2 rounded border border-white/20"
-        >
-          ← Exit
-        </Link>
+        <Link href="/games" className="bg-black/60 hover:bg-black/80 backdrop-blur text-white text-xs font-bold px-3 py-2 rounded border border-white/20">← Exit</Link>
         <div className="bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs hidden sm:flex items-center gap-2">
           <span className="text-lg leading-none">{world.thumbnailEmoji}</span>
-          <div className="leading-tight">
-            <div className="font-bold">{world.name}</div>
-            <div className="text-[10px] text-white/60">{world.category}</div>
-          </div>
+          <div className="leading-tight"><div className="font-bold">{world.name}</div><div className="text-[10px] text-white/60">{world.category}</div></div>
         </div>
       </div>
 
       <div className="absolute top-3 right-3 flex items-center gap-2 z-30">
-        <button
-          onClick={handleLike}
-          disabled={liking}
-          title={liked ? "Unlike this world" : "Like this world"}
-          className={`backdrop-blur px-3 py-2 rounded border text-white text-xs font-bold flex items-center gap-2 transition ${
-            liked
-              ? "bg-pink-500/80 border-pink-300 hover:bg-pink-500"
-              : "bg-black/60 border-white/20 hover:bg-black/80"
-          } ${liking ? "opacity-70 cursor-wait" : ""}`}
-        >
-          <span>{liked ? "❤️" : "🤍"}</span>
-          <span className="hidden sm:inline">{likeCount}</span>
+        <button onClick={handleLike} disabled={liking} title={liked ? "Unlike this world" : "Like this world"}
+          className={`backdrop-blur px-3 py-2 rounded border text-white text-xs font-bold flex items-center gap-2 transition ${liked ? "bg-pink-500/80 border-pink-300 hover:bg-pink-500" : "bg-black/60 border-white/20 hover:bg-black/80"} ${liking ? "opacity-70 cursor-wait" : ""}`}>
+          <span>{liked ? "❤️" : "🤍"}</span><span className="hidden sm:inline">{likeCount}</span>
         </button>
-
         <div className="bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs flex items-center gap-2">
-          <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-          <strong>{onlineCount}</strong>
+          <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" /><strong>{onlineCount}</strong>
         </div>
-
         {isTouchDevice && (
-          <button
-            onClick={() => setChatOpen(true)}
-            className="bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs font-bold"
-            title="Open chat"
-          >
-            💬
-          </button>
+          <button onClick={() => setChatOpen(true)} className="bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs font-bold" title="Open chat">💬</button>
         )}
-
         <div className="hidden md:flex bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs items-center gap-2">
-          <span className="font-bold inline-flex items-center">
-            {user.username}
-            <AccountBadge username={user.username} userId={user.id} size={12} />
-          </span>
+          <span className="font-bold inline-flex items-center">{user.username}<AccountBadge username={user.username} userId={user.id} size={12} /></span>
           <span className="text-[#FFD700] font-bold">{formatVoxbux(user.voxbux)}</span>
         </div>
       </div>
 
       <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1 hidden md:block z-30">
         <p className="font-bold mb-1">🎮 Controls</p>
-        <p>
-          <kbd className="bg-white/10 px-1 rounded">W</kbd>{" "}
-          <kbd className="bg-white/10 px-1 rounded">A</kbd>{" "}
-          <kbd className="bg-white/10 px-1 rounded">S</kbd>{" "}
-          <kbd className="bg-white/10 px-1 rounded">D</kbd> — Move
-        </p>
-        <p>
-          <kbd className="bg-white/10 px-1 rounded">Space</kbd> — Jump
-        </p>
-        <p className="text-white/70">
-          🖱️ <strong>Drag</strong> to look around · <strong>Scroll</strong> to zoom
-        </p>
-        <p>
-          <kbd className="bg-white/10 px-1 rounded">T</kbd> — Chat
-        </p>
+        <p><kbd className="bg-white/10 px-1 rounded">W</kbd> <kbd className="bg-white/10 px-1 rounded">A</kbd> <kbd className="bg-white/10 px-1 rounded">S</kbd> <kbd className="bg-white/10 px-1 rounded">D</kbd> — Move</p>
+        <p><kbd className="bg-white/10 px-1 rounded">Space</kbd> — Jump</p>
+        <p className="text-white/70">🖱️ <strong>Drag</strong> to look around · <strong>Scroll</strong> to zoom</p>
+        <p><kbd className="bg-white/10 px-1 rounded">T</kbd> — Chat</p>
       </div>
 
       {others.length > 0 && (
         <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1 max-w-[180px] hidden md:block z-30">
           <p className="font-bold mb-1">👥 In this world</p>
           {others.slice(0, 8).map((p) => (
-            <p key={p.id} className="truncate text-white/80 flex items-center gap-1">
-              <span className="truncate">• {p.username}</span>
-              <AccountBadge username={p.username} userId={p.id} size={11} />
-            </p>
+            <p key={p.id} className="truncate text-white/80 flex items-center gap-1"><span className="truncate">• {p.username}</span><AccountBadge username={p.username} userId={p.id} size={11} /></p>
           ))}
-          {others.length > 8 && (
-            <p className="text-white/50">+{others.length - 8} more</p>
-          )}
+          {others.length > 8 && <p className="text-white/50">+{others.length - 8} more</p>}
         </div>
       )}
 
       {chatOpen && (
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 w-[min(560px,90vw)] z-40">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              sendChat();
-            }}
-            className="bg-black/85 backdrop-blur border-2 border-[#6C3CE0] rounded-lg px-3 py-2 flex items-center gap-2 shadow-2xl"
-          >
+          <form onSubmit={(e) => { e.preventDefault(); sendChat(); }} className="bg-black/85 backdrop-blur border-2 border-[#6C3CE0] rounded-lg px-3 py-2 flex items-center gap-2 shadow-2xl">
             <span className="text-[#00E5FF] font-bold text-sm flex-shrink-0">💬</span>
-            <input
-              ref={inputRef}
-              type="text"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value.slice(0, CHAT_MAX_LENGTH))}
-              placeholder="Type a message…"
-              className="flex-1 bg-transparent text-white text-sm outline-none placeholder-white/40"
-              maxLength={CHAT_MAX_LENGTH}
-              autoComplete="off"
-            />
-            <button
-              type="submit"
-              className="text-white bg-[#6C3CE0] hover:bg-[#5A2FC7] text-xs font-bold px-3 py-1.5 rounded flex-shrink-0"
-            >
-              Send
-            </button>
-            <button
-              type="button"
-              onClick={cancelChat}
-              className="text-white/60 hover:text-white text-sm flex-shrink-0"
-              title="Cancel (Esc)"
-            >
-              ✕
-            </button>
+            <input ref={inputRef} type="text" value={draft} onChange={(e) => setDraft(e.target.value.slice(0, CHAT_MAX_LENGTH))} placeholder="Type a message…" className="flex-1 bg-transparent text-white text-sm outline-none placeholder-white/40" maxLength={CHAT_MAX_LENGTH} autoComplete="off" />
+            <button type="submit" className="text-white bg-[#6C3CE0] hover:bg-[#5A2FC7] text-xs font-bold px-3 py-1.5 rounded flex-shrink-0">Send</button>
+            <button type="button" onClick={cancelChat} className="text-white/60 hover:text-white text-sm flex-shrink-0" title="Cancel (Esc)">✕</button>
           </form>
-          <p className="text-[10px] text-white/50 text-center mt-1">
-            Esc to cancel
-          </p>
+          <p className="text-[10px] text-white/50 text-center mt-1">Esc to cancel</p>
         </div>
       )}
 
       {!chatOpen && !isTouchDevice && (
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-none z-20">
-          <div className="bg-black/40 backdrop-blur px-3 py-1 rounded-full text-white/50 text-[10px]">
-            Press <kbd className="bg-white/10 px-1 rounded">T</kbd> to chat
-          </div>
+          <div className="bg-black/40 backdrop-blur px-3 py-1 rounded-full text-white/50 text-[10px]">Press <kbd className="bg-white/10 px-1 rounded">T</kbd> to chat</div>
         </div>
       )}
     </div>
