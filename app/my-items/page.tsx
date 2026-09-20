@@ -1,8 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { getCurrentUser, subscribeAuth, type User } from "../../lib/auth";
+import { useEffect, useState, useCallback } from "react";
+import { supabase } from "../../lib/supabase";
+import {
+  getCurrentUser,
+  subscribeAuth,
+  hydrateAuth,
+  type User,
+} from "../../lib/auth";
 import {
   getItem,
   RARITY_COLORS,
@@ -43,12 +49,57 @@ export default function InventoryPage() {
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
 
-  useEffect(() => {
-    setUser(getCurrentUser());
+  // Force a fresh pull from Supabase every time this page is shown
+  const refresh = useCallback(async () => {
+    // Make sure the global cache is hydrated first
+    await hydrateAuth();
+
+    // Re-fetch this user's row straight from Supabase so ownedItems is fresh
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) {
+      setUser(null);
+      setReady(true);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", session.user.id)
+      .single();
+
+    if (!error && data) {
+      // Let auth cache update itself so the rest of the app sees fresh data
+      const fresh = getCurrentUser();
+      if (fresh) setUser(fresh);
+      else setUser(null);
+    } else {
+      setUser(getCurrentUser());
+    }
     setReady(true);
-    const unsub = subscribeAuth(() => setUser(getCurrentUser()));
-    return () => unsub();
   }, []);
+
+  useEffect(() => {
+    refresh();
+
+    const unsub = subscribeAuth(() => {
+      setUser(getCurrentUser());
+    });
+
+    // Refresh whenever the tab/window regains focus (e.g. returning from a purchase)
+    const onFocus = () => refresh();
+    window.addEventListener("focus", onFocus);
+
+    // Refresh on browser back/forward navigation
+    const onPopState = () => refresh();
+    window.addEventListener("popstate", onPopState);
+
+    return () => {
+      unsub();
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("popstate", onPopState);
+    };
+  }, [refresh]);
 
   if (!ready) {
     return (
@@ -87,7 +138,6 @@ export default function InventoryPage() {
 
   return (
     <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans">
-
       <header className="bg-gradient-to-b from-[#6C3CE0] to-[#5A2FC7] border-b-4 border-[#4A1FA8]">
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
