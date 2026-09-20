@@ -22,7 +22,7 @@ export type Item = {
   previewEmoji: string;
   creator: string;
 
-  // If false, item can't be purchased (still ownable via admin/redeem)
+  // If false, item can't be purchased (still ownable via redeem/admin)
   forSale?: boolean;
 
   modelPath?: string;
@@ -215,6 +215,19 @@ export const ITEMS: Item[] = [
     previewEmoji: "✨",
     creator: "Voxelio",
     faceImageUrl: "/faces/face-of-yellow-sparkle-times.png",
+  },
+  {
+    id: "face-radioactive-power",
+    name: "Radioactive Face of Power",
+    description:
+      "A glowing radioactive face crackling with pure power. Not available for purchase — obtain it by redeeming a special code!",
+    price: 0,
+    category: "faces",
+    rarity: "legendary",
+    previewEmoji: "☢️",
+    creator: "Voxelio",
+    forSale: false,
+    faceImageUrl: "/faces/radioactive-face-of-power.png",
   },
 ];
 
