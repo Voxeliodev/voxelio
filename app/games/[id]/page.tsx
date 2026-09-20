@@ -10,7 +10,14 @@ import { Character } from "../../components/Avatar";
 import AccountBadge from "../../components/AccountBadge";
 import { getCurrentUser, formatVoxbux, type User, type AvatarConfig } from "../../../lib/auth";
 import { supabase } from "../../../lib/supabase";
-import { fetchWorldById, incrementWorldVisits, type World } from "../../../lib/worlds";
+import {
+  fetchWorldById,
+  incrementWorldVisits,
+  hasLikedWorld,
+  likeWorld,
+  unlikeWorld,
+  type World,
+} from "../../../lib/worlds";
 import { getLayout, type BlockData } from "../../../lib/worldLayouts";
 
 // ============================================================
@@ -708,6 +715,10 @@ export default function WorldPage() {
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
+  const [liking, setLiking] = useState(false);
+
   const channelRef = useRef<any>(null);
   const lobbyRef = useRef<any>(null);
   const localPosRef = useRef<{ pos: [number, number, number]; rotY: number }>({
@@ -727,6 +738,10 @@ export default function WorldPage() {
         return;
       }
       setWorld(w);
+      setLikeCount(w.likes);
+
+      // Check if user has already liked this world
+      hasLikedWorld(worldId).then((yes) => setLiked(yes));
 
       // Only count a visit once per session per world
       if (typeof window === "undefined") return;
@@ -738,7 +753,7 @@ export default function WorldPage() {
     });
   }, [worldId]);
 
-  // ===== Join lobby presence so games page knows we're here =====
+  // ===== Join lobby presence =====
   useEffect(() => {
     if (!user || !worldId) return;
 
@@ -844,6 +859,30 @@ export default function WorldPage() {
     setChatOpen(false);
     setDraft("");
   }, []);
+
+  const handleLike = useCallback(async () => {
+    if (!user || liking) return;
+    setLiking(true);
+
+    const wasLiked = liked;
+    const prevCount = likeCount;
+
+    // Optimistic update
+    setLiked(!wasLiked);
+    setLikeCount(wasLiked ? Math.max(0, prevCount - 1) : prevCount + 1);
+
+    const ok = wasLiked
+      ? await unlikeWorld(worldId)
+      : await likeWorld(worldId);
+
+    if (!ok) {
+      // Revert on failure
+      setLiked(wasLiked);
+      setLikeCount(prevCount);
+    }
+
+    setLiking(false);
+  }, [user, liking, liked, likeCount, worldId]);
 
   const handleMove = useCallback(
     (pos: [number, number, number], rotY: number) => {
@@ -1032,6 +1071,7 @@ export default function WorldPage() {
         </Canvas>
       </KeyboardControls>
 
+      {/* TOP LEFT */}
       <div className="absolute top-3 left-3 flex items-center gap-2">
         <Link
           href="/games"
@@ -1048,11 +1088,27 @@ export default function WorldPage() {
         </div>
       </div>
 
+      {/* TOP RIGHT */}
       <div className="absolute top-3 right-3 flex items-center gap-2">
+        <button
+          onClick={handleLike}
+          disabled={liking}
+          title={liked ? "Unlike this world" : "Like this world"}
+          className={`backdrop-blur px-3 py-2 rounded border text-white text-xs font-bold flex items-center gap-2 transition ${
+            liked
+              ? "bg-pink-500/80 border-pink-300 hover:bg-pink-500"
+              : "bg-black/60 border-white/20 hover:bg-black/80"
+          } ${liking ? "opacity-70 cursor-wait" : ""}`}
+        >
+          <span>{liked ? "❤️" : "🤍"}</span>
+          <span>{likeCount}</span>
+        </button>
+
         <div className="bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs flex items-center gap-2">
           <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
           <strong>{onlineCount}</strong> online
         </div>
+
         <div className="bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs flex items-center gap-2">
           <span className="font-bold inline-flex items-center">
             {user.username}
@@ -1062,6 +1118,7 @@ export default function WorldPage() {
         </div>
       </div>
 
+      {/* BOTTOM LEFT */}
       <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1">
         <p className="font-bold mb-1">🎮 Controls</p>
         <p>
@@ -1081,6 +1138,7 @@ export default function WorldPage() {
         </p>
       </div>
 
+      {/* BOTTOM RIGHT */}
       {others.length > 0 && (
         <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1 max-w-[180px]">
           <p className="font-bold mb-1">👥 In this world</p>
@@ -1096,6 +1154,7 @@ export default function WorldPage() {
         </div>
       )}
 
+      {/* CHAT INPUT */}
       {chatOpen && (
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 w-[min(560px,90vw)]">
           <form
@@ -1134,6 +1193,7 @@ export default function WorldPage() {
         </div>
       )}
 
+      {/* CHAT HINT */}
       {!chatOpen && (
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-none">
           <div className="bg-black/40 backdrop-blur px-3 py-1 rounded-full text-white/50 text-[10px]">

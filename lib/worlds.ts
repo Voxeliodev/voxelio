@@ -91,7 +91,61 @@ export async function incrementWorldVisits(id: string): Promise<void> {
 }
 
 // ============================================================
-// CREATE
+// LIKES
+// ============================================================
+
+/** Returns true if the signed-in user has liked this world. */
+export async function hasLikedWorld(worldId: string): Promise<boolean> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user) return false;
+
+  const { data, error } = await supabase
+    .from("world_likes")
+    .select("user_id")
+    .eq("world_id", worldId)
+    .eq("user_id", session.user.id)
+    .maybeSingle();
+
+  if (error) return false;
+  return Boolean(data);
+}
+
+/** Insert a like row. Trigger updates worlds.likes. */
+export async function likeWorld(worldId: string): Promise<boolean> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user) return false;
+
+  const { error } = await supabase
+    .from("world_likes")
+    .insert({ world_id: worldId, user_id: session.user.id });
+
+  if (error) {
+    console.error("likeWorld error:", error.message);
+    return false;
+  }
+  return true;
+}
+
+/** Delete the like row. Trigger decrements worlds.likes. */
+export async function unlikeWorld(worldId: string): Promise<boolean> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user) return false;
+
+  const { error } = await supabase
+    .from("world_likes")
+    .delete()
+    .eq("world_id", worldId)
+    .eq("user_id", session.user.id);
+
+  if (error) {
+    console.error("unlikeWorld error:", error.message);
+    return false;
+  }
+  return true;
+}
+
+// ============================================================
+// CREATE (still locked)
 // ============================================================
 export async function createWorld(input: {
   name: string;
@@ -103,7 +157,6 @@ export async function createWorld(input: {
   creator: string;
   maxPlayers?: number;
 }): Promise<{ success: boolean; error?: string; world?: World }> {
-  // Generate a clean, readable ID
   const slug = input.name
     .toLowerCase()
     .trim()
