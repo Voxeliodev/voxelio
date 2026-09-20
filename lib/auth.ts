@@ -440,6 +440,7 @@ export async function signOut(): Promise<void> {
 export function ownsItem(userId: string, itemId: string): boolean {
   return findUserById(userId)?.ownedItems.includes(itemId) || false;
 }
+
 export function buyItem(userId: string, itemId: string, price: number): { success: boolean; error?: string; newBalance?: number } {
   const user = findUserById(userId);
   if (!user) return { success: false, error: "You must be signed in." };
@@ -457,6 +458,7 @@ export function buyItem(userId: string, itemId: string, price: number): { succes
   updateUser(updated);
   return { success: true, newBalance: updated.voxbux };
 }
+
 export function subscribeIndev(userId: string, tier: IndevTier): { success: boolean; error?: string; newBalance?: number; expiresAt?: number } {
   const user = findUserById(userId);
   if (!user) return { success: false, error: "You must be signed in." };
@@ -473,6 +475,76 @@ export function cancelIndev(userId: string): { success: boolean; error?: string 
   const user = findUserById(userId);
   if (!user) return { success: false, error: "You must be signed in." };
   updateUser({ ...user, indevClub: null });
+  return { success: true };
+}
+
+// ============================================================
+// DEV — GRANT / REVOKE ITEMS (bypasses price & off-sale)
+// ============================================================
+export function grantItem(userId: string, itemId: string): { success: boolean; error?: string } {
+  const user = findUserById(userId);
+  if (!user) return { success: false, error: "User not found." };
+
+  const item = getItem(itemId);
+  if (!item) return { success: false, error: "Item not found." };
+
+  if (user.ownedItems.includes(itemId)) {
+    return { success: false, error: "User already owns this item." };
+  }
+
+  updateUser({
+    ...user,
+    ownedItems: [...user.ownedItems, itemId],
+  });
+  return { success: true };
+}
+
+export function grantItemsBulk(
+  userId: string,
+  itemIds: string[]
+): { added: string[]; skipped: string[]; errors: string[] } {
+  const user = findUserById(userId);
+  if (!user) return { added: [], skipped: [], errors: ["User not found."] };
+
+  const added: string[] = [];
+  const skipped: string[] = [];
+  const errors: string[] = [];
+  const owned = new Set(user.ownedItems);
+
+  for (const itemId of itemIds) {
+    const item = getItem(itemId);
+    if (!item) {
+      errors.push(itemId);
+      continue;
+    }
+    if (owned.has(itemId)) {
+      skipped.push(itemId);
+      continue;
+    }
+    owned.add(itemId);
+    added.push(itemId);
+  }
+
+  if (added.length > 0) {
+    updateUser({
+      ...user,
+      ownedItems: [...user.ownedItems, ...added],
+    });
+  }
+
+  return { added, skipped, errors };
+}
+
+export function revokeItem(userId: string, itemId: string): { success: boolean; error?: string } {
+  const user = findUserById(userId);
+  if (!user) return { success: false, error: "User not found." };
+  if (!user.ownedItems.includes(itemId)) {
+    return { success: false, error: "User doesn't own this item." };
+  }
+  updateUser({
+    ...user,
+    ownedItems: user.ownedItems.filter((id) => id !== itemId),
+  });
   return { success: true };
 }
 

@@ -11,6 +11,8 @@ import {
   banUser,
   unbanUser,
   terminateUser,
+  grantItemsBulk,
+  revokeItem,
   isUserBanned,
   getBanStatusLabel,
   formatAccountId,
@@ -20,6 +22,7 @@ import {
   type User,
 } from "../../lib/auth";
 import { isOwnerAccount } from "../../lib/badges";
+import { ITEMS, RARITY_COLORS, type Item } from "../../lib/items";
 import AccountBadge from "../components/AccountBadge";
 import NavLink from "../components/NavLink";
 
@@ -31,7 +34,7 @@ const BAN_DURATIONS = [
   { id: "permanent", name: "Permanent (Forever)", ms: "permanent" as const },
 ] as const;
 
-type ActionType = "gift" | "set" | "ban" | "unban" | "terminate" | null;
+type ActionType = "gift" | "set" | "ban" | "unban" | "terminate" | "items" | null;
 
 export default function DevPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -48,6 +51,11 @@ export default function DevPage() {
 
   const [banDuration, setBanDuration] = useState<string>("24h");
   const [banReason, setBanReason] = useState("");
+
+  // Item-grant modal state
+  const [itemSearch, setItemSearch] = useState("");
+  const [itemCategory, setItemCategory] = useState<string>("all");
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     refresh();
@@ -76,6 +84,9 @@ export default function DevPage() {
     setGiftAmount("");
     setBanDuration("24h");
     setBanReason("");
+    setItemSearch("");
+    setItemCategory("all");
+    setSelectedItemIds(new Set());
   };
 
   const closeAction = () => {
@@ -83,6 +94,9 @@ export default function DevPage() {
     setActionType(null);
     setGiftAmount("");
     setBanReason("");
+    setItemSearch("");
+    setItemCategory("all");
+    setSelectedItemIds(new Set());
   };
 
   const confirmGift = () => {
@@ -157,6 +171,70 @@ export default function DevPage() {
     }
   };
 
+  // -------- Item grant actions --------
+  const toggleItem = (itemId: string) => {
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+  };
+
+  const selectAllVisible = () => {
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev);
+      for (const item of visibleItems) {
+        if (!actionUser?.ownedItems.includes(item.id)) next.add(item.id);
+      }
+      return next;
+    });
+  };
+
+  const deselectAllVisible = () => {
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev);
+      for (const item of visibleItems) next.delete(item.id);
+      return next;
+    });
+  };
+
+  const confirmGrantItems = () => {
+    if (!actionUser) return;
+    const ids = Array.from(selectedItemIds);
+    if (ids.length === 0) {
+      showToast("error", "Select at least one item.");
+      return;
+    }
+    const result = grantItemsBulk(actionUser.id, ids);
+    const parts: string[] = [];
+    if (result.added.length) parts.push(`✅ Added ${result.added.length}`);
+    if (result.skipped.length) parts.push(`⏭️ Skipped ${result.skipped.length} (already owned)`);
+    if (result.errors.length) parts.push(`❌ Failed ${result.errors.length}`);
+
+    if (result.added.length > 0) {
+      showToast("success", `Granted items to ${actionUser.username}. ${parts.join(" · ")}`);
+      refresh();
+      closeAction();
+    } else {
+      showToast("error", `No items added. ${parts.join(" · ")}`);
+    }
+  };
+
+  const handleRevoke = (itemId: string) => {
+    if (!actionUser) return;
+    const result = revokeItem(actionUser.id, itemId);
+    if (result.success) {
+      showToast("success", `Removed item from ${actionUser.username}.`);
+      refresh();
+      // Update the local actionUser so the checkboxes/marks update immediately
+      const fresh = getUsers().find((u) => u.id === actionUser.id);
+      if (fresh) setActionUser(fresh);
+    } else {
+      showToast("error", result.error || "Revoke failed.");
+    }
+  };
+
   const isOwner = isOwnerAccount(currentUser?.username);
 
   const filtered = users
@@ -178,6 +256,20 @@ export default function DevPage() {
       const bd = b.displayId ?? Number.MAX_SAFE_INTEGER;
       return ad - bd;
     });
+
+  // Items visible in the grant modal
+  const visibleItems: Item[] = ITEMS.filter((item) => {
+    if (itemCategory !== "all" && item.category !== itemCategory) return false;
+    if (itemSearch.trim()) {
+      const q = itemSearch.trim().toLowerCase();
+      return (
+        item.name.toLowerCase().includes(q) ||
+        item.id.toLowerCase().includes(q) ||
+        item.creator.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
 
   const totalUsers = users.length;
   const bannedCount = users.filter((u) => isUserBanned(u)).length;
@@ -298,8 +390,9 @@ export default function DevPage() {
         ) : (
           <>
             <div className="mb-6">
-              <h1 className="text-3xl font-black text-[#4A1FA8] mb-1 flex items-center gap-2">
-                🛠️ Developer Console
+              <h1 className="font-black text-3xl text-[#4A1FA8] flex items-center gap-2">
+                <span>🛠️</span>
+                <span>Developer Console</span>
               </h1>
               <p className="text-sm text-[#666]">
                 Owner-only tools for managing Voxelio accounts.
@@ -398,6 +491,7 @@ export default function DevPage() {
                           </div>
                           <div className="flex items-center gap-3 mt-0.5 text-[11px]">
                             <span className="text-[#FFD700] font-bold">{formatVoxbux(u.voxbux)}</span>
+                            <span className="text-[#888]">{u.ownedItems.length} items</span>
                             <span
                               className={
                                 status.tone === "ok"
@@ -430,6 +524,12 @@ export default function DevPage() {
                           className="text-[11px] font-bold px-2.5 py-1.5 rounded border bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE] transition"
                         >
                           Set V$
+                        </button>
+                        <button
+                          onClick={() => openAction(u, "items")}
+                          className="text-[11px] font-bold px-2.5 py-1.5 rounded border bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white border-[#4A1FA8] hover:from-[#8B5FFF] hover:to-[#6A3FD7] transition"
+                        >
+                          🎁 Items ({u.ownedItems.length})
                         </button>
                         {isUserBanned(u) ? (
                           <button
@@ -479,7 +579,9 @@ export default function DevPage() {
           onClick={closeAction}
         >
           <div
-            className="bg-white rounded-lg shadow-2xl w-full max-w-md"
+            className={`bg-white rounded-lg shadow-2xl w-full ${
+              actionType === "items" ? "max-w-3xl" : "max-w-md"
+            } max-h-[90vh] flex flex-col`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className={`px-4 py-3 border-b-2 ${
@@ -493,13 +595,14 @@ export default function DevPage() {
                 {actionType === "ban" && `Ban ${actionUser.username}`}
                 {actionType === "unban" && `Unban ${actionUser.username}`}
                 {actionType === "terminate" && `⚠️ Terminate ${actionUser.username}`}
+                {actionType === "items" && `🎁 Manage Items — ${actionUser.username}`}
               </h2>
               <p className="text-white/70 text-xs mt-0.5">
-                ID {formatAccountId(actionUser.id, actionUser.displayId)} • Current balance: {formatVoxbux(actionUser.voxbux)}
+                ID {formatAccountId(actionUser.id, actionUser.displayId)} • Current balance: {formatVoxbux(actionUser.voxbux)} • {actionUser.ownedItems.length} items owned
               </p>
             </div>
 
-            <div className="p-4 space-y-4">
+            <div className="p-4 space-y-4 overflow-y-auto flex-1">
 
               {actionType === "gift" && (
                 <>
@@ -599,9 +702,125 @@ export default function DevPage() {
                   </div>
                 </>
               )}
+
+              {actionType === "items" && (
+                <>
+                  {/* Search + category filter */}
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="flex-1 flex items-center gap-2 bg-[#EEF0F7] border border-[#C5C8D6] rounded px-3 py-2 focus-within:border-[#6C3CE0]">
+                      <span className="text-[#666]">🔍</span>
+                      <input
+                        type="text"
+                        placeholder="Search items..."
+                        value={itemSearch}
+                        onChange={(e) => setItemSearch(e.target.value)}
+                        className="bg-transparent outline-none text-sm flex-1 text-[#1A1A2E]"
+                      />
+                    </div>
+                    <select
+                      value={itemCategory}
+                      onChange={(e) => setItemCategory(e.target.value)}
+                      className="bg-[#EEF0F7] border border-[#C5C8D6] rounded px-2 py-2 text-xs font-bold text-[#4A1FA8] outline-none cursor-pointer"
+                    >
+                      <option value="all">All Categories</option>
+                      <option value="hats">Hats</option>
+                      <option value="heads">Heads</option>
+                      <option value="faces">Faces</option>
+                      <option value="outfits">Outfits</option>
+                      <option value="accessories">Accessories</option>
+                      <option value="hair">Hair</option>
+                    </select>
+                  </div>
+
+                  {/* Bulk select controls */}
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[#666] font-bold">
+                      {selectedItemIds.size} selected • {visibleItems.length} shown
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={selectAllVisible}
+                        className="font-bold text-[#6C3CE0] hover:underline"
+                      >
+                        Select all shown
+                      </button>
+                      <button
+                        onClick={deselectAllVisible}
+                        className="font-bold text-[#6C3CE0] hover:underline"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Item list */}
+                  <div className="border-2 border-[#C5C8D6] rounded max-h-[50vh] overflow-y-auto">
+                    {visibleItems.length === 0 ? (
+                      <p className="p-6 text-center text-sm text-[#888]">
+                        No items match your filters.
+                      </p>
+                    ) : (
+                      visibleItems.map((item, idx) => {
+                        const owned = actionUser.ownedItems.includes(item.id);
+                        const selected = selectedItemIds.has(item.id);
+                        return (
+                          <div
+                            key={item.id}
+                            className={`flex items-center gap-3 p-2.5 ${
+                              idx !== visibleItems.length - 1 ? "border-b border-[#E5E7F0]" : ""
+                            } ${owned ? "bg-green-50/40" : ""}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={() => toggleItem(item.id)}
+                              disabled={owned}
+                              className="w-4 h-4 cursor-pointer disabled:cursor-not-allowed"
+                            />
+                            <span className="text-2xl flex-shrink-0">{item.previewEmoji}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-sm truncate">{item.name}</span>
+                                <span
+                                  className="text-[9px] font-bold px-1.5 py-0.5 rounded text-white uppercase"
+                                  style={{ backgroundColor: RARITY_COLORS[item.rarity] }}
+                                >
+                                  {item.rarity}
+                                </span>
+                                {item.forSale === false && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-500 text-white uppercase">
+                                    Off Sale
+                                  </span>
+                                )}
+                                {owned && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-green-600 text-white uppercase">
+                                    ✓ Owned
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-[#888]">
+                                {item.category} • {item.id}
+                              </p>
+                            </div>
+                            {owned && (
+                              <button
+                                onClick={() => handleRevoke(item.id)}
+                                className="text-[10px] font-bold px-2 py-1 rounded border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 transition flex-shrink-0"
+                                title="Remove this item from the user"
+                              >
+                                Revoke
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
-            <div className="px-4 py-3 border-t border-[#E5E7F0] flex justify-end gap-2">
+            <div className="px-4 py-3 border-t border-[#E5E7F0] flex justify-end gap-2 flex-shrink-0">
               <button
                 onClick={closeAction}
                 className="px-4 py-2 text-sm font-bold rounded border border-[#C5C8D6] bg-[#EEF0F7] text-[#4A1FA8] hover:bg-[#E0E3EE] transition"
@@ -647,6 +866,19 @@ export default function DevPage() {
                   className="px-4 py-2 text-sm font-bold rounded border bg-[#1A1A2E] text-white border-black hover:bg-[#2A2A4E] transition"
                 >
                   Yes, Terminate
+                </button>
+              )}
+              {actionType === "items" && (
+                <button
+                  onClick={confirmGrantItems}
+                  disabled={selectedItemIds.size === 0}
+                  className={`px-4 py-2 text-sm font-bold rounded border transition ${
+                    selectedItemIds.size === 0
+                      ? "bg-[#EEF0F7] text-[#888] border-[#C5C8D6] cursor-not-allowed"
+                      : "bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white border-[#4A1FA8] hover:from-[#8B5FFF] hover:to-[#6A3FD7]"
+                  }`}
+                >
+                  Grant {selectedItemIds.size} Item{selectedItemIds.size === 1 ? "" : "s"}
                 </button>
               )}
             </div>
