@@ -258,12 +258,12 @@ export default function CatalogPage() {
 
             <div className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden">
               <div className="bg-[#6C3CE0] text-white text-sm font-bold px-3 py-2 border-b border-[#4A1FA8]">
-                My Items
+                Inventory
               </div>
               <ul className="p-3 text-sm space-y-1.5">
                 <li>
-                  <Link href="#" className="text-[#4A1FA8] hover:underline flex items-center gap-1">
-                    ▸ My Inventory
+                  <Link href="/my-items" className="text-[#4A1FA8] hover:underline flex items-center gap-1">
+                    ▸ My Items
                   </Link>
                 </li>
                 <li>
