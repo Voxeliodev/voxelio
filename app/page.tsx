@@ -5,15 +5,24 @@ import { useState, useEffect } from "react";
 import { getUsers, getCurrentUser, signOut, formatVoxbux, subscribeAuth } from "../lib/auth";
 import type { User } from "../lib/auth";
 import { isOwnerAccount } from "../lib/badges";
+import { fetchWorlds, type World } from "../lib/worlds";
 import Avatar from "./components/Avatar";
 import AccountBadge from "./components/AccountBadge";
 import NavLink from "./components/NavLink";
+
+function formatCount(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}K`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
+}
 
 export default function Home() {
   const [users, setUsers] = useState<User[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "online" | "friends">("all");
+  const [featuredWorlds, setFeaturedWorlds] = useState<World[]>([]);
+  const [worldsLoading, setWorldsLoading] = useState(true);
 
   const refresh = () => {
     setUsers(getUsers());
@@ -24,6 +33,22 @@ export default function Home() {
     refresh();
     const unsub = subscribeAuth(() => refresh());
     return () => unsub();
+  }, []);
+
+  // ===== Load featured worlds =====
+  useEffect(() => {
+    let cancelled = false;
+    setWorldsLoading(true);
+
+    fetchWorlds({ featuredOnly: true, sort: "popular" }).then((list) => {
+      if (cancelled) return;
+      setFeaturedWorlds(list);
+      setWorldsLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleSignOut = async () => {
@@ -48,7 +73,7 @@ export default function Home() {
   const navTabs: any[] = [
     { name: "Home", href: "#", active: true },
     { name: "Games", href: "/games" },
-    { name: "Create", href: "#create" },
+    { name: "Create", href: "/create" },
     { name: "Catalog", href: "/catalog" },
     ...(isOwner ? [{ name: "Dev", href: "/dev", dev: true }] : []),
     { name: "Friends", href: "/friends" },
@@ -224,7 +249,7 @@ export default function Home() {
               </div>
               <div className="flex justify-between">
                 <span className="text-[#666]">Worlds:</span>
-                <strong className="text-[#4A1FA8]">0</strong>
+                <strong className="text-[#4A1FA8]">{featuredWorlds.length}</strong>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#666]">Members:</span>
@@ -336,27 +361,84 @@ export default function Home() {
             </div>
           </div>
 
+          {/* FEATURED WORLDS */}
           <section id="discover">
             <div className="flex items-center justify-between mb-3 border-b-2 border-[#C5C8D6] pb-1">
               <h2 className="text-lg font-black text-[#4A1FA8]">🎯 Featured Worlds</h2>
+              <Link href="/games" className="text-xs font-bold text-[#6C3CE0] hover:underline">
+                View All →
+              </Link>
             </div>
-            <div className="bg-white border-2 border-dashed border-[#C5C8D6] rounded p-12 text-center">
-              <div className="text-6xl mb-4">🏗️</div>
-              <h3 className="font-black text-xl text-[#1A1A2E] mb-2">No Worlds Yet</h3>
-              <p className="text-sm text-[#666] mb-6 max-w-md mx-auto">
-                The Voxelio universe is waiting for its first creation. Will it be yours?
-              </p>
-              {!currentUser && (
+
+            {worldsLoading ? (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden">
+                    <div className="aspect-square bg-[#EEF0F7] animate-pulse" />
+                    <div className="p-2 space-y-1">
+                      <div className="h-3 bg-[#EEF0F7] rounded animate-pulse" />
+                      <div className="h-2 bg-[#EEF0F7] rounded animate-pulse w-2/3" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : featuredWorlds.length === 0 ? (
+              <div className="bg-white border-2 border-dashed border-[#C5C8D6] rounded p-12 text-center">
+                <div className="text-6xl mb-4">🏗️</div>
+                <h3 className="font-black text-xl text-[#1A1A2E] mb-2">No Worlds Yet</h3>
+                <p className="text-sm text-[#666] mb-6 max-w-md mx-auto">
+                  The Voxelio universe is waiting for its first creation. Will it be yours?
+                </p>
                 <Link
-                  href="/signup"
+                  href="/games"
                   className="inline-block bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white font-bold text-sm px-8 py-3 rounded border border-[#4A1FA8] hover:from-[#8B5FFF] hover:to-[#6A3FD7] transition shadow-md"
                 >
-                  🛠️ Sign Up to Create
+                  🎮 Browse Worlds
                 </Link>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {featuredWorlds.slice(0, 6).map((world) => (
+                  <Link
+                    key={world.id}
+                    href={`/games/${world.id}`}
+                    className="group bg-white border-2 border-[#C5C8D6] rounded overflow-hidden hover:border-[#6C3CE0] hover:shadow-lg transition"
+                  >
+                    <div
+                      className="aspect-square flex items-center justify-center relative overflow-hidden"
+                      style={{
+                        background: `linear-gradient(135deg, ${world.thumbnailColor} 0%, ${shade(world.thumbnailColor, -30)} 100%)`,
+                      }}
+                    >
+                      <span className="text-5xl md:text-6xl select-none drop-shadow-lg group-hover:scale-110 transition-transform duration-300">
+                        {world.thumbnailEmoji}
+                      </span>
+                      <span className="absolute top-1.5 left-1.5 bg-[#FFD700] text-[#1A1A2E] text-[9px] font-black px-1.5 py-0.5 rounded">
+                        ⭐ FEATURED
+                      </span>
+                      <span className="absolute top-1.5 right-1.5 bg-black/50 backdrop-blur text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
+                        {world.category}
+                      </span>
+                    </div>
+                    <div className="p-2 space-y-1">
+                      <h3 className="font-black text-xs text-[#1A1A2E] truncate leading-tight">
+                        {world.name}
+                      </h3>
+                      <p className="text-[10px] text-[#666] truncate">
+                        by <strong className="text-[#4A1FA8]">{world.creator}</strong>
+                      </p>
+                      <div className="flex items-center justify-between text-[10px] text-[#666] pt-1 border-t border-[#E5E7F0]">
+                        <span title="Likes">👍 {formatCount(world.likes)}</span>
+                        <span title="Visits">👥 {formatCount(world.visits)}</span>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
           </section>
 
+          {/* MEMBERS */}
           <section id="people">
             <div className="flex items-center justify-between mb-3 border-b-2 border-[#C5C8D6] pb-1">
               <h2 className="text-lg font-black text-[#4A1FA8]">👥 Members</h2>
@@ -495,19 +577,6 @@ export default function Home() {
 
           <section>
             <div className="flex items-center justify-between mb-3 border-b-2 border-[#C5C8D6] pb-1">
-              <h2 className="text-lg font-black text-[#4A1FA8]">🔥 Most Popular</h2>
-            </div>
-            <div className="bg-white border-2 border-dashed border-[#C5C8D6] rounded p-8 text-center">
-              <div className="text-5xl mb-3">📊</div>
-              <h3 className="font-bold text-lg text-[#1A1A2E] mb-1">No Data Yet</h3>
-              <p className="text-sm text-[#666]">
-                Check back later to see the most popular worlds on Voxelio!
-              </p>
-            </div>
-          </section>
-
-          <section>
-            <div className="flex items-center justify-between mb-3 border-b-2 border-[#C5C8D6] pb-1">
               <h2 className="text-lg font-black text-[#4A1FA8]">📢 Voxelio News</h2>
               <Link href="#" className="text-xs text-[#6C3CE0] hover:underline font-semibold">
                 View All →
@@ -515,9 +584,9 @@ export default function Home() {
             </div>
             <div className="bg-white border-2 border-[#C5C8D6] rounded p-4 space-y-3">
               {[
+                { date: "Sep 20, 2026", title: "Multiplayer is live!", desc: "Jump into any world and play with friends in real time." },
                 { date: "Sep 18, 2026", title: "Welcome to Voxelio!", desc: "The platform is officially live. Be the first to create a world!" },
                 { date: "Sep 12, 2026", title: "Creator Payout Increase", desc: "Creators now keep 70% of all Voxbux earned." },
-                { date: "Sep 05, 2026", title: "Nova AI Assistant Released", desc: "Generate code, ideas, and assets with AI." },
               ].map((news) => (
                 <div key={news.title} className="border-l-4 border-[#6C3CE0] pl-3">
                   <div className="text-[10px] text-[#888] font-semibold uppercase">{news.date}</div>
@@ -583,4 +652,14 @@ export default function Home() {
       </footer>
     </div>
   );
+}
+
+function shade(hex: string, percent: number): string {
+  const clean = hex.replace("#", "");
+  const num = parseInt(clean, 16);
+  const amt = Math.round(2.55 * percent);
+  const r = Math.max(0, Math.min(255, (num >> 16) + amt));
+  const g = Math.max(0, Math.min(255, ((num >> 8) & 0x00ff) + amt));
+  const b = Math.max(0, Math.min(255, (num & 0x0000ff) + amt));
+  return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 }
