@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   getCurrentUser,
   signOut,
@@ -13,6 +13,7 @@ import {
 import { isOwnerAccount } from "../../lib/badges";
 import AccountBadge from "../components/AccountBadge";
 import NavLink from "../components/NavLink";
+import { supabase } from "../../lib/supabase";
 import { fetchWorlds, type World } from "../../lib/worlds";
 
 type Sort = "popular" | "top" | "new";
@@ -40,10 +41,15 @@ export default function GamesPage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [worlds, setWorlds] = useState<World[]>([]);
   const [featured, setFeatured] = useState<World[]>([]);
+  const [playerCounts, setPlayerCounts] = useState<Record<string, number>>({});
+  const [totalPlaying, setTotalPlaying] = useState(0);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState("all");
   const [sort, setSort] = useState<Sort>("popular");
   const [search, setSearch] = useState("");
+  const [tick, setTick] = useState(0);
+
+  const initialLoadRef = useRef(true);
 
   const refreshUser = () => setCurrentUser(getCurrentUser());
 
@@ -53,9 +59,10 @@ export default function GamesPage() {
     return () => unsub();
   }, []);
 
+  // ===== Fetch worlds =====
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    if (initialLoadRef.current) setLoading(true);
 
     const timer = setTimeout(() => {
       Promise.all([
@@ -66,6 +73,7 @@ export default function GamesPage() {
         setWorlds(list);
         setFeatured(feats.slice(0, 5));
         setLoading(false);
+        initialLoadRef.current = false;
       });
     }, 200);
 
@@ -73,7 +81,52 @@ export default function GamesPage() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [sort, category, search]);
+  }, [sort, category, search, tick]);
+
+  // ===== Silent refresh every 30s so visits stay current =====
+  useEffect(() => {
+    const interval = setInterval(() => setTick((t) => t + 1), 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // ===== Subscribe to world-lobby presence for live player counts =====
+  useEffect(() => {
+    const observerKey = `observer-${Math.random().toString(36).slice(2, 10)}`;
+
+    const lobby = supabase.channel("world-lobby", {
+      config: { presence: { key: observerKey } },
+    });
+
+    const updateCounts = () => {
+      const state = lobby.presenceState();
+      const counts: Record<string, number> = {};
+      let total = 0;
+
+      for (const key of Object.keys(state)) {
+        const entries = state[key] as any[];
+        for (const entry of entries) {
+          const wid = entry?.worldId;
+          if (typeof wid === "string" && wid.length > 0) {
+            counts[wid] = (counts[wid] || 0) + 1;
+            total += 1;
+          }
+        }
+      }
+
+      setPlayerCounts(counts);
+      setTotalPlaying(total);
+    };
+
+    lobby
+      .on("presence", { event: "sync" }, updateCounts)
+      .on("presence", { event: "join" }, updateCounts)
+      .on("presence", { event: "leave" }, updateCounts)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(lobby);
+    };
+  }, []);
 
   const handleSignOut = async () => {
     await signOut();
@@ -185,8 +238,9 @@ export default function GamesPage() {
         {/* HERO */}
         <div className="bg-gradient-to-r from-[#6C3CE0] via-[#7B4FF7] to-[#00B8D4] rounded border-2 border-[#4A1FA8] p-6 md:p-8 text-white relative overflow-hidden mb-6">
           <div className="relative z-10 max-w-2xl">
-            <div className="inline-block bg-white/20 backdrop-blur-sm px-3 py-1 rounded-full text-[11px] font-bold mb-3">
-              🎮 {worlds.length} WORLDS LIVE
+            <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm px-3 py-1 rounded-full text-[11px] font-bold mb-3">
+              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+              {totalPlaying} {totalPlaying === 1 ? "PLAYER" : "PLAYERS"} IN GAME
             </div>
             <h1
               className="text-3xl md:text-5xl font-black mb-3"
@@ -228,7 +282,12 @@ export default function GamesPage() {
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
               {featured.map((world) => (
-                <WorldCard key={world.id} world={world} compact />
+                <WorldCard
+                  key={world.id}
+                  world={world}
+                  playerCount={playerCounts[world.id] || 0}
+                  compact
+                />
               ))}
             </div>
           </section>
@@ -321,7 +380,11 @@ export default function GamesPage() {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
               {worlds.map((world) => (
-                <WorldCard key={world.id} world={world} />
+                <WorldCard
+                  key={world.id}
+                  world={world}
+                  playerCount={playerCounts[world.id] || 0}
+                />
               ))}
             </div>
           )}
@@ -340,7 +403,15 @@ export default function GamesPage() {
 // ============================================================
 // WORLD CARD
 // ============================================================
-function WorldCard({ world, compact = false }: { world: World; compact?: boolean }) {
+function WorldCard({
+  world,
+  playerCount,
+  compact = false,
+}: {
+  world: World;
+  playerCount: number;
+  compact?: boolean;
+}) {
   return (
     <Link
       href={`/games/${world.id}`}
@@ -361,6 +432,13 @@ function WorldCard({ world, compact = false }: { world: World; compact?: boolean
             ⭐ FEATURED
           </span>
         )}
+
+        {playerCount > 0 ? (
+          <span className="absolute bottom-1.5 left-1.5 flex items-center gap-1 bg-black/60 backdrop-blur text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+            <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+            {playerCount} playing
+          </span>
+        ) : null}
 
         <span className="absolute top-1.5 right-1.5 bg-black/50 backdrop-blur text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
           {world.category}

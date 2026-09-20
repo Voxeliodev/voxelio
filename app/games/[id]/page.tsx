@@ -73,7 +73,7 @@ type ChatMessage = {
 };
 
 // ============================================================
-// SAFE SPAWN — never spawn inside a block
+// SAFE SPAWN
 // ============================================================
 function findSafeSpawn(blocks: BlockData[]): THREE.Vector3 {
   const spawn = new THREE.Vector3(0, CHARACTER_Y_OFFSET, 0);
@@ -100,14 +100,10 @@ function findSafeSpawn(blocks: BlockData[]): THREE.Vector3 {
       const bMinZ = bz - sz / 2;
       const bMaxZ = bz + sz / 2;
 
-      // No X or Z overlap? Skip
       if (pMaxX <= bMinX || pMinX >= bMaxX) continue;
       if (pMaxZ <= bMinZ || pMinZ >= bMaxZ) continue;
-
-      // No Y overlap? Skip
       if (pTopY <= bMinY || pFeetY >= bMaxY) continue;
 
-      // Overlapping — push spawn above this block
       spawn.y = Math.max(spawn.y, bMaxY + CHARACTER_Y_OFFSET + 0.05);
       pushedUp = true;
     }
@@ -115,9 +111,7 @@ function findSafeSpawn(blocks: BlockData[]): THREE.Vector3 {
     if (!pushedUp) break;
   }
 
-  // Absolute safety: never spawn higher than 60 units
   if (spawn.y > 60) spawn.y = 60;
-
   return spawn;
 }
 
@@ -377,7 +371,6 @@ function LocalPlayer({
   const { gl } = useThree();
   const [, getKeys] = useKeyboardControls();
 
-  // Compute a safe spawn once based on the layout blocks
   const safeSpawn = useMemo(() => findSafeSpawn(blocks), [blocks]);
 
   const groupRef = useRef<THREE.Group>(null);
@@ -396,9 +389,6 @@ function LocalPlayer({
   const [walking, setWalking] = useState(false);
   const walkingStateRef = useRef(false);
 
-  // ============================================================
-  // MOUSE CAMERA
-  // ============================================================
   useEffect(() => {
     const canvas = gl.domElement;
 
@@ -466,9 +456,6 @@ function LocalPlayer({
     };
   }, [gl]);
 
-  // ============================================================
-  // FRAME UPDATE
-  // ============================================================
   useFrame((state, delta) => {
     if (!groupRef.current) return;
 
@@ -563,7 +550,6 @@ function LocalPlayer({
 
     groupRef.current.position.copy(positionRef.current);
 
-    // ===== CAMERA =====
     const camYaw = cameraYawRef.current;
     const camPitch = cameraPitchRef.current;
     const camDist = cameraDistRef.current;
@@ -586,7 +572,6 @@ function LocalPlayer({
 
     state.camera.lookAt(lookX, lookY, lookZ);
 
-    // ===== BROADCAST =====
     const now = performance.now();
     const sinceLast = now - lastBroadcastRef.current;
 
@@ -724,24 +709,62 @@ export default function WorldPage() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const channelRef = useRef<any>(null);
+  const lobbyRef = useRef<any>(null);
   const localPosRef = useRef<{ pos: [number, number, number]; rotY: number }>({
     pos: [0, CHARACTER_Y_OFFSET, 0],
     rotY: 0,
   });
 
+  // ===== Load user + world (with visit dedupe) =====
   useEffect(() => {
     const u = getCurrentUser();
     setUser(u);
     setMounted(true);
 
     fetchWorldById(worldId).then((w) => {
-      if (!w) setNotFound(true);
-      else {
-        setWorld(w);
+      if (!w) {
+        setNotFound(true);
+        return;
+      }
+      setWorld(w);
+
+      // Only count a visit once per session per world
+      if (typeof window === "undefined") return;
+      const visitKey = `voxelio-visited-${worldId}`;
+      if (sessionStorage.getItem(visitKey) !== "1") {
+        sessionStorage.setItem(visitKey, "1");
         incrementWorldVisits(worldId);
       }
     });
   }, [worldId]);
+
+  // ===== Join lobby presence so games page knows we're here =====
+  useEffect(() => {
+    if (!user || !worldId) return;
+
+    const lobby = supabase.channel("world-lobby", {
+      config: { presence: { key: user.id } },
+    });
+
+    lobby.subscribe((status: string) => {
+      if (status === "SUBSCRIBED") {
+        lobby.track({
+          userId: user.id,
+          username: user.username,
+          worldId,
+          joinedAt: Date.now(),
+        });
+      }
+    });
+
+    lobbyRef.current = lobby;
+
+    return () => {
+      lobby.untrack();
+      supabase.removeChannel(lobby);
+      lobbyRef.current = null;
+    };
+  }, [user, worldId]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -896,7 +919,6 @@ export default function WorldPage() {
       .on("presence", { event: "sync" }, () => {
         const state = channel.presenceState();
         setOnlineCount(Object.keys(state).length);
-        // Re-broadcast our latest position so newcomers can see us
         const me = localPosRef.current;
         channel.send({
           type: "broadcast",
@@ -1010,7 +1032,6 @@ export default function WorldPage() {
         </Canvas>
       </KeyboardControls>
 
-      {/* TOP LEFT */}
       <div className="absolute top-3 left-3 flex items-center gap-2">
         <Link
           href="/games"
@@ -1027,7 +1048,6 @@ export default function WorldPage() {
         </div>
       </div>
 
-      {/* TOP RIGHT */}
       <div className="absolute top-3 right-3 flex items-center gap-2">
         <div className="bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs flex items-center gap-2">
           <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
@@ -1042,7 +1062,6 @@ export default function WorldPage() {
         </div>
       </div>
 
-      {/* BOTTOM LEFT */}
       <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1">
         <p className="font-bold mb-1">🎮 Controls</p>
         <p>
@@ -1062,7 +1081,6 @@ export default function WorldPage() {
         </p>
       </div>
 
-      {/* BOTTOM RIGHT */}
       {others.length > 0 && (
         <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1 max-w-[180px]">
           <p className="font-bold mb-1">👥 In this world</p>
@@ -1078,7 +1096,6 @@ export default function WorldPage() {
         </div>
       )}
 
-      {/* CHAT INPUT */}
       {chatOpen && (
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 w-[min(560px,90vw)]">
           <form
@@ -1117,7 +1134,6 @@ export default function WorldPage() {
         </div>
       )}
 
-      {/* CHAT HINT */}
       {!chatOpen && (
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-none">
           <div className="bg-black/40 backdrop-blur px-3 py-1 rounded-full text-white/50 text-[10px]">
