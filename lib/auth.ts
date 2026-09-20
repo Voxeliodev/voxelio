@@ -50,6 +50,7 @@ export type User = {
   indevClub?: IndevClub | null; lastSeen?: number;
   lastDailyBonus?: number;
   joinedAtMs?: number;
+  playedWithOwner?: boolean;
 };
 
 export type Message = {
@@ -84,7 +85,6 @@ let hydrated = false;
 const listeners = new Set<() => void>();
 function notify() { for (const fn of listeners) fn(); }
 
-// One-shot daily bonus notification
 let pendingBonusClaim: { amount: number; at: number } | null = null;
 
 export function consumeDailyBonusNotification(): number | null {
@@ -117,9 +117,7 @@ export async function hydrateAuth(): Promise<void> {
     if (msgRows) messagesCache = msgRows.map(rowToMessage);
 
     if (currentUserCache) {
-      claimDailyBonus(currentUserCache.id)
-        .then((r) => console.log("[hydrateAuth] bonus result:", r))
-        .catch((e) => console.error("[hydrateAuth] bonus error:", e));
+      claimDailyBonus(currentUserCache.id).catch(() => {});
     }
   }
 
@@ -135,9 +133,7 @@ export async function hydrateAuth(): Promise<void> {
       if (msgRows) messagesCache = msgRows.map(rowToMessage);
 
       if (currentUserCache) {
-        claimDailyBonus(currentUserCache.id)
-          .then((r) => console.log("[onAuthStateChange] bonus result:", r))
-          .catch((e) => console.error("[onAuthStateChange] bonus error:", e));
+        claimDailyBonus(currentUserCache.id).catch(() => {});
       }
     } else {
       currentUserCache = null;
@@ -258,6 +254,7 @@ function rowToUser(row: any): User {
     lastSeen: typeof d.lastSeen === "number" ? d.lastSeen : 0,
     lastDailyBonus: typeof d.lastDailyBonus === "number" ? d.lastDailyBonus : 0,
     joinedAtMs: createdMs,
+    playedWithOwner: Boolean(d.playedWithOwner),
   };
 }
 
@@ -276,6 +273,7 @@ function userToRow(u: User) {
       banReason: u.banReason, indevClub: u.indevClub,
       lastSeen: u.lastSeen ?? Date.now(),
       lastDailyBonus: u.lastDailyBonus ?? 0,
+      playedWithOwner: u.playedWithOwner ?? false,
     },
   };
 }
@@ -409,7 +407,7 @@ export async function createUser(data: { username: string; email: string; passwo
     avatarConfig: { ...DEFAULT_AVATAR_CONFIG, bodyParts: { ...DEFAULT_BODY_PARTS }, partColors: {} },
     friends: 0, friendIds: [], incomingRequests: [], outgoingRequests: [],
     voxbux: DEFAULT_VOXBUX, ownedItems: [], bannedUntil: null, indevClub: null,
-    lastSeen: Date.now(), lastDailyBonus: 0,
+    lastSeen: Date.now(), lastDailyBonus: 0, playedWithOwner: false,
   };
 
   const { data: inserted, error: insertError } = await supabase
@@ -444,10 +442,7 @@ export async function verifyLogin(username: string, password: string):
   currentUserCache = updated;
   notify();
 
-  // Attempt daily bonus
-  claimDailyBonus(updated.id)
-    .then((r) => console.log("[verifyLogin] bonus result:", r))
-    .catch((e) => console.error("[verifyLogin] bonus error:", e));
+  claimDailyBonus(updated.id).catch(() => {});
 
   return { success: true, user: updated };
 }
@@ -478,21 +473,16 @@ export async function claimDailyBonus(userId: string): Promise<{
   error?: string;
 }> {
   const user = findUserById(userId);
-  if (!user) {
-    console.log("[claimDailyBonus] not signed in");
-    return { success: false, error: "Not signed in." };
-  }
+  if (!user) return { success: false, error: "Not signed in." };
 
   const now = Date.now();
   const last = user.lastDailyBonus ?? 0;
   const joinedAt = user.joinedAtMs ?? 0;
 
   if (joinedAt && now - joinedAt < DAILY_BONUS_MIN_ACCOUNT_AGE_MS) {
-    console.log("[claimDailyBonus] account too new:", now - joinedAt, "ms");
     return { success: false, error: "Account must be 24h old." };
   }
   if (last && now - last < DAILY_BONUS_COOLDOWN_MS) {
-    console.log("[claimDailyBonus] on cooldown:", now - last, "ms since last");
     return { success: false, error: "Already claimed today." };
   }
 
@@ -500,8 +490,6 @@ export async function claimDailyBonus(userId: string): Promise<{
     p_user_id: userId,
     p_amount: DAILY_BONUS_AMOUNT,
   });
-
-  console.log("[claimDailyBonus] RPC response:", { data, error });
 
   if (error) return { success: false, error: error.message };
   if (!data?.success) return { success: false, error: data?.error || "Claim failed." };
@@ -514,10 +502,40 @@ export async function claimDailyBonus(userId: string): Promise<{
   }
 
   pendingBonusClaim = { amount: DAILY_BONUS_AMOUNT, at: Date.now() };
-  console.log("[claimDailyBonus] queued:", pendingBonusClaim);
-
   notify();
   return { success: true, amount: DAILY_BONUS_AMOUNT };
+}
+
+// ============================================================
+// PLAYED WITH OWNER BADGE
+// ============================================================
+export async function awardPlayedWithOwner(userId: string): Promise<{
+  success: boolean;
+  already?: boolean;
+  error?: string;
+}> {
+  const user = findUserById(userId);
+  if (!user) return { success: false, error: "Not signed in." };
+
+  if (user.playedWithOwner) {
+    return { success: true, already: true };
+  }
+
+  const { data, error } = await supabase.rpc("award_played_with_owner", {
+    p_user_id: userId,
+  });
+
+  if (error) return { success: false, error: error.message };
+  if (!data?.success) return { success: false, error: data?.error || "Award failed." };
+
+  const cached = usersCache.find((u) => u.id === userId);
+  if (cached) {
+    cached.playedWithOwner = true;
+    if (currentUserCache?.id === userId) currentUserCache = cached;
+    notify();
+  }
+
+  return { success: true, already: Boolean(data.already) };
 }
 
 // ============================================================

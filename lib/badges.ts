@@ -1,26 +1,11 @@
 // ============================================================
 // VOXELIO BADGES — Who gets what badge
 // ============================================================
-//
-// Badges are assigned by USERNAME for account roles (owner/admin/mod)
-// and auto-awarded based on user data for milestone badges.
-//
-// CHANGING THE OWNER:
-//   Change OWNER_USERNAME. Save. Refresh.
-//
-// PROMOTING SOMEONE:
-//   Add their username to ADMIN_USERNAMES or MODERATOR_USERNAMES.
-//   Case-insensitive. Example: ["CrazyVox", "AnotherUser"]
-//
-// DEMOTING SOMEONE:
-//   Remove their username from the list. Save. Refresh.
-// ------------------------------------------------------------
 
 export const OWNER_USERNAME = "voxelio";
 export const ADMIN_USERNAMES: string[] = ["CrazyVox"];
 export const MODERATOR_USERNAMES: string[] = ["Testerrdw"];
 
-// Kept for backwards compatibility in case something still imports it.
 export const OWNER_ID: string = OWNER_USERNAME;
 
 export type BadgeType = "owner" | "admin" | "moderator" | null;
@@ -46,7 +31,6 @@ export function isModeratorAccount(username: string | null | undefined): boolean
   return getAccountBadge(username) === "moderator";
 }
 
-// Handy: get a human-readable label for the badge
 export function getBadgeLabel(username: string | null | undefined): string | null {
   const badge = getAccountBadge(username);
   if (badge === "owner") return "Voxelio Owner";
@@ -64,11 +48,9 @@ export type ProfileBadge = {
   name: string;
   emoji: string;
   description: string;
-  color: string; // hex, used for the tile's accent
+  color: string;
 };
 
-// Minimal shape we need from a User — avoids importing the full type
-// (prevents a circular import with lib/auth.ts)
 type BadgeUser = {
   username?: string | null;
   displayId?: number | null;
@@ -76,6 +58,7 @@ type BadgeUser = {
   voxbux?: number;
   ownedItems?: string[];
   indevClub?: { expiresAt: number } | null;
+  playedWithOwner?: boolean;
 };
 
 const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
@@ -118,6 +101,17 @@ export function getUserBadges(user: BadgeUser | null | undefined): ProfileBadge[
       emoji: "✅",
       description: "Helps keep Voxelio safe.",
       color: "#22C55E",
+    });
+  }
+
+  // ---- Played with the Owner ----
+  if (user.playedWithOwner) {
+    badges.push({
+      id: "played-with-owner",
+      name: "Played with the Owner",
+      emoji: "🎮",
+      description: "Joined a game while the Voxelio Owner was playing.",
+      color: "#FFD700",
     });
   }
 

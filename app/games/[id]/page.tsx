@@ -8,7 +8,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { KeyboardControls, useKeyboardControls, Sky, Html } from "@react-three/drei";
 import { Character } from "../../components/Avatar";
 import AccountBadge from "../../components/AccountBadge";
-import { getCurrentUser, formatVoxbux, type User, type AvatarConfig } from "../../../lib/auth";
+import { getCurrentUser, formatVoxbux, awardPlayedWithOwner, type User, type AvatarConfig } from "../../../lib/auth";
 import { supabase } from "../../../lib/supabase";
 import {
   fetchWorldById,
@@ -414,9 +414,6 @@ function LocalPlayer({
   const [walking, setWalking] = useState(false);
   const walkingStateRef = useRef(false);
 
-  // ============================================================
-  // MOUSE CAMERA (desktop only)
-  // ============================================================
   useEffect(() => {
     if (isTouchDevice) return;
     const canvas = gl.domElement;
@@ -485,15 +482,11 @@ function LocalPlayer({
     };
   }, [gl, isTouchDevice]);
 
-  // ============================================================
-  // FRAME UPDATE
-  // ============================================================
   useFrame((state, delta) => {
     if (!groupRef.current) return;
 
     const keys = getKeys();
 
-    // Drain touch look deltas
     if (isTouchDevice) {
       cameraYawRef.current += touchLookState.yawDelta;
       cameraPitchRef.current = Math.max(
@@ -931,7 +924,6 @@ export default function WorldPage() {
     rotY: 0,
   });
 
-  // ===== Detect touch device =====
   useEffect(() => {
     const touch =
       typeof window !== "undefined" &&
@@ -939,7 +931,6 @@ export default function WorldPage() {
     setIsTouchDevice(touch);
   }, []);
 
-  // ===== Load user + world =====
   useEffect(() => {
     const u = getCurrentUser();
     setUser(u);
@@ -992,7 +983,66 @@ export default function WorldPage() {
     };
   }, [user, worldId]);
 
-  // ===== Chat hotkey: T to open, Escape to close =====
+  // ===== Award "Played with the Owner" if owner is in the same world =====
+  useEffect(() => {
+    if (!user || !worldId) return;
+    // The owner doesn't award it to themselves
+    if (user.username.toLowerCase() === "voxelio") return;
+
+    let cancelled = false;
+
+    const checkOwner = async () => {
+      if (cancelled) return;
+      const lobby = lobbyRef.current;
+      if (!lobby) return;
+
+      const state = lobby.presenceState?.() || {};
+      let ownerPresent = false;
+
+      for (const key of Object.keys(state)) {
+        const entries = state[key] as any[];
+        for (const e of entries) {
+          if (!e) continue;
+          const name = String(e.username || "").toLowerCase();
+          if (name === "voxelio" && e.worldId === worldId) {
+            ownerPresent = true;
+            break;
+          }
+        }
+        if (ownerPresent) break;
+      }
+
+      if (ownerPresent) {
+        await awardPlayedWithOwner(user.id);
+      }
+    };
+
+    // Poll a few times — presence takes a moment to sync
+    const timers = [
+      setTimeout(checkOwner, 500),
+      setTimeout(checkOwner, 1500),
+      setTimeout(checkOwner, 3000),
+    ];
+
+    // Also react to live presence changes
+    const lobby = lobbyRef.current;
+    let handler: any = null;
+    if (lobby) {
+      handler = () => checkOwner();
+      lobby.on("presence", { event: "sync" }, handler);
+      lobby.on("presence", { event: "join" }, handler);
+    }
+
+    return () => {
+      cancelled = true;
+      timers.forEach(clearTimeout);
+      if (lobby && handler) {
+        lobby.off("presence", { event: "sync" }, handler);
+        lobby.off("presence", { event: "join" }, handler);
+      }
+    };
+  }, [user, worldId]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const active = document.activeElement as HTMLElement | null;
@@ -1025,7 +1075,6 @@ export default function WorldPage() {
     return () => clearInterval(timer);
   }, []);
 
-  // ===== Send chat (filtered + rate-limited) =====
   const sendChat = useCallback(() => {
     const me = user;
     const text = draft.trim();
@@ -1035,15 +1084,12 @@ export default function WorldPage() {
       return;
     }
 
-    // Rate limit: 1 message per CHAT_MIN_INTERVAL_MS
     const now = Date.now();
     if (now - lastChatSentRef.current < CHAT_MIN_INTERVAL_MS) {
-      // Too fast — keep the draft, don't send
       return;
     }
     lastChatSentRef.current = now;
 
-    // Filter bad words (same filter as DMs)
     const filtered = filterMessage(text.slice(0, CHAT_MAX_LENGTH));
 
     const id =
@@ -1301,7 +1347,6 @@ export default function WorldPage() {
         </Canvas>
       </KeyboardControls>
 
-      {/* ===== TOUCH OVERLAYS ===== */}
       {isTouchDevice && !chatOpen && (
         <>
           <TouchLookArea onLook={touchLook} />
@@ -1310,7 +1355,6 @@ export default function WorldPage() {
         </>
       )}
 
-      {/* TOP LEFT */}
       <div className="absolute top-3 left-3 flex items-center gap-2 z-30">
         <Link
           href="/games"
@@ -1327,7 +1371,6 @@ export default function WorldPage() {
         </div>
       </div>
 
-      {/* TOP RIGHT */}
       <div className="absolute top-3 right-3 flex items-center gap-2 z-30">
         <button
           onClick={handleLike}
@@ -1367,7 +1410,6 @@ export default function WorldPage() {
         </div>
       </div>
 
-      {/* BOTTOM LEFT — controls */}
       <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1 hidden md:block z-30">
         <p className="font-bold mb-1">🎮 Controls</p>
         <p>
@@ -1387,7 +1429,6 @@ export default function WorldPage() {
         </p>
       </div>
 
-      {/* BOTTOM RIGHT — players */}
       {others.length > 0 && (
         <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1 max-w-[180px] hidden md:block z-30">
           <p className="font-bold mb-1">👥 In this world</p>
@@ -1403,7 +1444,6 @@ export default function WorldPage() {
         </div>
       )}
 
-      {/* CHAT INPUT */}
       {chatOpen && (
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 w-[min(560px,90vw)] z-40">
           <form
@@ -1445,7 +1485,6 @@ export default function WorldPage() {
         </div>
       )}
 
-      {/* CHAT HINT */}
       {!chatOpen && !isTouchDevice && (
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-none z-20">
           <div className="bg-black/40 backdrop-blur px-3 py-1 rounded-full text-white/50 text-[10px]">
