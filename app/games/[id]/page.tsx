@@ -19,6 +19,7 @@ import {
   type World,
 } from "../../../lib/worlds";
 import { getLayout, type BlockData } from "../../../lib/worldLayouts";
+import { filterMessage } from "../../../lib/chatFilter";
 
 // ============================================================
 // VOXELIO MULTIPLAYER WORLD
@@ -57,19 +58,17 @@ const HEARTBEAT_INTERVAL = 400;
 const STALE_TIMEOUT = 3000;
 const CHAT_LIFETIME_MS = 5000;
 const CHAT_MAX_LENGTH = 120;
+const CHAT_MIN_INTERVAL_MS = 500;
 
 // ============================================================
 // SHARED TOUCH STATE
 // ============================================================
-// Written by the touch UI components, read by LocalPlayer.
 const touchState = {
-  moveX: 0,       // -1 to 1
-  moveZ: 0,       // -1 to 1
+  moveX: 0,
+  moveZ: 0,
   jumpQueued: false,
 };
 
-// Pending camera-look deltas from the touch look area. Drained
-// once per frame by LocalPlayer.
 const touchLookState = {
   yawDelta: 0,
   pitchDelta: 0,
@@ -509,13 +508,11 @@ function LocalPlayer({
     let localZ = 0;
 
     if (!inputDisabled) {
-      // Desktop keyboard
       if (keys.forward) localZ += 1;
       if (keys.backward) localZ -= 1;
       if (keys.left) localX += 1;
       if (keys.right) localX -= 1;
 
-      // Touch joystick
       if (isTouchDevice) {
         if (Math.abs(touchState.moveX) > 0.05) localX = -touchState.moveX;
         if (Math.abs(touchState.moveZ) > 0.05) localZ = -touchState.moveZ;
@@ -574,7 +571,6 @@ function LocalPlayer({
       setWalking(isMoving);
     }
 
-    // Jump — keyboard OR queued touch
     const wantJump =
       (!inputDisabled && keys.jump) ||
       (isTouchDevice && touchState.jumpQueued);
@@ -608,7 +604,6 @@ function LocalPlayer({
 
     groupRef.current.position.copy(positionRef.current);
 
-    // ===== CAMERA =====
     const camYaw = cameraYawRef.current;
     const camPitch = cameraPitchRef.current;
     const camDist = cameraDistRef.current;
@@ -631,7 +626,6 @@ function LocalPlayer({
 
     state.camera.lookAt(lookX, lookY, lookZ);
 
-    // ===== BROADCAST =====
     const now = performance.now();
     const sinceLast = now - lastBroadcastRef.current;
 
@@ -924,6 +918,7 @@ export default function WorldPage() {
   const [chatOpen, setChatOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const lastChatSentRef = useRef(0);
 
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
@@ -1030,6 +1025,7 @@ export default function WorldPage() {
     return () => clearInterval(timer);
   }, []);
 
+  // ===== Send chat (filtered + rate-limited) =====
   const sendChat = useCallback(() => {
     const me = user;
     const text = draft.trim();
@@ -1038,6 +1034,17 @@ export default function WorldPage() {
       setDraft("");
       return;
     }
+
+    // Rate limit: 1 message per CHAT_MIN_INTERVAL_MS
+    const now = Date.now();
+    if (now - lastChatSentRef.current < CHAT_MIN_INTERVAL_MS) {
+      // Too fast — keep the draft, don't send
+      return;
+    }
+    lastChatSentRef.current = now;
+
+    // Filter bad words (same filter as DMs)
+    const filtered = filterMessage(text.slice(0, CHAT_MAX_LENGTH));
 
     const id =
       typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -1048,7 +1055,7 @@ export default function WorldPage() {
       id,
       userId: me.id,
       username: me.username,
-      text: text.slice(0, CHAT_MAX_LENGTH),
+      text: filtered,
       expiresAt: Date.now() + CHAT_LIFETIME_MS,
     };
 
@@ -1164,7 +1171,9 @@ export default function WorldPage() {
               id: payload.id,
               userId: payload.userId,
               username: payload.username,
-              text: payload.text,
+              text: filterMessage(
+                String(payload.text || "").slice(0, CHAT_MAX_LENGTH)
+              ),
               expiresAt: Date.now() + CHAT_LIFETIME_MS,
             },
           ];
