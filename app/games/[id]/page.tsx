@@ -83,7 +83,7 @@ function RemotePlayer({ data }: { data: RemotePlayerData }) {
         </Text>
       </group>
 
-      <Character config={data.avatarConfig} />
+      <Character config={data.avatarConfig} hideAccessory />
     </group>
   );
 }
@@ -179,7 +179,7 @@ function LocalPlayer({
 
   return (
     <group ref={groupRef} position={[0, CHARACTER_Y_OFFSET, 0]}>
-      <Character config={config} />
+      <Character config={config} hideAccessory />
     </group>
   );
 }

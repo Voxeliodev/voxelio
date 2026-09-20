@@ -135,7 +135,21 @@ function BodyPart({
   return <>{children}</>;
 }
 
-export function Character({ config }: { config: AvatarConfig }) {
+// ============================================================
+// CHARACTER
+// ============================================================
+// hideAccessory:
+//   When true, held accessories (swords, etc.) are not rendered
+//   and the arm stays in the relaxed pose. Used in the game/world
+//   view so held items don't clip through blocks or look wrong.
+// ============================================================
+export function Character({
+  config,
+  hideAccessory = false,
+}: {
+  config: AvatarConfig;
+  hideAccessory?: boolean;
+}) {
   const skin = config.skinTone;
   const pants = config.pantsColor;
   const bodyParts = config.bodyParts;
@@ -158,7 +172,10 @@ export function Character({ config }: { config: AvatarConfig }) {
   const isHeadless = bodyParts?.head === "head-headless";
   const isRoundHead = bodyParts?.head === "head-round";
 
-  const isHolding = Boolean(config.accessory && HELD_ACCESSORIES.includes(config.accessory));
+  // If accessories are hidden, the arm stays relaxed
+  const isHolding = !hideAccessory
+    && Boolean(config.accessory && HELD_ACCESSORIES.includes(config.accessory));
+
   const armRotation: [number, number, number] = isHolding
     ? [-Math.PI / 2, 0, 0]
     : [0, 0, 0];
@@ -240,7 +257,7 @@ export function Character({ config }: { config: AvatarConfig }) {
             <meshStandardMaterial color={rightHandColor} roughness={0.6} />
           </RoundedBox>
 
-          {config.accessory && (
+          {!hideAccessory && config.accessory && (
             <group
               position={[0, -1.32, 0]}
               rotation={[-armRotation[0], 0, 0]}
