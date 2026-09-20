@@ -25,29 +25,25 @@ const KEY_MAP = [
   { name: "jump", keys: [" ", "Space"] },
 ];
 
-// Movement
 const MOVE_SPEED = 6.5;
 const ACCEL = 45;
 const DECEL = 60;
 const ROTATION_LERP = 16;
 
-// Camera
 const CAMERA_DISTANCE = 9;
 const CAMERA_HEIGHT = 5.2;
 const CAMERA_LOOK_HEIGHT = 1.4;
 const CAMERA_LERP = 6;
 
-// Physics
 const CHARACTER_Y_OFFSET = 1.6;
 const GRAVITY = -28;
 const JUMP_VELOCITY = 10;
 const PLAYER_RADIUS = 0.42;
 const PLAYER_HEIGHT = 1.8;
 
-// Networking
-const BROADCAST_INTERVAL = 50;   // fast updates while moving
-const HEARTBEAT_INTERVAL = 400;  // idle keep-alive so new joiners see you
-const STALE_TIMEOUT = 3000;      // remove remote after this long with no update
+const BROADCAST_INTERVAL = 50;
+const HEARTBEAT_INTERVAL = 400;
+const STALE_TIMEOUT = 3000;
 const CHAT_LIFETIME_MS = 5000;
 const CHAT_MAX_LENGTH = 120;
 
@@ -157,7 +153,6 @@ function resolvePlayerCollisions(
   for (const [id, other] of remotePositions) {
     if (id === myId) continue;
 
-    // Vertical overlap check — don't push if we're way above/below them
     const myFeetY = pos.y - CHARACTER_Y_OFFSET;
     const otherFeetY = other.y - CHARACTER_Y_OFFSET;
     if (Math.abs(myFeetY - otherFeetY) > PLAYER_HEIGHT * 0.9) continue;
@@ -170,7 +165,6 @@ function resolvePlayerCollisions(
 
     const dist = Math.sqrt(distSq);
     if (dist < 0.001) {
-      // Exact same spot: pick an arbitrary direction to separate
       pos.x += minDist * 0.5;
       continue;
     }
@@ -182,23 +176,33 @@ function resolvePlayerCollisions(
 }
 
 // ============================================================
-// CHAT BUBBLE
+// CHAT BUBBLE — horizontal, no username
 // ============================================================
-function ChatBubble({ username, text }: { username: string; text: string }) {
+function ChatBubble({ text }: { text: string }) {
   return (
     <Html
       position={[0, 3.2, 0]}
       center
-      distanceFactor={8}
+      distanceFactor={10}
       zIndexRange={[15, 10]}
-      style={{ pointerEvents: "none" }}
+      style={{ pointerEvents: "none", overflow: "visible" }}
     >
       <div
-        className="bg-[#1A1A2E]/90 backdrop-blur text-white text-xs px-2.5 py-1.5 rounded-lg border border-white/20 shadow-xl"
-        style={{ maxWidth: 220, wordBreak: "break-word" }}
+        style={{
+          display: "inline-block",
+          whiteSpace: "nowrap",
+          background: "rgba(26, 26, 46, 0.92)",
+          color: "#FFFFFF",
+          padding: "6px 12px",
+          borderRadius: 10,
+          border: "1px solid rgba(255,255,255,0.2)",
+          fontSize: 14,
+          lineHeight: 1.2,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+          fontFamily: "system-ui, -apple-system, sans-serif",
+        }}
       >
-        <span className="font-bold text-[#00E5FF] mr-1">{username}:</span>
-        <span>{text}</span>
+        {text}
       </div>
     </Html>
   );
@@ -221,7 +225,6 @@ function RemotePlayer({
   const currentRotRef = useRef(data.targetRotY);
   const walkingRef = useRef(false);
 
-  // Register this player's position in the shared map on mount
   useEffect(() => {
     remotePositions.current.set(data.id, currentRef.current);
     return () => {
@@ -237,21 +240,18 @@ function RemotePlayer({
     currentRef.current.lerp(target, lerp);
     groupRef.current.position.copy(currentRef.current);
 
-    // Rotation
     let diff = data.targetRotY - currentRotRef.current;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
     currentRotRef.current += diff * Math.min(1, delta * 14);
     groupRef.current.rotation.y = currentRotRef.current;
 
-    // Walking heuristic
     const dist = currentRef.current.distanceTo(target);
     walkingRef.current = dist > 0.05;
   });
 
   return (
     <group ref={groupRef} position={data.targetPos}>
-      {/* Billboard so the name always faces the camera */}
       <Billboard position={[0, 2.55, 0]}>
         <Text
           fontSize={0.3}
@@ -265,9 +265,7 @@ function RemotePlayer({
         </Text>
       </Billboard>
 
-      {chatMessage && (
-        <ChatBubble username={chatMessage.username} text={chatMessage.text} />
-      )}
+      {chatMessage && <ChatBubble text={chatMessage.text} />}
 
       <Character config={data.avatarConfig} hideAccessory walking={walkingRef.current} />
     </group>
@@ -297,7 +295,7 @@ function LocalPlayer({
   const [, getKeys] = useKeyboardControls();
   const groupRef = useRef<THREE.Group>(null);
   const positionRef = useRef(new THREE.Vector3(0, CHARACTER_Y_OFFSET, 0));
-  const velocityRef = useRef(new THREE.Vector2(0, 0)); // horizontal velocity (x, z)
+  const velocityRef = useRef(new THREE.Vector2(0, 0));
   const facingRef = useRef(0);
   const velocityYRef = useRef(0);
   const groundedRef = useRef(true);
@@ -312,7 +310,6 @@ function LocalPlayer({
 
     const keys = getKeys();
 
-    // ---------- INPUT ----------
     let inputX = 0;
     let inputZ = 0;
     if (!inputDisabled) {
@@ -330,8 +327,6 @@ function LocalPlayer({
       inputZ /= inputLen;
     }
 
-    // ---------- ROTATION ----------
-    // Face the direction of input (snappy but smooth)
     if (hasInput) {
       const targetAngle = Math.atan2(inputX, inputZ);
       const current = groupRef.current.rotation.y;
@@ -342,8 +337,6 @@ function LocalPlayer({
       facingRef.current = groupRef.current.rotation.y;
     }
 
-    // ---------- HORIZONTAL VELOCITY ----------
-    // Target velocity = input direction * MOVE_SPEED
     const targetVX = hasInput ? inputX * MOVE_SPEED : 0;
     const targetVZ = hasInput ? inputZ * MOVE_SPEED : 0;
 
@@ -361,11 +354,9 @@ function LocalPlayer({
       velocityRef.current.y = targetVZ;
     }
 
-    // Apply velocity
     positionRef.current.x += velocityRef.current.x * delta;
     positionRef.current.z += velocityRef.current.y * delta;
 
-    // Walking state based on actual speed
     const speedSq = velocityRef.current.x ** 2 + velocityRef.current.y ** 2;
     const isMoving = speedSq > 1.0;
     if (isMoving !== walkingStateRef.current) {
@@ -373,13 +364,11 @@ function LocalPlayer({
       setWalking(isMoving);
     }
 
-    // ---------- JUMP ----------
     if (!inputDisabled && keys.jump && groundedRef.current) {
       velocityYRef.current = JUMP_VELOCITY;
       groundedRef.current = false;
     }
 
-    // ---------- GRAVITY ----------
     velocityYRef.current += GRAVITY * delta;
     positionRef.current.y += velocityYRef.current * delta;
 
@@ -388,26 +377,21 @@ function LocalPlayer({
       velocityYRef.current = 0;
     }
 
-    // ---------- COLLISIONS ----------
     resolveBlockCollisions(positionRef.current, blocks);
     resolvePlayerCollisions(positionRef.current, myId, remotePositions.current);
 
-    // Ground check after collisions
     const grounded = isGrounded(positionRef.current, blocks) && velocityYRef.current <= 0.01;
     groundedRef.current = grounded;
     if (grounded && velocityYRef.current < 0) {
       velocityYRef.current = 0;
     }
 
-    // ---------- BOUNDS ----------
     const bound = 95;
     positionRef.current.x = Math.max(-bound, Math.min(bound, positionRef.current.x));
     positionRef.current.z = Math.max(-bound, Math.min(bound, positionRef.current.z));
 
-    // Apply to group
     groupRef.current.position.copy(positionRef.current);
 
-    // ---------- CAMERA ----------
     const targetCamX = positionRef.current.x - Math.sin(facingRef.current) * CAMERA_DISTANCE;
     const targetCamZ = positionRef.current.z - Math.cos(facingRef.current) * CAMERA_DISTANCE;
     const targetCamY = positionRef.current.y + CAMERA_HEIGHT;
@@ -423,11 +407,9 @@ function LocalPlayer({
       positionRef.current.z
     );
 
-    // ---------- BROADCAST ----------
     const now = performance.now();
     const sinceLast = now - lastBroadcastRef.current;
 
-    // Broadcast fast when moving; heartbeat when idle so new joiners see us
     const shouldFast = needsBroadcastRef.current && sinceLast >= BROADCAST_INTERVAL;
     const shouldHeartbeat = sinceLast >= HEARTBEAT_INTERVAL;
 
@@ -443,9 +425,7 @@ function LocalPlayer({
 
   return (
     <group ref={groupRef} position={[0, CHARACTER_Y_OFFSET, 0]}>
-      {chatMessage && (
-        <ChatBubble username={chatMessage.username} text={chatMessage.text} />
-      )}
+      {chatMessage && <ChatBubble text={chatMessage.text} />}
       <Character config={config} hideAccessory walking={walking} />
     </group>
   );
@@ -485,7 +465,6 @@ function WorldScene({
   const layout = getLayout(world.layout);
   const blocks = layout.blocks;
 
-  // Shared registry of every remote player's current interpolated position
   const remotePositions = useRef<Map<string, THREE.Vector3>>(new Map());
 
   const latestFor = (id: string): ChatMessage | null => {
@@ -737,7 +716,6 @@ export default function WorldPage() {
       .on("presence", { event: "sync" }, () => {
         const state = channel.presenceState();
         setOnlineCount(Object.keys(state).length);
-        // Force an immediate heartbeat so newly-joined players see us
         const me = localPosRef.current;
         channel.send({
           type: "broadcast",
