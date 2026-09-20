@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import * as THREE from "three";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { KeyboardControls, useKeyboardControls, Sky, Text } from "@react-three/drei";
+import { KeyboardControls, useKeyboardControls, Sky, Text, Html } from "@react-three/drei";
 import { Character } from "../../components/Avatar";
 import AccountBadge from "../../components/AccountBadge";
 import { getCurrentUser, formatVoxbux, type User, type AvatarConfig } from "../../../lib/auth";
@@ -40,8 +40,11 @@ const PLAYER_HEIGHT = 1.8;
 const BROADCAST_INTERVAL = 50;
 const STALE_TIMEOUT = 5000;
 
+const CHAT_LIFETIME_MS = 5000;
+const CHAT_MAX_LENGTH = 120;
+
 // ============================================================
-// BLOCKS — shared between rendering and collision
+// BLOCKS
 // ============================================================
 const BLOCKS: {
   position: [number, number, number];
@@ -58,7 +61,28 @@ const BLOCKS: {
 ];
 
 // ============================================================
-// COLLISION HELPERS
+// TYPES
+// ============================================================
+type RemotePlayerData = {
+  id: string;
+  username: string;
+  displayId?: number | null;
+  avatarConfig: AvatarConfig;
+  targetPos: [number, number, number];
+  targetRotY: number;
+  lastSeen: number;
+};
+
+type ChatMessage = {
+  id: string;
+  userId: string;
+  username: string;
+  text: string;
+  expiresAt: number;
+};
+
+// ============================================================
+// COLLISION
 // ============================================================
 function resolveCollisions(pos: THREE.Vector3): void {
   for (let iter = 0; iter < 4; iter++) {
@@ -130,23 +154,43 @@ function isGrounded(pos: THREE.Vector3): boolean {
 }
 
 // ============================================================
+// CHAT BUBBLE — floats above a player's head
+// ============================================================
+function ChatBubble({ username, text }: { username: string; text: string }) {
+  return (
+    <Html
+      position={[0, 3.1, 0]}
+      center
+      distanceFactor={8}
+      zIndexRange={[15, 10]}
+      style={{ pointerEvents: "none" }}
+    >
+      <div
+        className="bg-[#1A1A2E]/90 backdrop-blur text-white text-xs px-2.5 py-1.5 rounded-lg border border-white/20 shadow-xl"
+        style={{ maxWidth: 220, wordBreak: "break-word" }}
+      >
+        <span className="font-bold text-[#00E5FF] mr-1">{username}:</span>
+        <span>{text}</span>
+      </div>
+    </Html>
+  );
+}
+
+// ============================================================
 // REMOTE PLAYER
 // ============================================================
-type RemotePlayerData = {
-  id: string;
-  username: string;
-  displayId?: number | null;
-  avatarConfig: AvatarConfig;
-  targetPos: [number, number, number];
-  targetRotY: number;
-  lastSeen: number;
-};
-
-function RemotePlayer({ data }: { data: RemotePlayerData }) {
+function RemotePlayer({
+  data,
+  chatMessage,
+}: {
+  data: RemotePlayerData;
+  chatMessage?: ChatMessage | null;
+}) {
   const groupRef = useRef<THREE.Group>(null);
   const currentRef = useRef(new THREE.Vector3(...data.targetPos));
   const currentRotRef = useRef(data.targetRotY);
-  const lastTargetRef = useRef(new THREE.Vector3(...data.targetPos));
+  const walkingRef = useRef(false);
+  const lastPosRef = useRef(new THREE.Vector3(...data.targetPos));
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
@@ -162,22 +206,11 @@ function RemotePlayer({ data }: { data: RemotePlayerData }) {
     currentRotRef.current += diff * Math.min(1, delta * 12);
     groupRef.current.rotation.y = currentRotRef.current;
 
-    lastTargetRef.current.copy(target);
-  });
+    // Walking heuristic: distance between rendered pos and target
+    const dist = currentRef.current.distanceTo(target);
+    walkingRef.current = dist > 0.04;
 
-  // Determine if they're walking based on movement over time
-  const isMoving = useRef(false);
-
-  useFrame((_, delta) => {
-    const target = new THREE.Vector3(...data.targetPos);
-    const moved = target.distanceTo(lastTargetRef.current) > 0.02;
-    if (moved !== isMoving.current) {
-      // update on next frame based on target delta
-    }
-    // Simple heuristic: if position is far from current, they're moving
-    const behindBy = target.distanceTo(currentRef.current);
-    isMoving.current = behindBy > 0.05;
-    void delta;
+    lastPosRef.current.copy(currentRef.current);
   });
 
   return (
@@ -195,7 +228,11 @@ function RemotePlayer({ data }: { data: RemotePlayerData }) {
         </Text>
       </group>
 
-      <Character config={data.avatarConfig} hideAccessory walking={isMoving.current} />
+      {chatMessage && (
+        <ChatBubble username={chatMessage.username} text={chatMessage.text} />
+      )}
+
+      <Character config={data.avatarConfig} hideAccessory walking={walkingRef.current} />
     </group>
   );
 }
@@ -205,10 +242,16 @@ function RemotePlayer({ data }: { data: RemotePlayerData }) {
 // ============================================================
 function LocalPlayer({
   config,
+  username,
   onMove,
+  chatMessage,
+  inputDisabled,
 }: {
   config: AvatarConfig;
+  username: string;
   onMove: (pos: [number, number, number], rotY: number) => void;
+  chatMessage?: ChatMessage | null;
+  inputDisabled: boolean;
 }) {
   const [, getKeys] = useKeyboardControls();
   const groupRef = useRef<THREE.Group>(null);
@@ -228,14 +271,17 @@ function LocalPlayer({
 
     let dx = 0;
     let dz = 0;
-    if (keys.forward) dz -= 1;
-    if (keys.backward) dz += 1;
-    if (keys.left) dx -= 1;
-    if (keys.right) dx += 1;
+    // Ignore movement while chat input is focused
+    if (!inputDisabled) {
+      if (keys.forward) dz -= 1;
+      if (keys.backward) dz += 1;
+      if (keys.left) dx -= 1;
+      if (keys.right) dx += 1;
+    }
 
     const len = Math.hypot(dx, dz);
     const isMoving = len > 0;
-    setWalking(isMoving);
+    if (isMoving !== walking) setWalking(isMoving);
 
     if (isMoving) {
       dx /= len;
@@ -256,8 +302,8 @@ function LocalPlayer({
       needsBroadcastRef.current = true;
     }
 
-    // Jump input
-    if (keys.jump && groundedRef.current) {
+    // Jump
+    if (!inputDisabled && keys.jump && groundedRef.current) {
       velocityYRef.current = JUMP_VELOCITY;
       groundedRef.current = false;
     }
@@ -266,7 +312,7 @@ function LocalPlayer({
     velocityYRef.current += GRAVITY * delta;
     positionRef.current.y += velocityYRef.current * delta;
 
-    // Floor check
+    // Floor
     if (positionRef.current.y < CHARACTER_Y_OFFSET) {
       positionRef.current.y = CHARACTER_Y_OFFSET;
       velocityYRef.current = 0;
@@ -275,19 +321,16 @@ function LocalPlayer({
     // Collide with blocks
     resolveCollisions(positionRef.current);
 
-    // Recompute grounded state for next frame
     groundedRef.current = isGrounded(positionRef.current) && velocityYRef.current <= 0.01;
-    if (groundedRef.current && velocityYRef.current > 0) {
-      // Just landed; kill downward velocity
-      if (velocityYRef.current < 0) velocityYRef.current = 0;
+    if (groundedRef.current && velocityYRef.current < 0) {
+      velocityYRef.current = 0;
     }
 
-    // World bounds
+    // Bounds
     const bound = 95;
     positionRef.current.x = Math.max(-bound, Math.min(bound, positionRef.current.x));
     positionRef.current.z = Math.max(-bound, Math.min(bound, positionRef.current.z));
 
-    // Apply to group
     groupRef.current.position.copy(positionRef.current);
 
     // Camera
@@ -323,6 +366,9 @@ function LocalPlayer({
 
   return (
     <group ref={groupRef} position={[0, CHARACTER_Y_OFFSET, 0]}>
+      {chatMessage && (
+        <ChatBubble username={chatMessage.username} text={chatMessage.text} />
+      )}
       <Character config={config} hideAccessory walking={walking} />
     </group>
   );
@@ -342,13 +388,30 @@ function Ground() {
 
 function WorldScene({
   config,
+  userId,
+  username,
   others,
+  chatMessages,
   onMove,
+  inputDisabled,
 }: {
   config: AvatarConfig;
+  userId: string;
+  username: string;
   others: RemotePlayerData[];
+  chatMessages: ChatMessage[];
   onMove: (pos: [number, number, number], rotY: number) => void;
+  inputDisabled: boolean;
 }) {
+  const latestFor = (id: string): ChatMessage | null => {
+    let best: ChatMessage | null = null;
+    for (const m of chatMessages) {
+      if (m.userId !== id) continue;
+      if (!best || m.expiresAt > best.expiresAt) best = m;
+    }
+    return best;
+  };
+
   return (
     <>
       <Sky sunPosition={[100, 50, 100]} />
@@ -375,10 +438,20 @@ function WorldScene({
         </mesh>
       ))}
 
-      <LocalPlayer config={config} onMove={onMove} />
+      <LocalPlayer
+        config={config}
+        username={username}
+        onMove={onMove}
+        chatMessage={latestFor(userId)}
+        inputDisabled={inputDisabled}
+      />
 
       {others.map((p) => (
-        <RemotePlayer key={p.id} data={p} />
+        <RemotePlayer
+          key={p.id}
+          data={p}
+          chatMessage={latestFor(p.id)}
+        />
       ))}
     </>
   );
@@ -397,9 +470,16 @@ export default function WorldPage() {
   const [mounted, setMounted] = useState(false);
   const [others, setOthers] = useState<RemotePlayerData[]>([]);
   const [onlineCount, setOnlineCount] = useState(1);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+
+  // Chat UI state
+  const [chatOpen, setChatOpen] = useState(false);
+  const [draft, setDraft] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const channelRef = useRef<any>(null);
 
+  // ===== Load user + world =====
   useEffect(() => {
     const u = getCurrentUser();
     setUser(u);
@@ -414,6 +494,92 @@ export default function WorldPage() {
     });
   }, [worldId]);
 
+  // ===== Chat: Enter opens, Escape cancels =====
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const active = document.activeElement as HTMLElement | null;
+      const inInput = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA");
+
+      if (e.key === "Enter" && !chatOpen && !inInput) {
+        e.preventDefault();
+        setChatOpen(true);
+      } else if (e.key === "Escape" && chatOpen) {
+        e.preventDefault();
+        setChatOpen(false);
+        setDraft("");
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [chatOpen]);
+
+  // Focus chat input when opened
+  useEffect(() => {
+    if (chatOpen && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [chatOpen]);
+
+  // Prune expired chat bubbles
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = Date.now();
+      setChatMessages((prev) => prev.filter((m) => m.expiresAt > now));
+    }, 500);
+    return () => clearInterval(timer);
+  }, []);
+
+  // ===== Send chat =====
+  const sendChat = useCallback(() => {
+    const me = user;
+    const text = draft.trim();
+    if (!me || !text || text.length === 0) {
+      setChatOpen(false);
+      setDraft("");
+      return;
+    }
+
+    const id =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const msg: ChatMessage = {
+      id,
+      userId: me.id,
+      username: me.username,
+      text: text.slice(0, CHAT_MAX_LENGTH),
+      expiresAt: Date.now() + CHAT_LIFETIME_MS,
+    };
+
+    // Show locally immediately
+    setChatMessages((prev) => [...prev, msg]);
+
+    // Broadcast
+    const channel = channelRef.current;
+    if (channel) {
+      channel.send({
+        type: "broadcast",
+        event: "chat",
+        payload: {
+          id: msg.id,
+          userId: msg.userId,
+          username: msg.username,
+          text: msg.text,
+        },
+      });
+    }
+
+    setDraft("");
+    setChatOpen(false);
+  }, [draft, user]);
+
+  const cancelChat = useCallback(() => {
+    setChatOpen(false);
+    setDraft("");
+  }, []);
+
+  // ===== Realtime =====
   const handleMove = useCallback(
     (pos: [number, number, number], rotY: number) => {
       const channel = channelRef.current;
@@ -468,6 +634,22 @@ export default function WorldPage() {
           return [...prev, next];
         });
       })
+      .on("broadcast", { event: "chat" }, ({ payload }) => {
+        if (!payload || payload.userId === user.id) return;
+        setChatMessages((prev) => {
+          if (prev.some((m) => m.id === payload.id)) return prev;
+          return [
+            ...prev,
+            {
+              id: payload.id,
+              userId: payload.userId,
+              username: payload.username,
+              text: payload.text,
+              expiresAt: Date.now() + CHAT_LIFETIME_MS,
+            },
+          ];
+        });
+      })
       .on("presence", { event: "sync" }, () => {
         const state = channel.presenceState();
         setOnlineCount(Object.keys(state).length);
@@ -497,6 +679,7 @@ export default function WorldPage() {
     };
   }, [user, worldId, handleMove]);
 
+  // ===== Guards =====
   if (!mounted) {
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center text-white">
@@ -564,13 +747,17 @@ export default function WorldPage() {
         >
           <WorldScene
             config={user.avatarConfig}
+            userId={user.id}
+            username={user.username}
             others={others}
+            chatMessages={chatMessages}
             onMove={handleMove}
+            inputDisabled={chatOpen}
           />
         </Canvas>
       </KeyboardControls>
 
-      {/* TOP LEFT */}
+      {/* TOP LEFT — World info + exit */}
       <div className="absolute top-3 left-3 flex items-center gap-2">
         <Link
           href="/games"
@@ -587,7 +774,7 @@ export default function WorldPage() {
         </div>
       </div>
 
-      {/* TOP RIGHT */}
+      {/* TOP RIGHT — Players + balance */}
       <div className="absolute top-3 right-3 flex items-center gap-2">
         <div className="bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs flex items-center gap-2">
           <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
@@ -602,7 +789,7 @@ export default function WorldPage() {
         </div>
       </div>
 
-      {/* BOTTOM LEFT */}
+      {/* BOTTOM LEFT — Controls */}
       <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1">
         <p className="font-bold mb-1">🎮 Controls</p>
         <p>
@@ -614,9 +801,12 @@ export default function WorldPage() {
         <p>
           <kbd className="bg-white/10 px-1 rounded">Space</kbd> — Jump
         </p>
+        <p>
+          <kbd className="bg-white/10 px-1 rounded">Enter</kbd> — Chat
+        </p>
       </div>
 
-      {/* BOTTOM RIGHT */}
+      {/* BOTTOM RIGHT — Players in world */}
       {others.length > 0 && (
         <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1 max-w-[180px]">
           <p className="font-bold mb-1">👥 In this world</p>
@@ -628,6 +818,54 @@ export default function WorldPage() {
           {others.length > 8 && (
             <p className="text-white/50">+{others.length - 8} more</p>
           )}
+        </div>
+      )}
+
+      {/* CHAT INPUT */}
+      {chatOpen && (
+        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 w-[min(560px,90vw)]">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              sendChat();
+            }}
+            className="bg-black/85 backdrop-blur border-2 border-[#6C3CE0] rounded-lg px-3 py-2 flex items-center gap-2 shadow-2xl"
+          >
+            <span className="text-[#00E5FF] font-bold text-sm flex-shrink-0">💬</span>
+            <input
+              ref={inputRef}
+              type="text"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value.slice(0, CHAT_MAX_LENGTH))}
+              placeholder="Type a message and press Enter…"
+              className="flex-1 bg-transparent text-white text-sm outline-none placeholder-white/40"
+              maxLength={CHAT_MAX_LENGTH}
+              autoComplete="off"
+            />
+            <span className="text-[10px] text-white/40 flex-shrink-0">
+              {draft.length}/{CHAT_MAX_LENGTH}
+            </span>
+            <button
+              type="button"
+              onClick={cancelChat}
+              className="text-white/60 hover:text-white text-sm flex-shrink-0"
+              title="Cancel (Esc)"
+            >
+              ✕
+            </button>
+          </form>
+          <p className="text-[10px] text-white/50 text-center mt-1">
+            Enter to send · Esc to cancel
+          </p>
+        </div>
+      )}
+
+      {/* CHAT HINT (when closed) */}
+      {!chatOpen && (
+        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-none">
+          <div className="bg-black/40 backdrop-blur px-3 py-1 rounded-full text-white/50 text-[10px]">
+            Press <kbd className="bg-white/10 px-1 rounded">Enter</kbd> to chat
+          </div>
         </div>
       )}
     </div>
