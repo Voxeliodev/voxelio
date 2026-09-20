@@ -238,7 +238,7 @@ export const ITEMS: Item[] = [
     category: "faces",
     rarity: "legendary",
     previewEmoji: "😡",
-    creator: "CrazyVox",
+    creator: "Voxelio",
     forSale: false,
     faceImageUrl: "/faces/ruby-anger-face.png",
   },
