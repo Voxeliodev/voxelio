@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
@@ -14,7 +14,7 @@ import { fetchWorldById, incrementWorldVisits, type World } from "../../../lib/w
 import { getLayout, type BlockData } from "../../../lib/worldLayouts";
 
 // ============================================================
-// VOXELIO MULTIPLAYER WORLD — Roblox-style camera
+// VOXELIO MULTIPLAYER WORLD
 // ============================================================
 
 const KEY_MAP = [
@@ -71,6 +71,55 @@ type ChatMessage = {
   text: string;
   expiresAt: number;
 };
+
+// ============================================================
+// SAFE SPAWN — never spawn inside a block
+// ============================================================
+function findSafeSpawn(blocks: BlockData[]): THREE.Vector3 {
+  const spawn = new THREE.Vector3(0, CHARACTER_Y_OFFSET, 0);
+  const maxIter = blocks.length + 2;
+
+  for (let iter = 0; iter < maxIter; iter++) {
+    let pushedUp = false;
+
+    const pFeetY = spawn.y - CHARACTER_Y_OFFSET;
+    const pTopY = pFeetY + PLAYER_HEIGHT;
+    const pMinX = spawn.x - PLAYER_RADIUS;
+    const pMaxX = spawn.x + PLAYER_RADIUS;
+    const pMinZ = spawn.z - PLAYER_RADIUS;
+    const pMaxZ = spawn.z + PLAYER_RADIUS;
+
+    for (const b of blocks) {
+      const [bx, by, bz] = b.position;
+      const [sx, sy, sz] = b.size;
+
+      const bMinX = bx - sx / 2;
+      const bMaxX = bx + sx / 2;
+      const bMinY = by - sy / 2;
+      const bMaxY = by + sy / 2;
+      const bMinZ = bz - sz / 2;
+      const bMaxZ = bz + sz / 2;
+
+      // No X or Z overlap? Skip
+      if (pMaxX <= bMinX || pMinX >= bMaxX) continue;
+      if (pMaxZ <= bMinZ || pMinZ >= bMaxZ) continue;
+
+      // No Y overlap? Skip
+      if (pTopY <= bMinY || pFeetY >= bMaxY) continue;
+
+      // Overlapping — push spawn above this block
+      spawn.y = Math.max(spawn.y, bMaxY + CHARACTER_Y_OFFSET + 0.05);
+      pushedUp = true;
+    }
+
+    if (!pushedUp) break;
+  }
+
+  // Absolute safety: never spawn higher than 60 units
+  if (spawn.y > 60) spawn.y = 60;
+
+  return spawn;
+}
 
 // ============================================================
 // COLLISION
@@ -328,12 +377,15 @@ function LocalPlayer({
   const { gl } = useThree();
   const [, getKeys] = useKeyboardControls();
 
+  // Compute a safe spawn once based on the layout blocks
+  const safeSpawn = useMemo(() => findSafeSpawn(blocks), [blocks]);
+
   const groupRef = useRef<THREE.Group>(null);
-  const positionRef = useRef(new THREE.Vector3(0, CHARACTER_Y_OFFSET, 0));
+  const positionRef = useRef(safeSpawn.clone());
   const velocityRef = useRef(new THREE.Vector2(0, 0));
   const facingRef = useRef(0);
   const velocityYRef = useRef(0);
-  const groundedRef = useRef(true);
+  const groundedRef = useRef(false);
   const lastBroadcastRef = useRef(0);
   const needsBroadcastRef = useRef(true);
 
@@ -422,15 +474,13 @@ function LocalPlayer({
 
     const keys = getKeys();
 
-    // ===== INPUT — note A/D are flipped from the input
-    // keys so that D moves right on screen (see transform below)
     let localX = 0;
     let localZ = 0;
     if (!inputDisabled) {
       if (keys.forward) localZ += 1;
       if (keys.backward) localZ -= 1;
-      if (keys.left) localX += 1;    // A → +1
-      if (keys.right) localX -= 1;   // D → -1
+      if (keys.left) localX += 1;
+      if (keys.right) localX -= 1;
     }
 
     const inputLen = Math.hypot(localX, localZ);
@@ -441,7 +491,6 @@ function LocalPlayer({
       localZ /= inputLen;
     }
 
-    // ===== CONVERT TO WORLD SPACE =====
     const yaw = cameraYawRef.current;
     const cosY = Math.cos(yaw);
     const sinY = Math.sin(yaw);
@@ -449,7 +498,6 @@ function LocalPlayer({
     const worldX = localX * cosY + localZ * sinY;
     const worldZ = -localX * sinY + localZ * cosY;
 
-    // ===== FACE MOVEMENT DIRECTION =====
     if (hasInput) {
       const targetAngle = Math.atan2(worldX, worldZ);
       const current = groupRef.current.rotation.y;
@@ -460,7 +508,6 @@ function LocalPlayer({
       facingRef.current = groupRef.current.rotation.y;
     }
 
-    // ===== HORIZONTAL VELOCITY =====
     const targetVX = hasInput ? worldX * MOVE_SPEED : 0;
     const targetVZ = hasInput ? worldZ * MOVE_SPEED : 0;
 
@@ -488,13 +535,11 @@ function LocalPlayer({
       setWalking(isMoving);
     }
 
-    // ===== JUMP =====
     if (!inputDisabled && keys.jump && groundedRef.current) {
       velocityYRef.current = JUMP_VELOCITY;
       groundedRef.current = false;
     }
 
-    // ===== GRAVITY =====
     velocityYRef.current += GRAVITY * delta;
     positionRef.current.y += velocityYRef.current * delta;
 
@@ -503,7 +548,6 @@ function LocalPlayer({
       velocityYRef.current = 0;
     }
 
-    // ===== COLLISIONS =====
     resolveBlockCollisions(positionRef.current, blocks);
     resolvePlayerCollisions(positionRef.current, myId, remotePositions.current);
 
@@ -513,7 +557,6 @@ function LocalPlayer({
       velocityYRef.current = 0;
     }
 
-    // ===== BOUNDS =====
     const bound = 95;
     positionRef.current.x = Math.max(-bound, Math.min(bound, positionRef.current.x));
     positionRef.current.z = Math.max(-bound, Math.min(bound, positionRef.current.z));
@@ -561,7 +604,7 @@ function LocalPlayer({
   });
 
   return (
-    <group ref={groupRef} position={[0, CHARACTER_Y_OFFSET, 0]}>
+    <group ref={groupRef} position={safeSpawn}>
       {chatMessage && <ChatBubble text={chatMessage.text} />}
       <Character config={config} hideAccessory walking={walking} />
     </group>
@@ -853,6 +896,7 @@ export default function WorldPage() {
       .on("presence", { event: "sync" }, () => {
         const state = channel.presenceState();
         setOnlineCount(Object.keys(state).length);
+        // Re-broadcast our latest position so newcomers can see us
         const me = localPosRef.current;
         channel.send({
           type: "broadcast",
@@ -879,10 +923,6 @@ export default function WorldPage() {
       const now = Date.now();
       setOthers((prev) => prev.filter((p) => now - p.lastSeen < STALE_TIMEOUT));
     }, 2000);
-
-    setTimeout(() => {
-      handleMove([0, CHARACTER_Y_OFFSET, 0], 0);
-    }, 400);
 
     return () => {
       clearInterval(staleTimer);
