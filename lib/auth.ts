@@ -233,9 +233,6 @@ function rowToUser(row: any): User {
 function userToRow(u: User) {
   return {
     id: u.id,
-    // `undefined` (not `null`) so new signups OMIT the field entirely,
-    // letting Postgres apply its DEFAULT nextval('profile_display_id_seq')
-    // and auto-assign a display ID.
     display_id: u.displayId ?? undefined,
     username: u.username,
     email: u.email,
@@ -440,14 +437,12 @@ export async function signOut(): Promise<void> {
 export function ownsItem(userId: string, itemId: string): boolean {
   return findUserById(userId)?.ownedItems.includes(itemId) || false;
 }
-
 export function buyItem(userId: string, itemId: string, price: number): { success: boolean; error?: string; newBalance?: number } {
   const user = findUserById(userId);
   if (!user) return { success: false, error: "You must be signed in." };
   if (isUserBanned(user)) return { success: false, error: "This account is banned." };
   if (user.ownedItems.includes(itemId)) return { success: false, error: "You already own this item." };
 
-  // Block off-sale items
   const item = getItem(itemId);
   if (item && item.forSale === false) {
     return { success: false, error: "This item is no longer for sale." };
@@ -458,7 +453,6 @@ export function buyItem(userId: string, itemId: string, price: number): { succes
   updateUser(updated);
   return { success: true, newBalance: updated.voxbux };
 }
-
 export function subscribeIndev(userId: string, tier: IndevTier): { success: boolean; error?: string; newBalance?: number; expiresAt?: number } {
   const user = findUserById(userId);
   if (!user) return { success: false, error: "You must be signed in." };
@@ -479,72 +473,50 @@ export function cancelIndev(userId: string): { success: boolean; error?: string 
 }
 
 // ============================================================
-// DEV — GRANT / REVOKE ITEMS (bypasses price & off-sale)
+// DEV — GRANT / REVOKE ITEMS (atomic via Supabase RPC)
 // ============================================================
-export function grantItem(userId: string, itemId: string): { success: boolean; error?: string } {
-  const user = findUserById(userId);
-  if (!user) return { success: false, error: "User not found." };
-
+export async function grantItem(userId: string, itemId: string): Promise<{ success: boolean; error?: string }> {
   const item = getItem(itemId);
   if (!item) return { success: false, error: "Item not found." };
 
-  if (user.ownedItems.includes(itemId)) {
-    return { success: false, error: "User already owns this item." };
-  }
-
-  updateUser({
-    ...user,
-    ownedItems: [...user.ownedItems, itemId],
+  const { data, error } = await supabase.rpc("grant_item", {
+    p_user_id: userId,
+    p_item_id: itemId,
   });
+
+  if (error) return { success: false, error: error.message };
+  if (!data?.success) return { success: false, error: data?.error || "Grant failed." };
+
   return { success: true };
 }
 
-export function grantItemsBulk(
+export async function grantItemsBulk(
   userId: string,
   itemIds: string[]
-): { added: string[]; skipped: string[]; errors: string[] } {
-  const user = findUserById(userId);
-  if (!user) return { added: [], skipped: [], errors: ["User not found."] };
-
+): Promise<{ added: string[]; skipped: string[]; errors: string[] }> {
   const added: string[] = [];
   const skipped: string[] = [];
   const errors: string[] = [];
-  const owned = new Set(user.ownedItems);
 
-  for (const itemId of itemIds) {
-    const item = getItem(itemId);
-    if (!item) {
-      errors.push(itemId);
-      continue;
-    }
-    if (owned.has(itemId)) {
-      skipped.push(itemId);
-      continue;
-    }
-    owned.add(itemId);
-    added.push(itemId);
-  }
-
-  if (added.length > 0) {
-    updateUser({
-      ...user,
-      ownedItems: [...user.ownedItems, ...added],
-    });
+  for (const id of itemIds) {
+    if (!getItem(id)) { errors.push(id); continue; }
+    const r = await grantItem(userId, id);
+    if (r.success) added.push(id);
+    else if (r.error === "Already owned.") skipped.push(id);
+    else errors.push(id);
   }
 
   return { added, skipped, errors };
 }
 
-export function revokeItem(userId: string, itemId: string): { success: boolean; error?: string } {
-  const user = findUserById(userId);
-  if (!user) return { success: false, error: "User not found." };
-  if (!user.ownedItems.includes(itemId)) {
-    return { success: false, error: "User doesn't own this item." };
-  }
-  updateUser({
-    ...user,
-    ownedItems: user.ownedItems.filter((id) => id !== itemId),
+export async function revokeItem(userId: string, itemId: string): Promise<{ success: boolean; error?: string }> {
+  const { data, error } = await supabase.rpc("revoke_item", {
+    p_user_id: userId,
+    p_item_id: itemId,
   });
+
+  if (error) return { success: false, error: error.message };
+  if (!data?.success) return { success: false, error: data?.error || "Revoke failed." };
   return { success: true };
 }
 
@@ -765,7 +737,8 @@ export async function redeemCode(inputCode: string): Promise<{
   } else if (rewardType === "item") {
     const itemId = rewardValue.itemId as string | undefined;
     if (itemId && !user.ownedItems.includes(itemId)) {
-      updateUser({ ...user, ownedItems: [...user.ownedItems, itemId] });
+      // Use the atomic RPC so we don't clobber other fields
+      await grantItem(user.id, itemId);
       rewardText = `Item unlocked!`;
     } else {
       rewardText = `Reward granted`;

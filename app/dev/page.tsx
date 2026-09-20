@@ -56,6 +56,7 @@ export default function DevPage() {
   const [itemSearch, setItemSearch] = useState("");
   const [itemCategory, setItemCategory] = useState<string>("all");
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+  const [savingItems, setSavingItems] = useState(false);
 
   useEffect(() => {
     refresh();
@@ -87,6 +88,7 @@ export default function DevPage() {
     setItemSearch("");
     setItemCategory("all");
     setSelectedItemIds(new Set());
+    setSavingItems(false);
   };
 
   const closeAction = () => {
@@ -199,14 +201,17 @@ export default function DevPage() {
     });
   };
 
-  const confirmGrantItems = () => {
+  const confirmGrantItems = async () => {
     if (!actionUser) return;
     const ids = Array.from(selectedItemIds);
     if (ids.length === 0) {
       showToast("error", "Select at least one item.");
       return;
     }
-    const result = grantItemsBulk(actionUser.id, ids);
+    setSavingItems(true);
+    const result = await grantItemsBulk(actionUser.id, ids);
+    setSavingItems(false);
+
     const parts: string[] = [];
     if (result.added.length) parts.push(`✅ Added ${result.added.length}`);
     if (result.skipped.length) parts.push(`⏭️ Skipped ${result.skipped.length} (already owned)`);
@@ -214,22 +219,27 @@ export default function DevPage() {
 
     if (result.added.length > 0) {
       showToast("success", `Granted items to ${actionUser.username}. ${parts.join(" · ")}`);
-      refresh();
-      closeAction();
+      // Wait a moment for the realtime update to land, then refresh from server
+      setTimeout(() => {
+        refresh();
+        const fresh = getUsers().find((u) => u.id === actionUser.id);
+        if (fresh) setActionUser(fresh);
+      }, 400);
     } else {
       showToast("error", `No items added. ${parts.join(" · ")}`);
     }
   };
 
-  const handleRevoke = (itemId: string) => {
+  const handleRevoke = async (itemId: string) => {
     if (!actionUser) return;
-    const result = revokeItem(actionUser.id, itemId);
+    const result = await revokeItem(actionUser.id, itemId);
     if (result.success) {
       showToast("success", `Removed item from ${actionUser.username}.`);
-      refresh();
-      // Update the local actionUser so the checkboxes/marks update immediately
-      const fresh = getUsers().find((u) => u.id === actionUser.id);
-      if (fresh) setActionUser(fresh);
+      setTimeout(() => {
+        refresh();
+        const fresh = getUsers().find((u) => u.id === actionUser.id);
+        if (fresh) setActionUser(fresh);
+      }, 400);
     } else {
       showToast("error", result.error || "Revoke failed.");
     }
@@ -257,7 +267,6 @@ export default function DevPage() {
       return ad - bd;
     });
 
-  // Items visible in the grant modal
   const visibleItems: Item[] = ITEMS.filter((item) => {
     if (itemCategory !== "all" && item.category !== itemCategory) return false;
     if (itemSearch.trim()) {
@@ -705,7 +714,6 @@ export default function DevPage() {
 
               {actionType === "items" && (
                 <>
-                  {/* Search + category filter */}
                   <div className="flex flex-col sm:flex-row gap-2">
                     <div className="flex-1 flex items-center gap-2 bg-[#EEF0F7] border border-[#C5C8D6] rounded px-3 py-2 focus-within:border-[#6C3CE0]">
                       <span className="text-[#666]">🔍</span>
@@ -732,7 +740,6 @@ export default function DevPage() {
                     </select>
                   </div>
 
-                  {/* Bulk select controls */}
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-[#666] font-bold">
                       {selectedItemIds.size} selected • {visibleItems.length} shown
@@ -753,7 +760,6 @@ export default function DevPage() {
                     </div>
                   </div>
 
-                  {/* Item list */}
                   <div className="border-2 border-[#C5C8D6] rounded max-h-[50vh] overflow-y-auto">
                     {visibleItems.length === 0 ? (
                       <p className="p-6 text-center text-sm text-[#888]">
@@ -871,14 +877,16 @@ export default function DevPage() {
               {actionType === "items" && (
                 <button
                   onClick={confirmGrantItems}
-                  disabled={selectedItemIds.size === 0}
+                  disabled={selectedItemIds.size === 0 || savingItems}
                   className={`px-4 py-2 text-sm font-bold rounded border transition ${
-                    selectedItemIds.size === 0
+                    selectedItemIds.size === 0 || savingItems
                       ? "bg-[#EEF0F7] text-[#888] border-[#C5C8D6] cursor-not-allowed"
                       : "bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white border-[#4A1FA8] hover:from-[#8B5FFF] hover:to-[#6A3FD7]"
                   }`}
                 >
-                  Grant {selectedItemIds.size} Item{selectedItemIds.size === 1 ? "" : "s"}
+                  {savingItems
+                    ? "Saving…"
+                    : `Grant ${selectedItemIds.size} Item${selectedItemIds.size === 1 ? "" : "s"}`}
                 </button>
               )}
             </div>
