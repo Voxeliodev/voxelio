@@ -27,6 +27,7 @@ import NavLink from "../../../components/NavLink";
 import BadgeTile from "../../../components/BadgeTile";
 
 const MAX_BIO_LENGTH = 200;
+const BADGES_PREVIEW_COUNT = 3;
 
 export default function ProfilePage() {
   const params = useParams();
@@ -44,6 +45,7 @@ export default function ProfilePage() {
   const [savedFlash, setSavedFlash] = useState(false);
 
   const [view3D, setView3D] = useState(true);
+  const [showAllBadges, setShowAllBadges] = useState(false);
 
   const refresh = () => {
     const byName = findUserByUsername(username);
@@ -210,6 +212,8 @@ export default function ProfilePage() {
   ];
 
   const badges = getUserBadges(profileUser);
+  const visibleBadges = showAllBadges ? badges : badges.slice(0, BADGES_PREVIEW_COUNT);
+  const hiddenCount = badges.length - BADGES_PREVIEW_COUNT;
 
   return (
     <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans">
@@ -412,16 +416,30 @@ export default function ProfilePage() {
                     </span>
                   )}
                 </div>
+
                 {badges.length === 0 ? (
                   <div className="p-3 text-center text-xs text-[#888]">
                     <div className="text-3xl mb-1">🏅</div>
                     No badges yet
                   </div>
                 ) : (
-                  <div className="grid grid-cols-3 gap-2 p-3">
-                    {badges.map((b) => (
-                      <BadgeTile key={b.id} badge={b} />
-                    ))}
+                  <div className="p-3 space-y-2">
+                    <div className="grid grid-cols-3 gap-2">
+                      {visibleBadges.map((b) => (
+                        <BadgeTile key={b.id} badge={b} />
+                      ))}
+                    </div>
+
+                    {badges.length > BADGES_PREVIEW_COUNT && (
+                      <button
+                        onClick={() => setShowAllBadges((v) => !v)}
+                        className="w-full text-[11px] font-bold text-[#6C3CE0] hover:underline pt-1 border-t border-[#E5E7F0]"
+                      >
+                        {showAllBadges
+                          ? "Show less"
+                          : `Show more (${hiddenCount} more)`}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
