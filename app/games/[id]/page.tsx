@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import * as THREE from "three";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { KeyboardControls, useKeyboardControls, Sky, Html } from "@react-three/drei";
 import { Character } from "../../components/Avatar";
 import AccountBadge from "../../components/AccountBadge";
@@ -14,7 +14,7 @@ import { fetchWorldById, incrementWorldVisits, type World } from "../../../lib/w
 import { getLayout, type BlockData } from "../../../lib/worldLayouts";
 
 // ============================================================
-// VOXELIO MULTIPLAYER WORLD
+// VOXELIO MULTIPLAYER WORLD — Roblox-style camera
 // ============================================================
 
 const KEY_MAP = [
@@ -25,15 +25,20 @@ const KEY_MAP = [
   { name: "jump", keys: [" ", "Space"] },
 ];
 
-const MOVE_SPEED = 6.5;
-const ACCEL = 45;
-const DECEL = 60;
-const ROTATION_LERP = 16;
+const MOVE_SPEED = 7.5;
+const ACCEL = 60;
+const DECEL = 80;
+const ROTATION_LERP = 18;
 
-const CAMERA_DISTANCE = 9;
-const CAMERA_HEIGHT = 5.2;
-const CAMERA_LOOK_HEIGHT = 1.4;
-const CAMERA_LERP = 6;
+// Camera defaults (user adjustable)
+const CAMERA_MIN_DIST = 3;
+const CAMERA_MAX_DIST = 18;
+const CAMERA_DEFAULT_DIST = 9;
+const CAMERA_DEFAULT_PITCH = 0.32;
+const CAMERA_MIN_PITCH = -0.25;
+const CAMERA_MAX_PITCH = 1.15;
+const CAMERA_LOOK_OFFSET = -0.2; // relative to player group y
+const CAMERA_LERP = 10;
 
 const CHARACTER_Y_OFFSET = 1.6;
 const GRAVITY = -28;
@@ -69,7 +74,7 @@ type ChatMessage = {
 };
 
 // ============================================================
-// BLOCK COLLISION
+// COLLISION
 // ============================================================
 function resolveBlockCollisions(pos: THREE.Vector3, blocks: BlockData[]): void {
   for (let iter = 0; iter < 4; iter++) {
@@ -140,9 +145,6 @@ function isGrounded(pos: THREE.Vector3, blocks: BlockData[]): boolean {
   return false;
 }
 
-// ============================================================
-// PLAYER-VS-PLAYER COLLISION
-// ============================================================
 function resolvePlayerCollisions(
   pos: THREE.Vector3,
   myId: string,
@@ -176,7 +178,7 @@ function resolvePlayerCollisions(
 }
 
 // ============================================================
-// NAMETAG — username + badge next to it
+// NAMETAG
 // ============================================================
 function Nametag({
   username,
@@ -221,7 +223,7 @@ function Nametag({
 }
 
 // ============================================================
-// CHAT BUBBLE — horizontal, no username
+// CHAT BUBBLE
 // ============================================================
 function ChatBubble({ text }: { text: string }) {
   return (
@@ -298,16 +300,14 @@ function RemotePlayer({
   return (
     <group ref={groupRef} position={data.targetPos}>
       <Nametag username={data.username} userId={data.id} />
-
       {chatMessage && <ChatBubble text={chatMessage.text} />}
-
       <Character config={data.avatarConfig} hideAccessory walking={walkingRef.current} />
     </group>
   );
 }
 
 // ============================================================
-// LOCAL PLAYER
+// LOCAL PLAYER — Roblox-style camera
 // ============================================================
 function LocalPlayer({
   config,
@@ -326,7 +326,9 @@ function LocalPlayer({
   inputDisabled: boolean;
   remotePositions: React.MutableRefObject<Map<string, THREE.Vector3>>;
 }) {
+  const { gl } = useThree();
   const [, getKeys] = useKeyboardControls();
+
   const groupRef = useRef<THREE.Group>(null);
   const positionRef = useRef(new THREE.Vector3(0, CHARACTER_Y_OFFSET, 0));
   const velocityRef = useRef(new THREE.Vector2(0, 0));
@@ -336,33 +338,125 @@ function LocalPlayer({
   const lastBroadcastRef = useRef(0);
   const needsBroadcastRef = useRef(true);
 
+  // Camera state (in refs so mouse updates don't cause re-renders)
+  const cameraYawRef = useRef(0);
+  const cameraPitchRef = useRef(CAMERA_DEFAULT_PITCH);
+  const cameraDistRef = useRef(CAMERA_DEFAULT_DIST);
+
   const [walking, setWalking] = useState(false);
   const walkingStateRef = useRef(false);
 
+  // ============================================================
+  // MOUSE CAMERA CONTROLS
+  // ============================================================
+  useEffect(() => {
+    const canvas = gl.domElement;
+
+    let dragging = false;
+    let lastX = 0;
+    let lastY = 0;
+    let activeButton = -1;
+
+    const onMouseDown = (e: MouseEvent) => {
+      // Left or right click starts a drag
+      if (e.button === 0 || e.button === 2) {
+        dragging = true;
+        activeButton = e.button;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        canvas.style.cursor = "grabbing";
+        e.preventDefault();
+      }
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!dragging) return;
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+      lastX = e.clientX;
+      lastY = e.clientY;
+
+      cameraYawRef.current -= dx * 0.005;
+      cameraPitchRef.current = Math.max(
+        CAMERA_MIN_PITCH,
+        Math.min(CAMERA_MAX_PITCH, cameraPitchRef.current + dy * 0.005)
+      );
+    };
+
+    const onMouseUp = () => {
+      if (dragging) {
+        dragging = false;
+        activeButton = -1;
+        canvas.style.cursor = "grab";
+      }
+    };
+
+    const onContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      cameraDistRef.current = Math.max(
+        CAMERA_MIN_DIST,
+        Math.min(CAMERA_MAX_DIST, cameraDistRef.current + e.deltaY * 0.01)
+      );
+    };
+
+    canvas.style.cursor = "grab";
+    canvas.addEventListener("mousedown", onMouseDown);
+    canvas.addEventListener("contextmenu", onContextMenu);
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+
+    return () => {
+      canvas.removeEventListener("mousedown", onMouseDown);
+      canvas.removeEventListener("contextmenu", onContextMenu);
+      canvas.removeEventListener("wheel", onWheel);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      canvas.style.cursor = "";
+    };
+  }, [gl]);
+
+  // ============================================================
+  // FRAME UPDATE
+  // ============================================================
   useFrame((state, delta) => {
     if (!groupRef.current) return;
 
     const keys = getKeys();
 
-    let inputX = 0;
-    let inputZ = 0;
+    // ===== INPUT (local, relative to camera) =====
+    let localX = 0;
+    let localZ = 0;
     if (!inputDisabled) {
-      if (keys.forward) inputZ -= 1;
-      if (keys.backward) inputZ += 1;
-      if (keys.left) inputX -= 1;
-      if (keys.right) inputX += 1;
+      if (keys.forward) localZ += 1;
+      if (keys.backward) localZ -= 1;
+      if (keys.right) localX += 1;
+      if (keys.left) localX -= 1;
     }
 
-    const inputLen = Math.hypot(inputX, inputZ);
+    const inputLen = Math.hypot(localX, localZ);
     const hasInput = inputLen > 0.001;
 
     if (hasInput) {
-      inputX /= inputLen;
-      inputZ /= inputLen;
+      localX /= inputLen;
+      localZ /= inputLen;
     }
 
+    // ===== CONVERT TO WORLD SPACE (rotate by camera yaw) =====
+    const yaw = cameraYawRef.current;
+    const cosY = Math.cos(yaw);
+    const sinY = Math.sin(yaw);
+
+    const worldX = localX * cosY + localZ * sinY;
+    const worldZ = -localX * sinY + localZ * cosY;
+
+    // ===== FACE MOVEMENT DIRECTION =====
     if (hasInput) {
-      const targetAngle = Math.atan2(inputX, inputZ);
+      const targetAngle = Math.atan2(worldX, worldZ);
       const current = groupRef.current.rotation.y;
       let diff = targetAngle - current;
       while (diff > Math.PI) diff -= Math.PI * 2;
@@ -371,8 +465,9 @@ function LocalPlayer({
       facingRef.current = groupRef.current.rotation.y;
     }
 
-    const targetVX = hasInput ? inputX * MOVE_SPEED : 0;
-    const targetVZ = hasInput ? inputZ * MOVE_SPEED : 0;
+    // ===== HORIZONTAL VELOCITY =====
+    const targetVX = hasInput ? worldX * MOVE_SPEED : 0;
+    const targetVZ = hasInput ? worldZ * MOVE_SPEED : 0;
 
     const rate = hasInput ? ACCEL : DECEL;
     const dvx = targetVX - velocityRef.current.x;
@@ -398,11 +493,13 @@ function LocalPlayer({
       setWalking(isMoving);
     }
 
+    // ===== JUMP =====
     if (!inputDisabled && keys.jump && groundedRef.current) {
       velocityYRef.current = JUMP_VELOCITY;
       groundedRef.current = false;
     }
 
+    // ===== GRAVITY =====
     velocityYRef.current += GRAVITY * delta;
     positionRef.current.y += velocityYRef.current * delta;
 
@@ -411,6 +508,7 @@ function LocalPlayer({
       velocityYRef.current = 0;
     }
 
+    // ===== COLLISIONS =====
     resolveBlockCollisions(positionRef.current, blocks);
     resolvePlayerCollisions(positionRef.current, myId, remotePositions.current);
 
@@ -420,27 +518,42 @@ function LocalPlayer({
       velocityYRef.current = 0;
     }
 
+    // ===== BOUNDS =====
     const bound = 95;
     positionRef.current.x = Math.max(-bound, Math.min(bound, positionRef.current.x));
     positionRef.current.z = Math.max(-bound, Math.min(bound, positionRef.current.z));
 
     groupRef.current.position.copy(positionRef.current);
 
-    const targetCamX = positionRef.current.x - Math.sin(facingRef.current) * CAMERA_DISTANCE;
-    const targetCamZ = positionRef.current.z - Math.cos(facingRef.current) * CAMERA_DISTANCE;
-    const targetCamY = positionRef.current.y + CAMERA_HEIGHT;
+    // ===== CAMERA (orbits around player using yaw/pitch/dist) =====
+    const camYaw = cameraYawRef.current;
+    const camPitch = cameraPitchRef.current;
+    const camDist = cameraDistRef.current;
+
+    const horizDist = camDist * Math.cos(camPitch);
+    const vertDist = camDist * Math.sin(camPitch);
+
+    const lookX = positionRef.current.x;
+    const lookY = positionRef.current.y + CAMERA_LOOK_OFFSET;
+    const lookZ = positionRef.current.z;
+
+    const targetCamX = lookX - Math.sin(camYaw) * horizDist;
+    const targetCamY = lookY + vertDist;
+    const targetCamZ = lookZ - Math.cos(camYaw) * horizDist;
+
+    // Clamp camera Y so it doesn't go underground
+    if (targetCamY < 0.5) {
+      // keep it above ground
+    }
 
     const camLerp = Math.min(1, delta * CAMERA_LERP);
     state.camera.position.x += (targetCamX - state.camera.position.x) * camLerp;
-    state.camera.position.y += (targetCamY - state.camera.position.y) * camLerp;
+    state.camera.position.y += (Math.max(0.5, targetCamY) - state.camera.position.y) * camLerp;
     state.camera.position.z += (targetCamZ - state.camera.position.z) * camLerp;
 
-    state.camera.lookAt(
-      positionRef.current.x,
-      positionRef.current.y + CAMERA_LOOK_HEIGHT - CHARACTER_Y_OFFSET,
-      positionRef.current.z
-    );
+    state.camera.lookAt(lookX, lookY, lookZ);
 
+    // ===== BROADCAST =====
     const now = performance.now();
     const sinceLast = now - lastBroadcastRef.current;
 
@@ -850,7 +963,7 @@ export default function WorldPage() {
       <KeyboardControls map={KEY_MAP}>
         <Canvas
           shadows
-          camera={{ position: [0, 5.2, 9], fov: 55 }}
+          camera={{ position: [0, 5, 9], fov: 55 }}
           dpr={[1, 2]}
           style={{ background: "#87CEEB" }}
         >
@@ -899,7 +1012,7 @@ export default function WorldPage() {
         </div>
       </div>
 
-      {/* BOTTOM LEFT */}
+      {/* BOTTOM LEFT — controls */}
       <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1">
         <p className="font-bold mb-1">🎮 Controls</p>
         <p>
@@ -911,12 +1024,15 @@ export default function WorldPage() {
         <p>
           <kbd className="bg-white/10 px-1 rounded">Space</kbd> — Jump
         </p>
+        <p className="text-white/70">
+          🖱️ <strong>Drag</strong> to look around · <strong>Scroll</strong> to zoom
+        </p>
         <p>
           <kbd className="bg-white/10 px-1 rounded">Enter</kbd> — Chat
         </p>
       </div>
 
-      {/* BOTTOM RIGHT */}
+      {/* BOTTOM RIGHT — players in world */}
       {others.length > 0 && (
         <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1 max-w-[180px]">
           <p className="font-bold mb-1">👥 In this world</p>
