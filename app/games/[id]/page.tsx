@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import * as THREE from "three";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { KeyboardControls, useKeyboardControls, Sky, Text, Html, Billboard } from "@react-three/drei";
+import { KeyboardControls, useKeyboardControls, Sky, Html } from "@react-three/drei";
 import { Character } from "../../components/Avatar";
 import AccountBadge from "../../components/AccountBadge";
 import { getCurrentUser, formatVoxbux, type User, type AvatarConfig } from "../../../lib/auth";
@@ -176,6 +176,51 @@ function resolvePlayerCollisions(
 }
 
 // ============================================================
+// NAMETAG — username + badge next to it
+// ============================================================
+function Nametag({
+  username,
+  userId,
+}: {
+  username: string;
+  userId: string;
+}) {
+  return (
+    <Html
+      position={[0, 2.55, 0]}
+      center
+      distanceFactor={10}
+      zIndexRange={[10, 0]}
+      style={{ pointerEvents: "none", overflow: "visible" }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          whiteSpace: "nowrap",
+          fontFamily: "system-ui, -apple-system, sans-serif",
+        }}
+      >
+        <span
+          style={{
+            color: "#FFFFFF",
+            fontWeight: 700,
+            fontSize: 14,
+            lineHeight: 1,
+            textShadow:
+              "0 0 2px #000, 0 0 2px #000, 0 0 2px #000, 0 0 2px #000",
+          }}
+        >
+          {username}
+        </span>
+        <AccountBadge username={username} userId={userId} size={16} />
+      </div>
+    </Html>
+  );
+}
+
+// ============================================================
 // CHAT BUBBLE — horizontal, no username
 // ============================================================
 function ChatBubble({ text }: { text: string }) {
@@ -252,18 +297,7 @@ function RemotePlayer({
 
   return (
     <group ref={groupRef} position={data.targetPos}>
-      <Billboard position={[0, 2.55, 0]}>
-        <Text
-          fontSize={0.3}
-          color="#FFFFFF"
-          outlineWidth={0.022}
-          outlineColor="#000000"
-          anchorX="center"
-          anchorY="middle"
-        >
-          {data.username}
-        </Text>
-      </Billboard>
+      <Nametag username={data.username} userId={data.id} />
 
       {chatMessage && <ChatBubble text={chatMessage.text} />}
 
@@ -887,8 +921,9 @@ export default function WorldPage() {
         <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1 max-w-[180px]">
           <p className="font-bold mb-1">👥 In this world</p>
           {others.slice(0, 8).map((p) => (
-            <p key={p.id} className="truncate text-white/80">
-              • {p.username}
+            <p key={p.id} className="truncate text-white/80 flex items-center gap-1">
+              <span className="truncate">• {p.username}</span>
+              <AccountBadge username={p.username} userId={p.id} size={11} />
             </p>
           ))}
           {others.length > 8 && (
