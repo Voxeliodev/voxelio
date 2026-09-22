@@ -242,6 +242,19 @@ export const ITEMS: Item[] = [
     forSale: false,
     faceImageUrl: "/faces/ruby-anger-face.png",
   },
+  // 👇 NEW ITEM
+  {
+    id: "face-radioactive-enraged",
+    name: "Radioactive Face of the Enraged",
+    description:
+      "A face burning with radioactive fury, glowing with the rage of the enraged. Created by CrazyVox.",
+    price: 1000,
+    category: "faces",
+    rarity: "legendary",
+    previewEmoji: "☢️",
+    creator: "Voxelio",
+    faceImageUrl: "/faces/radioactive-face-of-the-enraged.png",
+  },
 ];
 
 export function getItem(id: string): Item | undefined {
