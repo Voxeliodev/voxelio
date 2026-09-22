@@ -11,11 +11,13 @@ import {
   getIndevDaysRemaining,
   formatVoxbux,
   getUnreadCount,
+  subscribeAuth,
   INDEV_PRICING,
   type User,
   type IndevTier,
 } from "../../lib/auth";
 import AccountBadge from "../components/AccountBadge";
+import VoxelioLogo from "../components/VoxelioLogo";
 
 const BENEFITS = [
   {
@@ -80,6 +82,8 @@ export default function IndevPage() {
 
   useEffect(() => {
     setCurrentUser(getCurrentUser());
+    const unsub = subscribeAuth(() => setCurrentUser(getCurrentUser()));
+    return () => unsub();
   }, []);
 
   const refreshUser = () => setCurrentUser(getCurrentUser());
@@ -144,7 +148,7 @@ export default function IndevPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans">
+    <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans theme-container">
 
       {/* TOAST */}
       {toast && (
@@ -167,7 +171,8 @@ export default function IndevPage() {
                   Welcome,{" "}
                   <strong className="text-white inline-flex items-center">
                     {currentUser.username}
-                    <AccountBadge userId={currentUser.id} size={12} />
+                    {/* 👇 FIXED: added username prop so Moderator badge shows */}
+                    <AccountBadge username={currentUser.username} userId={currentUser.id} size={12} />
                   </strong>
                 </span>
                 <button onClick={handleSignOut} className="hover:text-[#00E5FF]">Sign Out</button>
@@ -195,9 +200,7 @@ export default function IndevPage() {
       {/* HEADER */}
       <header className="bg-gradient-to-b from-[#6C3CE0] to-[#5A2FC7] border-b-4 border-[#4A1FA8]">
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <img src="/voxelio-logo.png" alt="Voxelio" className="h-14 w-auto object-contain bg-white rounded px-4 py-1.5 shadow-md" />
-          </Link>
+          <VoxelioLogo />
         </div>
       </header>
 

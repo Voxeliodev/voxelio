@@ -25,6 +25,7 @@ import Avatar from "../components/Avatar";
 import AccountBadge from "../components/AccountBadge";
 import NavLink from "../components/NavLink";
 import ItemPreview from "../components/ItemPreview";
+import VoxelioLogo from "../components/VoxelioLogo"; // 👈 NEW IMPORT
 import { getHats, getShirts, getAccessories, getFaces, getHair, type Item } from "../../lib/items";
 
 const SKIN_TONES = ["#F5C6A5", "#E8B08A", "#D69B71", "#B87A54", "#8B5A3C", "#5C3A23", "#3B2314"];
@@ -235,7 +236,8 @@ export default function AvatarEditorPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans">
+    // 👇 Added theme-container for Halloween dark mode
+    <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans theme-container">
 
       {savedFlash && (
         <div className="fixed top-4 right-4 z-[60] bg-green-500 text-white text-sm font-bold px-4 py-2 rounded shadow-lg">
@@ -276,9 +278,8 @@ export default function AvatarEditorPage() {
 
       <header className="bg-gradient-to-b from-[#6C3CE0] to-[#5A2FC7] border-b-4 border-[#4A1FA8]">
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <img src="/voxelio-logo.png" alt="Voxelio" className="h-14 w-auto object-contain bg-white rounded px-4 py-1.5 shadow-md" />
-          </Link>
+          {/* 👇 New logo component */}
+          <VoxelioLogo />
         </div>
       </header>
 

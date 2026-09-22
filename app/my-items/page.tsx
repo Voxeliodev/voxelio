@@ -17,6 +17,7 @@ import {
   type ItemCategory,
 } from "../../lib/items";
 import ItemPreview from "../components/ItemPreview";
+import VoxelioLogo from "../components/VoxelioLogo"; // 👈 NEW IMPORT
 
 const CATEGORY_LABELS: Record<ItemCategory, string> = {
   hats: "Hats",
@@ -51,10 +52,8 @@ export default function InventoryPage() {
 
   // Force a fresh pull from Supabase every time this page is shown
   const refresh = useCallback(async () => {
-    // Make sure the global cache is hydrated first
     await hydrateAuth();
 
-    // Re-fetch this user's row straight from Supabase so ownedItems is fresh
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) {
       setUser(null);
@@ -69,7 +68,6 @@ export default function InventoryPage() {
       .single();
 
     if (!error && data) {
-      // Let auth cache update itself so the rest of the app sees fresh data
       const fresh = getCurrentUser();
       if (fresh) setUser(fresh);
       else setUser(null);
@@ -86,11 +84,9 @@ export default function InventoryPage() {
       setUser(getCurrentUser());
     });
 
-    // Refresh whenever the tab/window regains focus (e.g. returning from a purchase)
     const onFocus = () => refresh();
     window.addEventListener("focus", onFocus);
 
-    // Refresh on browser back/forward navigation
     const onPopState = () => refresh();
     window.addEventListener("popstate", onPopState);
 
@@ -103,7 +99,8 @@ export default function InventoryPage() {
 
   if (!ready) {
     return (
-      <div className="min-h-screen bg-[#EEF0F7] flex items-center justify-center text-[#666]">
+      // 👇 Added theme-container so the loading screen also goes dark
+      <div className="min-h-screen bg-[#EEF0F7] flex items-center justify-center text-[#666] theme-container">
         Loading…
       </div>
     );
@@ -111,7 +108,8 @@ export default function InventoryPage() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-[#EEF0F7] flex flex-col items-center justify-center p-8 text-center">
+      // 👇 Added theme-container so the sign-in prompt also goes dark
+      <div className="min-h-screen bg-[#EEF0F7] flex flex-col items-center justify-center p-8 text-center theme-container">
         <div className="bg-white border-2 border-[#C5C8D6] rounded p-8 max-w-md">
           <p className="mb-4 text-[#1A1A2E] font-bold">
             You need to sign in to see your inventory.
@@ -137,16 +135,12 @@ export default function InventoryPage() {
   })).filter((g) => g.items.length > 0);
 
   return (
-    <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans">
+    // 👇 Added theme-container for Halloween dark mode
+    <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans theme-container">
       <header className="bg-gradient-to-b from-[#6C3CE0] to-[#5A2FC7] border-b-4 border-[#4A1FA8]">
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <img
-              src="/voxelio-logo.png"
-              alt="Voxelio"
-              className="h-14 w-auto object-contain bg-white rounded px-4 py-1.5 shadow-md"
-            />
-          </Link>
+          {/* 👇 New logo component */}
+          <VoxelioLogo />
         </div>
       </header>
 

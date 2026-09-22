@@ -16,6 +16,7 @@ import { isOwnerAccount } from "../../lib/badges";
 import AccountBadge from "../components/AccountBadge";
 import Avatar from "../components/Avatar";
 import NavLink from "../components/NavLink";
+import VoxelioLogo from "../components/VoxelioLogo"; // 👈 NEW IMPORT
 
 export default function MessagesPage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -50,7 +51,8 @@ export default function MessagesPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans">
+    // 👇 Added theme-container for Halloween dark mode
+    <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans theme-container">
 
       {/* TOP BAR */}
       <div className="bg-[#1A1A2E] text-white text-xs">
@@ -90,9 +92,8 @@ export default function MessagesPage() {
       {/* HEADER */}
       <header className="bg-gradient-to-b from-[#6C3CE0] to-[#5A2FC7] border-b-4 border-[#4A1FA8]">
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <img src="/voxelio-logo.png" alt="Voxelio" className="h-14 w-auto object-contain bg-white rounded px-4 py-1.5 shadow-md" />
-          </Link>
+          {/* 👇 New logo component */}
+          <VoxelioLogo />
         </div>
       </header>
 

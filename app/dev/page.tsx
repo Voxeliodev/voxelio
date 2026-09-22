@@ -25,6 +25,7 @@ import { isOwnerAccount } from "../../lib/badges";
 import { ITEMS, RARITY_COLORS, type Item } from "../../lib/items";
 import AccountBadge from "../components/AccountBadge";
 import NavLink from "../components/NavLink";
+import VoxelioLogo from "../components/VoxelioLogo"; // 👈 NEW IMPORT
 
 const BAN_DURATIONS = [
   { id: "1h", name: "1 Hour", ms: 60 * 60 * 1000 },
@@ -219,7 +220,6 @@ export default function DevPage() {
 
     if (result.added.length > 0) {
       showToast("success", `Granted items to ${actionUser.username}. ${parts.join(" · ")}`);
-      // Wait a moment for the realtime update to land, then refresh from server
       setTimeout(() => {
         refresh();
         const fresh = getUsers().find((u) => u.id === actionUser.id);
@@ -299,7 +299,8 @@ export default function DevPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans">
+    // 👇 Added theme-container for Halloween dark mode
+    <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans theme-container">
 
       {toast && (
         <div
@@ -347,9 +348,8 @@ export default function DevPage() {
 
       <header className="bg-gradient-to-b from-[#6C3CE0] to-[#5A2FC7] border-b-4 border-[#4A1FA8]">
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <img src="/voxelio-logo.png" alt="Voxelio" className="h-14 w-auto object-contain bg-white rounded px-4 py-1.5 shadow-md" />
-          </Link>
+          {/* 👇 New logo component */}
+          <VoxelioLogo />
         </div>
       </header>
 

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import AuthHydrator from "./AuthHydrator";
+import { SITE_THEME } from "../lib/theme-config";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -19,10 +20,14 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
+  // 👇 Read the global theme flag on the server
+  const isHalloween = SITE_THEME === "halloween";
+
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      data-theme={isHalloween ? "halloween" : undefined}
     >
       <body className="min-h-full flex flex-col">
         <AuthHydrator>{children}</AuthHydrator>

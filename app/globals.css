@@ -23,4 +23,44 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+/* ========================================= */
+/* 🎃 HALLOWEEN THEME STYLES 🎃              */
+/* ========================================= */
+
+[data-theme="halloween"] {
+  --background: #121212; 
+  --foreground: #ffedd5; 
+}
+
+/* 1. Change the main page background to dark */
+[data-theme="halloween"] .theme-container {
+  background-color: #121212 !important; 
+}
+
+/* 2. Turn ALL white boxes/cards into dark gray */
+[data-theme="halloween"] .bg-white {
+  background-color: #1e1e1e !important;
+  border-color: #333333 !important;
+}
+
+/* 3. Make the text inside those cards readable (light gray) */
+[data-theme="halloween"] .bg-white .text-\[\#1A1A2E\],
+[data-theme="halloween"] .bg-white .text-\[\#666\],
+[data-theme="halloween"] .bg-white .text-\[\#888\] {
+  color: #d1d5db !important;
+}
+
+/* 4. Fix the subtle backgrounds inside the cards (like search bars) */
+[data-theme="halloween"] .bg-\[\#EEF0F7\] {
+  background-color: #2a2a2a !important;
+  color: #ffffff !important;
+  border-color: #444444 !important;
+}
+
+/* 5. Optional: Add a subtle orange glow to your main header */
+[data-theme="halloween"] header {
+  box-shadow: 0 0 20px rgba(255, 140, 0, 0.3);
 }

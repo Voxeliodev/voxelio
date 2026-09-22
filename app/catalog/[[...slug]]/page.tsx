@@ -16,6 +16,7 @@ import AccountBadge from "../../components/AccountBadge";
 import ItemPreview from "../../components/ItemPreview";
 import ItemModal from "../../components/ItemModal";
 import NavLink from "../../components/NavLink";
+import VoxelioLogo from "../../components/VoxelioLogo"; // 👈 NEW IMPORT
 import {
   getItemsByCategory,
   getItemBySlug,
@@ -130,7 +131,8 @@ export default function CatalogPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans">
+    // 👇 Added theme-container for Halloween dark mode
+    <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans theme-container">
 
       {selectedItem && (
         <ItemModal
@@ -177,9 +179,8 @@ export default function CatalogPage() {
 
       <header className="bg-gradient-to-b from-[#6C3CE0] to-[#5A2FC7] border-b-4 border-[#4A1FA8]">
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <img src="/voxelio-logo.png" alt="Voxelio" className="h-14 w-auto object-contain bg-white rounded px-4 py-1.5 shadow-md" />
-          </Link>
+          {/* 👇 New logo component */}
+          <VoxelioLogo />
           <div className="hidden md:flex items-center gap-2 bg-white/10 rounded px-3 py-1.5 border border-white/20">
             <input
               type="text"
