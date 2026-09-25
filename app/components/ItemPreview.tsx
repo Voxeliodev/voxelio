@@ -7,12 +7,11 @@ import type { Item } from "../../lib/items";
 // ============================================================
 // ItemPreview — STATIC thumbnail version for the catalog grid.
 // ============================================================
-// Previously this rendered a full WebGL canvas per card, which
-// exhausted the browser's context limit on pages with many items.
-// Now every preview is a lightweight static image or emoji.
+// No WebGL contexts are created here. The catalog can render
+// 100+ cards without exhausting the browser's GPU context limit.
 //
-// Full 3D previews still run in the modal (ItemModal.tsx) where
-// only ONE canvas is open at a time.
+// Full 3D previews run in ItemModal (via ItemPreview3D.tsx) where
+// only one canvas is open at a time.
 // ============================================================
 
 function CategoryFallback({ emoji, size }: { emoji: string; size: number }) {
@@ -48,29 +47,7 @@ function CommunityShirtPreview({ item, size }: { item: Item; size: number }) {
 }
 
 function FacePreview({ item, size }: { item: Item; size: number }) {
-  const [texture, setTexture] = useState<THREE.Texture | null>(null);
-
-  useEffect(() => {
-    if (!item.faceImageUrl) return;
-    let cancelled = false;
-    const loader = new THREE.TextureLoader();
-    loader.load(
-      item.faceImageUrl,
-      (tex) => {
-        if (cancelled) { tex.dispose(); return; }
-        tex.colorSpace = THREE.SRGBColorSpace;
-        tex.anisotropy = 8;
-        tex.needsUpdate = true;
-        setTexture(tex);
-      },
-      undefined,
-      () => {}
-    );
-    return () => { cancelled = true; };
-  }, [item.faceImageUrl]);
-
-  // Faces already have an image URL — just show it directly as a static
-  // image. No WebGL needed.
+  // Faces already have image URLs — just render the image as-is.
   if (item.faceImageUrl) {
     return (
       <div
@@ -86,11 +63,13 @@ function FacePreview({ item, size }: { item: Item; size: number }) {
       </div>
     );
   }
-
   return <CategoryFallback emoji={item.previewEmoji} size={size} />;
 }
 
-function HairPreview({ item, size }: { item: Item; size: number }) {
+function ShirtPreview({ item, size }: { item: Item; size: number }) {
+  if (item.imageUrl) {
+    return <CommunityShirtPreview item={item} size={size} />;
+  }
   return <CategoryFallback emoji={item.previewEmoji} size={size} />;
 }
 
@@ -102,12 +81,7 @@ function HeadPreview({ item, size }: { item: Item; size: number }) {
   return <CategoryFallback emoji={item.previewEmoji} size={size} />;
 }
 
-function ShirtPreview({ item, size }: { item: Item; size: number }) {
-  // Community shirts: crop from the uploaded template
-  if (item.imageUrl) {
-    return <CommunityShirtPreview item={item} size={size} />;
-  }
-  // Built-in shirts: emoji fallback
+function HairPreview({ item, size }: { item: Item; size: number }) {
   return <CategoryFallback emoji={item.previewEmoji} size={size} />;
 }
 

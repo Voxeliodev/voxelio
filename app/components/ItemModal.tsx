@@ -3,170 +3,9 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { getCurrentUser, buyItem, formatVoxbux, type User } from "../../lib/auth";
-import ItemPreview from "./ItemPreview";
+import ItemPreview3D from "./ItemPreview3D";
 import { RARITY_LABELS, RARITY_COLORS, type Item } from "../../lib/items";
-import { supabase } from "../../lib/supabase";
-import { Canvas } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
-import * as THREE from "three";
 
-// ============================================================
-// Shared texture loader for community shirts
-// ============================================================
-const CELL_W = 1 / 3;
-const CELL_H = 1 / 3;
-const INSET_X = 0.10;
-const INSET_TOP = 0.22;
-const INSET_BOT = 0.10;
-
-let communityCache: Record<string, THREE.Texture> = {};
-
-function useShirtTexture(imageUrl: string | undefined): THREE.Texture | null {
-  const [texture, setTexture] = useState<THREE.Texture | null>(() => {
-    if (!imageUrl) return null;
-    return communityCache[imageUrl] || null;
-  });
-
-  useEffect(() => {
-    if (!imageUrl) {
-      setTexture(null);
-      return;
-    }
-    if (communityCache[imageUrl]) {
-      setTexture(communityCache[imageUrl]);
-      return;
-    }
-
-    let cancelled = false;
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      if (cancelled) return;
-      const tex = new THREE.Texture(img);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.anisotropy = 16;
-      tex.minFilter = THREE.LinearFilter;
-      tex.magFilter = THREE.LinearFilter;
-      tex.needsUpdate = true;
-      communityCache[imageUrl] = tex;
-      setTexture(tex);
-    };
-    img.src = imageUrl;
-
-    return () => {
-      cancelled = true;
-    };
-  }, [imageUrl]);
-
-  return texture;
-}
-
-function applyCellUV(tex: THREE.Texture, col: 0 | 1 | 2, row: 0 | 1 | 2) {
-  const u0 = col * CELL_W + INSET_X * CELL_W;
-  const u1 = (col + 1) * CELL_W - INSET_X * CELL_W;
-
-  const rowFromBottom = 2 - row;
-  const cellV0 = rowFromBottom * CELL_H;
-  const cellV1 = (rowFromBottom + 1) * CELL_H;
-
-  const topInset = INSET_TOP * CELL_H;
-  const botInset = INSET_BOT * CELL_H;
-
-  const v0 = cellV0 + botInset;
-  const v1 = cellV1 - topInset;
-
-  tex.offset.set(u0, v0);
-  tex.repeat.set(u1 - u0, v1 - v0);
-  tex.wrapS = THREE.ClampToEdgeWrapping;
-  tex.wrapT = THREE.ClampToEdgeWrapping;
-}
-
-// ============================================================
-// 3D COMMUNITY SHIRT PREVIEW
-// ============================================================
-function CommunityShirt3DPreview({ imageUrl }: { imageUrl: string }) {
-  const texture = useShirtTexture(imageUrl);
-
-  if (!texture) {
-    return (
-      <div className="w-full h-full flex items-center justify-center text-[#888] text-xs">
-        Loading texture…
-      </div>
-    );
-  }
-
-  const torsoSize: [number, number, number] = [0.9, 1, 0.5];
-  const torsoPosition: [number, number, number] = [0, 0.1, 0];
-
-  const [w, h, d] = torsoSize;
-
-  // Build face textures
-  const frontTex = texture.clone(); applyCellUV(frontTex, 1, 1); frontTex.needsUpdate = true;
-  const backTex = texture.clone(); applyCellUV(backTex, 1, 0); backTex.needsUpdate = true;
-  const leftTex = texture.clone(); applyCellUV(leftTex, 0, 0); leftTex.needsUpdate = true;
-  const rightTex = texture.clone(); applyCellUV(rightTex, 2, 0); rightTex.needsUpdate = true;
-  const topTex = texture.clone(); applyCellUV(topTex, 0, 1); topTex.needsUpdate = true;
-  const bottomTex = texture.clone(); applyCellUV(bottomTex, 0, 2); bottomTex.needsUpdate = true;
-
-  const hw = w / 2;
-  const hh = h / 2;
-  const hd = d / 2;
-
-  // Sleeves — small textured boxes on either side
-  const sleeveSize: [number, number, number] = [0.3, 0.4, 0.3];
-  const sleeveOffsetY = 0.5; // near the top of the torso
-
-  return (
-    <group position={torsoPosition}>
-      {/* TORSO — solid core + 6 textured planes */}
-      <mesh castShadow>
-        <boxGeometry args={torsoSize} />
-        <meshStandardMaterial color="#111111" roughness={0.9} />
-      </mesh>
-
-      <mesh position={[0, 0, hd + 0.002]}>
-        <planeGeometry args={[w, h]} />
-        <meshStandardMaterial map={frontTex} roughness={0.7} />
-      </mesh>
-      <mesh position={[0, 0, -hd - 0.002]} rotation={[0, Math.PI, 0]}>
-        <planeGeometry args={[w, h]} />
-        <meshStandardMaterial map={backTex} roughness={0.7} />
-      </mesh>
-      <mesh position={[hw + 0.002, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
-        <planeGeometry args={[d, h]} />
-        <meshStandardMaterial map={rightTex} roughness={0.7} />
-      </mesh>
-      <mesh position={[-hw - 0.002, 0, 0]} rotation={[0, -Math.PI / 2, 0]}>
-        <planeGeometry args={[d, h]} />
-        <meshStandardMaterial map={leftTex} roughness={0.7} />
-      </mesh>
-      <mesh position={[0, hh + 0.002, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[w, d]} />
-        <meshStandardMaterial map={topTex} roughness={0.7} />
-      </mesh>
-      <mesh position={[0, -hh - 0.002, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[w, d]} />
-        <meshStandardMaterial map={bottomTex} roughness={0.7} />
-      </mesh>
-
-      {/* LEFT SLEEVE */}
-      <mesh position={[-hw - sleeveSize[0] / 2 - 0.01, sleeveOffsetY, 0]} castShadow>
-        <boxGeometry args={sleeveSize} />
-        <meshStandardMaterial map={leftTex} roughness={0.7} />
-      </mesh>
-
-      {/* RIGHT SLEEVE */}
-      <mesh position={[hw + sleeveSize[0] / 2 + 0.01, sleeveOffsetY, 0]} castShadow>
-        <boxGeometry args={sleeveSize} />
-        <meshStandardMaterial map={rightTex} roughness={0.7} />
-      </mesh>
-    </group>
-  );
-}
-
-// ============================================================
-// MODAL COMPONENT
-// ============================================================
 export default function ItemModal({
   item,
   onClose,
@@ -227,7 +66,6 @@ export default function ItemModal({
   const owned = currentUser?.ownedItems.includes(item.id) || false;
   const canAfford = (currentUser?.voxbux ?? 0) >= item.price;
   const offSale = item.forSale === false;
-  const isCommunityShirt = Boolean(item.imageUrl) && item.category === "outfits";
 
   return (
     <div
@@ -262,45 +100,7 @@ export default function ItemModal({
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 p-4">
           <div className="lg:col-span-3">
             <div className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden">
-              {isCommunityShirt ? (
-                /* 3D preview for community shirts */
-                <div
-                  className="w-full bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0]"
-                  style={{ height: 380 }}
-                >
-                  <Canvas
-                    camera={{ position: [0, 0.3, 2.8], fov: 45 }}
-                    dpr={[1, 2]}
-                    shadows
-                  >
-                    <ambientLight intensity={0.75} />
-                    <directionalLight
-                      position={[3, 5, 4]}
-                      intensity={1.1}
-                      castShadow
-                    />
-                    <directionalLight position={[-3, 2, -3]} intensity={0.45} />
-                    <hemisphereLight args={["#ffffff", "#666680", 0.4]} />
-
-                    <CommunityShirt3DPreview imageUrl={item.imageUrl!} />
-
-                    <OrbitControls
-                      enablePan={false}
-                      enableZoom={false}
-                      autoRotate
-                      autoRotateSpeed={2}
-                      minPolarAngle={Math.PI / 4}
-                      maxPolarAngle={Math.PI / 1.8}
-                    />
-                  </Canvas>
-                  <p className="text-center text-[10px] text-[#888] pb-2">
-                    🖱️ Drag to rotate
-                  </p>
-                </div>
-              ) : (
-                /* Default preview for other items */
-                <ItemPreview item={item} size={380} />
-              )}
+              <ItemPreview3D item={item} size={380} />
             </div>
           </div>
 
