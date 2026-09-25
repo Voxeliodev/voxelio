@@ -12,6 +12,7 @@ import {
   type User,
 } from "../../../lib/auth";
 import { isOwnerAccount } from "../../../lib/badges";
+import { supabase } from "../../../lib/supabase";  // 👈 NEW
 import AccountBadge from "../../components/AccountBadge";
 import ItemPreview from "../../components/ItemPreview";
 import ItemModal from "../../components/ItemModal";
@@ -61,9 +62,52 @@ export default function CatalogPage() {
   const [sort, setSort] = useState("relevance");
   const [sales, setSales] = useState<Record<string, number>>({});
 
+  // 👇 NEW: approved community shirts fetched from Supabase
+  const [communityShirts, setCommunityShirts] = useState<Item[]>([]);
+
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
 
   const refreshUser = () => setCurrentUser(getCurrentUser());
+
+  // 👇 NEW: Fetch approved community shirts once, and re-run when a
+  // shirt might have been approved (via window focus)
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCommunityShirts = async () => {
+      const { data, error } = await supabase
+        .from("community_shirts")
+        .select("*")
+        .eq("status", "approved")
+        .order("approved_at", { ascending: false });
+
+      if (cancelled || error || !data) return;
+
+      const asItems: Item[] = data.map((s) => ({
+        id: `community-${s.id}`,
+        name: s.name,
+        description: s.description || `A community shirt by ${s.creator_username}`,
+        price: s.price,
+        category: "outfits" as const,
+        rarity: "rare" as const,
+        previewEmoji: "👕",
+        creator: s.creator_username,
+        imageUrl: s.image_url,
+      }));
+
+      setCommunityShirts(asItems);
+    };
+
+    loadCommunityShirts();
+
+    const onFocus = () => loadCommunityShirts();
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
 
   useEffect(() => {
     refreshUser();
@@ -72,7 +116,14 @@ export default function CatalogPage() {
     const syncFromUrl = () => {
       const slug = getSlugFromUrl();
       if (slug) {
-        const item = getItemBySlug(slug);
+        // Check static items first, then community shirts
+        let item = getItemBySlug(slug);
+        if (!item) {
+          const decoded = decodeURIComponent(slug).toLowerCase();
+          item = communityShirts.find(
+            (i) => slugify(i.name).toLowerCase() === decoded
+          ) || null;
+        }
         setSelectedItem(item || null);
       } else {
         setSelectedItem(null);
@@ -88,7 +139,7 @@ export default function CatalogPage() {
       unsub();
       window.removeEventListener("popstate", syncFromUrl);
     };
-  }, []);
+  }, [communityShirts]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -107,8 +158,15 @@ export default function CatalogPage() {
 
   const activeCategory = CATEGORIES.find((c) => c.id === category);
 
-  // 👇 Pass ownedItems so hidden items stay visible ONLY to owners
+  // 👇 Static items (with hidden filtering)
   let items = getItemsByCategory(category, currentUser?.ownedItems || []);
+
+  // 👇 Merge community shirts into "all", "featured", and "outfits" views
+  if (category === "all" || category === "featured" || category === "outfits") {
+    items = [...items, ...communityShirts];
+  }
+
+  // Apply search filter
   if (search.trim()) {
     const q = search.toLowerCase();
     items = items.filter(
