@@ -6,7 +6,7 @@ import * as THREE from "three";
 // ============================================================
 // VOXELIO SHIRTS
 //  - Named shirts (Vox Cooks, Suit, I Heart Vox): flat decal planes
-//  - Community shirts (Roblox-style templates): UV-mapped torso box
+//  - Community shirts (labeled 3×3 templates): UV-mapped torso box
 // ============================================================
 
 const SHIRT_Z = 0.262;
@@ -274,26 +274,28 @@ export function Shirt3D({
 }
 
 // ============================================================
-// COMMUNITY SHIRT — Roblox template (585×559)
+// COMMUNITY SHIRT — labeled 3×3 template
 // ============================================================
 //
-// Template layout (Roblox's official coords, all in pixels):
-//   0,0      → left sleeve        (128×128)
-//   128,0    → torso TOP          (128×128)
-//   256,0    → right sleeve       (128×128)
-//   0,128    → torso LEFT         (128×128)
-//   128,128  → torso FRONT        (128×128)
-//   256,128  → torso RIGHT        (128×128)
-//   0,256    → torso BOTTOM       (128×128)
-//   128,256  → torso BACK         (128×128)
+// Template layout (works for any square labeled template):
 //
-// The user's uploaded image has the same layout but scaled up.
-// We sample specific UV rectangles from the image for each
-// box face, and stitch them together as a custom BufferGeometry.
+//   ┌─────────────┬─────────────┬─────────────┐
+//   │ LEFT SLEEVE │ FRONT TORSO │RIGHT SLEEVE │  ← top row
+//   ├─────────────┼─────────────┼─────────────┤
+//   │   TOP       │ BACK TORSO  │   TOP       │  ← middle row
+//   ├─────────────┼─────────────┼─────────────┤
+//   │  BOTTOM     │             │  BOTTOM     │  ← bottom row
+//   └─────────────┴─────────────┴─────────────┘
+//
+// Because the "BACK TORSO" cell is usually where users put their
+// main graphic (like the angry face), we SWAP front/back so what
+// they see in the BACK TORSO cell appears on the FRONT of the 3D
+// model — which is what they expect when spinning the avatar
+// around to look at it.
 // ============================================================
 
-const TEMPLATE_W = 585;
-const TEMPLATE_H = 559;
+const TEMPLATE_W = 1250;
+const TEMPLATE_H = 1250;
 
 // Given the template-relative pixel rectangle, compute normalized UVs.
 // three.js UV origin is bottom-left; image origin is top-left.
@@ -310,14 +312,36 @@ function rectToUV(
   return { u0, v0, u1, v1 };
 }
 
-// Roblox template regions
+// Cell size: 1250 / 3 ≈ 416.67
+const CELL = 1250 / 3;
+
+// The inner region of each cell (skipping the border/label)
+// Each cell has a ~50px top label area and thin white borders.
+// We sample from just below the label to just above the bottom edge.
+const LABEL_OFFSET_Y = 60; // skip the "LEFT SLEEVE" text
+const BORDER = 15;         // skip the white border
+
+function cellRegion(col: 0 | 1 | 2, row: 0 | 1 | 2) {
+  const x = col * CELL + BORDER;
+  const y = row * CELL + LABEL_OFFSET_Y;
+  const w = CELL - BORDER * 2;
+  const h = CELL - LABEL_OFFSET_Y - BORDER;
+  return rectToUV(x, y, w, h);
+}
+
 const REGIONS = {
-  front: rectToUV(128, 128, 128, 128),
-  back: rectToUV(128, 256, 128, 128),
-  left: rectToUV(0, 128, 128, 128),
-  right: rectToUV(256, 128, 128, 128),
-  top: rectToUV(128, 0, 128, 128),
-  bottom: rectToUV(0, 256, 128, 128),
+  // Front of the 3D torso → grab the "BACK TORSO" cell (middle-center)
+  // because that's where users typically put the main graphic.
+  front: cellRegion(1, 1),
+  // Back of the 3D torso → grab the "FRONT TORSO" cell (top-center)
+  back: cellRegion(1, 0),
+  // Sleeves
+  left: cellRegion(0, 0),   // top-left cell
+  right: cellRegion(2, 0),  // top-right cell
+  // Top & bottom of torso — use the "TOP" cells from row 2
+  // and "BOTTOM" cells from row 3.
+  top: cellRegion(0, 1),
+  bottom: cellRegion(0, 2),
 };
 
 type UVRect = { u0: number; v0: number; u1: number; v1: number };
@@ -325,7 +349,6 @@ type UVRect = { u0: number; v0: number; u1: number; v1: number };
 // A BoxGeometry has 6 faces, each with 4 vertices (2 triangles).
 // Vertex order within each face group:
 //   [0]=bottom-left [1]=bottom-right [2]=top-left [3]=top-right
-// (Yes, the winding is odd but this is how three.js builds it.)
 //
 // three.js face order: +X (right), -X (left), +Y (top), -Y (bottom),
 //                      +Z (front), -Z (back)
@@ -337,7 +360,6 @@ function buildBoxUVs(regions: {
   front: UVRect;
   back: UVRect;
 }): Float32Array {
-  // UV array shape: [u, v, u, v, ...] × 24 vertices
   const uvs = new Float32Array(24 * 2);
 
   const setFace = (faceIndex: number, r: UVRect) => {
@@ -352,7 +374,6 @@ function buildBoxUVs(regions: {
     uvs[base + 6] = r.u1; uvs[base + 7] = r.v1;
   };
 
-  // three.js BoxGeometry face order: +X, -X, +Y, -Y, +Z, -Z
   setFace(0, regions.right);
   setFace(1, regions.left);
   setFace(2, regions.top);
@@ -401,25 +422,16 @@ export function CommunityShirt3D({
 
   const geometry = useMemo(() => {
     const geo = new THREE.BoxGeometry(...torsoSize);
-
-    // Build custom UVs from the template regions
     const uvs = buildBoxUVs(REGIONS);
     geo.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
     geo.attributes.uv.needsUpdate = true;
-
     return geo;
   }, [torsoSize[0], torsoSize[1], torsoSize[2]]);
 
   return (
-    <mesh
-      geometry={geometry}
-      position={torsoPosition}
-      castShadow
-    >
+    <mesh geometry={geometry} position={torsoPosition} castShadow>
       <meshStandardMaterial
         map={texture || undefined}
-        // If no texture yet, fall back to a neutral colour so the
-        // torso isn't invisible during the brief load.
         color={texture ? "#ffffff" : "#d1d5db"}
         roughness={0.7}
       />
