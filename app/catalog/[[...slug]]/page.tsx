@@ -12,7 +12,7 @@ import {
   type User,
 } from "../../../lib/auth";
 import { isOwnerAccount } from "../../../lib/badges";
-import { supabase } from "../../../lib/supabase";  // 👈 NEW
+import { supabase } from "../../../lib/supabase";
 import AccountBadge from "../../components/AccountBadge";
 import ItemPreview from "../../components/ItemPreview";
 import ItemModal from "../../components/ItemModal";
@@ -69,8 +69,8 @@ export default function CatalogPage() {
 
   const refreshUser = () => setCurrentUser(getCurrentUser());
 
-  // 👇 NEW: Fetch approved community shirts once, and re-run when a
-  // shirt might have been approved (via window focus)
+  // 👇 NEW: Fetch approved community shirts once, and re-run when
+  // the window regains focus (in case a shirt was just approved)
   useEffect(() => {
     let cancelled = false;
 
@@ -122,7 +122,7 @@ export default function CatalogPage() {
           const decoded = decodeURIComponent(slug).toLowerCase();
           item = communityShirts.find(
             (i) => slugify(i.name).toLowerCase() === decoded
-          ) || null;
+          );
         }
         setSelectedItem(item || null);
       } else {
