@@ -68,7 +68,6 @@ export default function CatalogPage() {
 
   const refreshUser = () => setCurrentUser(getCurrentUser());
 
-  // Fetch approved community shirts
   useEffect(() => {
     let cancelled = false;
 
@@ -157,8 +156,9 @@ export default function CatalogPage() {
 
   let items = getItemsByCategory(category, currentUser?.ownedItems || []);
 
+  // 👇 Community shirts go FIRST so they always get a 3D preview
   if (category === "all" || category === "featured" || category === "outfits") {
-    items = [...items, ...communityShirts];
+    items = [...communityShirts, ...items];
   }
 
   if (search.trim()) {
@@ -379,7 +379,7 @@ export default function CatalogPage() {
 
             {items.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {items.map((item) => {
+                {items.map((item, index) => {
                   const owned = currentUser?.ownedItems.includes(item.id) || false;
                   const offSale = item.forSale === false;
                   const soldCount = sales[item.id] || 0;
@@ -396,9 +396,6 @@ export default function CatalogPage() {
                           : "border-[#C5C8D6] hover:border-[#6C3CE0]"
                       }`}
                     >
-                      {/* 👇 WebGL context guard: when the modal is open, render
-                          a lightweight static preview to free up GPU contexts.
-                          When no modal is open, render the full 3D preview. */}
                       <div className="pointer-events-none">
                         {isModalOpen ? (
                           <div
@@ -408,7 +405,7 @@ export default function CatalogPage() {
                             <span style={{ fontSize: 64 }}>{item.previewEmoji}</span>
                           </div>
                         ) : (
-                          <ItemPreview item={item} size={160} />
+                          <ItemPreview item={item} size={160} renderIndex={index} />
                         )}
                       </div>
 

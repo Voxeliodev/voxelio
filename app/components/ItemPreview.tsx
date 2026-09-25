@@ -11,13 +11,11 @@ import { Hair3DGeometry } from "./Hair3D";
 import type { Item } from "../../lib/items";
 
 // ============================================================
-// ItemPreview — hybrid: 3D for the first N cards, static for the rest.
+// ItemPreview — hybrid: 3D for the first N cards + community shirts
 // ============================================================
-// Browsers cap WebGL contexts at ~8-16 per tab. Rendering 30+ live
-// canvases triggers "Context Lost" errors, killing the whole page.
-//
-// Solution: only the first MAX_3D_PREVIEWS items in the visible grid
-// get a real WebGL canvas. The rest use lightweight static tiles.
+// Browsers cap WebGL contexts at ~8-16 per tab. Only the first
+// MAX_3D_PREVIEWS items get a real WebGL canvas, plus every
+// community shirt (they need 3D to show sleeves/arms).
 // ============================================================
 
 const MAX_3D_PREVIEWS = 8;
@@ -441,8 +439,9 @@ export default function ItemPreview({
   size?: number;
   renderIndex?: number;
 }) {
-  // Use 3D only if this card is within the first N previews
-  const use3D = renderIndex < MAX_3D_PREVIEWS;
+  // 👇 Community shirts ALWAYS get 3D (they need it to show sleeves).
+  // Other items get 3D only if they're within the first MAX_3D_PREVIEWS.
+  const use3D = Boolean(item.imageUrl) || renderIndex < MAX_3D_PREVIEWS;
 
   if (!use3D) {
     if (item.category === "faces") return <StaticFace item={item} size={size} />;
