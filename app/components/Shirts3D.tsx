@@ -6,7 +6,7 @@ import * as THREE from "three";
 // ============================================================
 // VOXELIO SHIRTS
 //  - Named shirts: flat decal planes
-//  - Community shirts: six flat face planes
+//  - Community shirts: torso + arms with template textures
 // ============================================================
 
 const SHIRT_Z = 0.262;
@@ -274,17 +274,38 @@ export function Shirt3D({
 }
 
 // ============================================================
-// COMMUNITY SHIRT — six flat face planes
+// COMMUNITY SHIRT — torso + arms with template textures
+// ============================================================
+//
+// Template layout (labeled 3×3 grid):
+//   ┌─────────────┬─────────────┬─────────────┐
+//   │ LEFT SLEEVE │ FRONT TORSO │RIGHT SLEEVE │  ← row 0
+//   ├─────────────┼─────────────┼─────────────┤
+//   │    TOP      │ BACK TORSO  │    TOP      │  ← row 1
+//   ├─────────────┼─────────────┼─────────────┤
+//   │   BOTTOM    │             │   BOTTOM    │  ← row 2
+//   └─────────────┴─────────────┴─────────────┘
+//
+// Community shirt renders:
+//   - Torso box with 6 textured faces
+//   - Left arm box (long) with LEFT SLEEVE texture
+//   - Right arm box (long) with RIGHT SLEEVE texture
 // ============================================================
 
 export function CommunityShirt3D({
   imageUrl,
   torsoSize = [0.9, 1, 0.5],
   torsoPosition = [0, 0.5, 0],
+  armSize = [0.3, 1, 0.3],
+  armOffsetX = 0.6,
+  armOffsetY = 0.5,
 }: {
   imageUrl: string;
   torsoSize?: [number, number, number];
   torsoPosition?: [number, number, number];
+  armSize?: [number, number, number];
+  armOffsetX?: number;
+  armOffsetY?: number;
 }) {
   const [texture, setTexture] = useState<THREE.Texture | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -301,7 +322,6 @@ export function CommunityShirt3D({
     }
 
     const img = new Image();
-    // ✅ CRITICAL: crossOrigin is REQUIRED for WebGL to accept the texture
     img.crossOrigin = "anonymous";
 
     img.onload = () => {
@@ -333,12 +353,13 @@ export function CommunityShirt3D({
 
   const [w, h, d] = torsoSize;
   const [px, py, pz] = torsoPosition;
+  const [aw, ah, ad] = armSize;
 
   const hw = w / 2;
   const hh = h / 2;
   const hd = d / 2;
 
-  // Loading state: gray box
+  // Loading state
   if (!texture) {
     return (
       <group position={[px, py, pz]}>
@@ -384,56 +405,66 @@ export function CommunityShirt3D({
     return tex;
   }
 
-  const frontTex = makeFaceTexture(1, 1);  // BACK TORSO cell → front of model
-  const backTex = makeFaceTexture(1, 0);   // FRONT TORSO cell → back of model
-  const leftTex = makeFaceTexture(0, 0);
-  const rightTex = makeFaceTexture(2, 0);
+  const frontTex = makeFaceTexture(1, 1);  // BACK TORSO → front of model
+  const backTex = makeFaceTexture(1, 0);   // FRONT TORSO → back of model
+  const leftTex = makeFaceTexture(0, 0);   // LEFT SLEEVE
+  const rightTex = makeFaceTexture(2, 0);  // RIGHT SLEEVE
   const topTex = makeFaceTexture(0, 1);
   const bottomTex = makeFaceTexture(0, 2);
 
   return (
     <group position={[px, py, pz]}>
-      {/* Solid core — prevents see-through if face planes don't perfectly align */}
+      {/* ===== TORSO ===== */}
       <mesh castShadow>
         <boxGeometry args={torsoSize} />
         <meshStandardMaterial color="#111111" roughness={0.9} />
       </mesh>
 
-      {/* FRONT (+Z) */}
       <mesh position={[0, 0, hd + 0.002]}>
         <planeGeometry args={[w, h]} />
         <meshStandardMaterial map={frontTex} roughness={0.7} />
       </mesh>
 
-      {/* BACK (-Z) */}
       <mesh position={[0, 0, -hd - 0.002]} rotation={[0, Math.PI, 0]}>
         <planeGeometry args={[w, h]} />
         <meshStandardMaterial map={backTex} roughness={0.7} />
       </mesh>
 
-      {/* RIGHT (+X) */}
       <mesh position={[hw + 0.002, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
         <planeGeometry args={[d, h]} />
         <meshStandardMaterial map={rightTex} roughness={0.7} />
       </mesh>
 
-      {/* LEFT (-X) */}
       <mesh position={[-hw - 0.002, 0, 0]} rotation={[0, -Math.PI / 2, 0]}>
         <planeGeometry args={[d, h]} />
         <meshStandardMaterial map={leftTex} roughness={0.7} />
       </mesh>
 
-      {/* TOP (+Y) */}
       <mesh position={[0, hh + 0.002, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[w, d]} />
         <meshStandardMaterial map={topTex} roughness={0.7} />
       </mesh>
 
-      {/* BOTTOM (-Y) */}
       <mesh position={[0, -hh - 0.002, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <planeGeometry args={[w, d]} />
         <meshStandardMaterial map={bottomTex} roughness={0.7} />
       </mesh>
+
+      {/* ===== LEFT ARM (upper portion, sleeve texture) ===== */}
+      <group position={[-armOffsetX, armOffsetY - hh, 0]}>
+        <mesh castShadow>
+          <boxGeometry args={[aw, ah, ad]} />
+          <meshStandardMaterial map={leftTex} roughness={0.7} />
+        </mesh>
+      </group>
+
+      {/* ===== RIGHT ARM (upper portion, sleeve texture) ===== */}
+      <group position={[armOffsetX, armOffsetY - hh, 0]}>
+        <mesh castShadow>
+          <boxGeometry args={[aw, ah, ad]} />
+          <meshStandardMaterial map={rightTex} roughness={0.7} />
+        </mesh>
+      </group>
     </group>
   );
 }
