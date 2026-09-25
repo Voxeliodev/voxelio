@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useEffect, useState } from "react";
 import * as THREE from "three";
 
 // ============================================================
-// VOXELIO SHIRTS — Front-of-torso text/design overlay
+// VOXELIO SHIRTS
+//  - Named shirts (Vox Cooks, Suit, I Heart Vox): flat decal planes
+//  - Community shirts (Roblox-style templates): UV-mapped torso box
 // ============================================================
 
 const SHIRT_Z = 0.262;
@@ -63,10 +65,6 @@ function makeBusinessSuitTexture(): THREE.CanvasTexture | null {
 
   const cx = W / 2;
 
-  // ============================================================
-  // 1. DRESS SHIRT BODY — tapered trapezoid from top edge to
-  //    bottom edge of the plane.
-  // ============================================================
   const shirtTopY = 30;
   const shirtBottomY = H;
   const shirtTopHalf = 300;
@@ -81,7 +79,6 @@ function makeBusinessSuitTexture(): THREE.CanvasTexture | null {
   ctx.closePath();
   ctx.fill();
 
-  // Side shading near the edges
   ctx.fillStyle = "rgba(0, 0, 0, 0.12)";
   ctx.beginPath();
   ctx.moveTo(cx - shirtTopHalf, shirtTopY);
@@ -99,9 +96,6 @@ function makeBusinessSuitTexture(): THREE.CanvasTexture | null {
   ctx.closePath();
   ctx.fill();
 
-  // ============================================================
-  // 2. COLLAR — two angled flaps meeting at the top center
-  // ============================================================
   ctx.fillStyle = "#EDEDF2";
   ctx.beginPath();
   ctx.moveTo(cx - 200, shirtTopY - 10);
@@ -130,9 +124,6 @@ function makeBusinessSuitTexture(): THREE.CanvasTexture | null {
   ctx.lineTo(cx + 210, shirtTopY + 240);
   ctx.stroke();
 
-  // ============================================================
-  // 3. BUTTON PLACKET
-  // ============================================================
   ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
   ctx.fillRect(cx - 4, shirtTopY + 240, 8, shirtBottomY - shirtTopY - 240);
 
@@ -143,9 +134,6 @@ function makeBusinessSuitTexture(): THREE.CanvasTexture | null {
     ctx.fill();
   }
 
-  // ============================================================
-  // 4. TIE
-  // ============================================================
   const tieTopY = shirtTopY + 90;
   const tieKnotBottomY = tieTopY + 110;
   const tieWidestY = 640;
@@ -206,7 +194,6 @@ function makeBusinessSuitTexture(): THREE.CanvasTexture | null {
 }
 
 // ---------- I HEART VOX ----------
-// Multi-colour text: "I" black, "HEART" red, "VOX" purple.
 function makeIHeartVoxTexture(): THREE.CanvasTexture | null {
   if (typeof document === "undefined") return null;
 
@@ -252,7 +239,7 @@ function makeIHeartVoxTexture(): THREE.CanvasTexture | null {
   return tex;
 }
 
-// ---------- Router ----------
+// ---------- Router for named shirts ----------
 function buildTexture(shirtId: string): THREE.CanvasTexture | null {
   if (shirtId === "shirt-vox-cooks") return makeVoxCooksTexture();
   if (shirtId === "shirt-suit") return makeBusinessSuitTexture();
@@ -260,6 +247,9 @@ function buildTexture(shirtId: string): THREE.CanvasTexture | null {
   return null;
 }
 
+// ============================================================
+// NAMED SHIRT (existing flat decal behaviour)
+// ============================================================
 export function Shirt3D({
   shirtId,
   skinTone,
@@ -278,6 +268,160 @@ export function Shirt3D({
         transparent
         depthWrite={false}
         toneMapped={false}
+      />
+    </mesh>
+  );
+}
+
+// ============================================================
+// COMMUNITY SHIRT — Roblox template (585×559)
+// ============================================================
+//
+// Template layout (Roblox's official coords, all in pixels):
+//   0,0      → left sleeve        (128×128)
+//   128,0    → torso TOP          (128×128)
+//   256,0    → right sleeve       (128×128)
+//   0,128    → torso LEFT         (128×128)
+//   128,128  → torso FRONT        (128×128)
+//   256,128  → torso RIGHT        (128×128)
+//   0,256    → torso BOTTOM       (128×128)
+//   128,256  → torso BACK         (128×128)
+//
+// The user's uploaded image has the same layout but scaled up.
+// We sample specific UV rectangles from the image for each
+// box face, and stitch them together as a custom BufferGeometry.
+// ============================================================
+
+const TEMPLATE_W = 585;
+const TEMPLATE_H = 559;
+
+// Given the template-relative pixel rectangle, compute normalized UVs.
+// three.js UV origin is bottom-left; image origin is top-left.
+function rectToUV(
+  x: number,
+  y: number,
+  w: number,
+  h: number
+): { u0: number; v0: number; u1: number; v1: number } {
+  const u0 = x / TEMPLATE_W;
+  const u1 = (x + w) / TEMPLATE_W;
+  const v0 = 1 - (y + h) / TEMPLATE_H;
+  const v1 = 1 - y / TEMPLATE_H;
+  return { u0, v0, u1, v1 };
+}
+
+// Roblox template regions
+const REGIONS = {
+  front: rectToUV(128, 128, 128, 128),
+  back: rectToUV(128, 256, 128, 128),
+  left: rectToUV(0, 128, 128, 128),
+  right: rectToUV(256, 128, 128, 128),
+  top: rectToUV(128, 0, 128, 128),
+  bottom: rectToUV(0, 256, 128, 128),
+};
+
+type UVRect = { u0: number; v0: number; u1: number; v1: number };
+
+// A BoxGeometry has 6 faces, each with 4 vertices (2 triangles).
+// Vertex order within each face group:
+//   [0]=bottom-left [1]=bottom-right [2]=top-left [3]=top-right
+// (Yes, the winding is odd but this is how three.js builds it.)
+//
+// three.js face order: +X (right), -X (left), +Y (top), -Y (bottom),
+//                      +Z (front), -Z (back)
+function buildBoxUVs(regions: {
+  right: UVRect;
+  left: UVRect;
+  top: UVRect;
+  bottom: UVRect;
+  front: UVRect;
+  back: UVRect;
+}): Float32Array {
+  // UV array shape: [u, v, u, v, ...] × 24 vertices
+  const uvs = new Float32Array(24 * 2);
+
+  const setFace = (faceIndex: number, r: UVRect) => {
+    const base = faceIndex * 8;
+    // bottom-left
+    uvs[base + 0] = r.u0; uvs[base + 1] = r.v0;
+    // bottom-right
+    uvs[base + 2] = r.u1; uvs[base + 3] = r.v0;
+    // top-left
+    uvs[base + 4] = r.u0; uvs[base + 5] = r.v1;
+    // top-right
+    uvs[base + 6] = r.u1; uvs[base + 7] = r.v1;
+  };
+
+  // three.js BoxGeometry face order: +X, -X, +Y, -Y, +Z, -Z
+  setFace(0, regions.right);
+  setFace(1, regions.left);
+  setFace(2, regions.top);
+  setFace(3, regions.bottom);
+  setFace(4, regions.front);
+  setFace(5, regions.back);
+
+  return uvs;
+}
+
+export function CommunityShirt3D({
+  imageUrl,
+  torsoSize = [0.9, 1, 0.5],
+  torsoPosition = [0, 0.5, 0],
+}: {
+  imageUrl: string;
+  torsoSize?: [number, number, number];
+  torsoPosition?: [number, number, number];
+}) {
+  const [texture, setTexture] = useState<THREE.Texture | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loader = new THREE.TextureLoader();
+    loader.crossOrigin = "anonymous";
+    loader.load(
+      imageUrl,
+      (tex) => {
+        if (cancelled) return;
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = 16;
+        tex.minFilter = THREE.LinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        tex.needsUpdate = true;
+        setTexture(tex);
+      },
+      undefined,
+      (err) => {
+        console.error("Failed to load community shirt texture:", err);
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [imageUrl]);
+
+  const geometry = useMemo(() => {
+    const geo = new THREE.BoxGeometry(...torsoSize);
+
+    // Build custom UVs from the template regions
+    const uvs = buildBoxUVs(REGIONS);
+    geo.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+    geo.attributes.uv.needsUpdate = true;
+
+    return geo;
+  }, [torsoSize[0], torsoSize[1], torsoSize[2]]);
+
+  return (
+    <mesh
+      geometry={geometry}
+      position={torsoPosition}
+      castShadow
+    >
+      <meshStandardMaterial
+        map={texture || undefined}
+        // If no texture yet, fall back to a neutral colour so the
+        // torso isn't invisible during the brief load.
+        color={texture ? "#ffffff" : "#d1d5db"}
+        roughness={0.7}
       />
     </mesh>
   );

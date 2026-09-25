@@ -6,7 +6,7 @@ import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, useGLTF } from "@react-three/drei";
 import type { AvatarConfig } from "../../lib/auth";
 import { Hat3D } from "./Hats3D";
-import { Shirt3D } from "./Shirts3D";
+import { Shirt3D, CommunityShirt3D } from "./Shirts3D";
 import { Accessory3DGeometry } from "./Accessories3D";
 import { Face3D, DefaultFace3D } from "./Faces3D";
 import { Hair3D } from "./Hair3D";
@@ -135,9 +135,6 @@ function BodyPart({
 // ============================================================
 // CHARACTER
 // ============================================================
-// hideAccessory: when true, held items aren't shown (game view)
-// walking:       when true, arms + legs swing in a walk cycle
-// ============================================================
 export function Character({
   config,
   hideAccessory = false,
@@ -154,6 +151,8 @@ export function Character({
 
   const shirtItem = config.shirt ? getItem(config.shirt) : null;
   const shirtOverride = shirtItem?.shirtColorOverride || null;
+  // 👇 Community shirt URL (set on items with an uploaded template)
+  const shirtImageUrl = (shirtItem as any)?.imageUrl as string | undefined;
 
   const torsoColor = shirtOverride || partColors.torso || config.shirtColor;
   const leftArmColor = shirtOverride || partColors.leftArm || config.shirtColor;
@@ -172,14 +171,12 @@ export function Character({
   const isHolding = !hideAccessory
     && Boolean(config.accessory && HELD_ACCESSORIES.includes(config.accessory));
 
-  // Only the RIGHT arm adopts the "held" pose. Left arm stays at rest.
   const rightArmBaseX = isHolding ? -Math.PI / 2 : 0;
   const leftArmBaseX = 0;
   const shoulderY = isHolding ? 0.85 : 1.0;
 
   const hideDefaultFace = Boolean(config.face);
 
-  // ===== Animation refs =====
   const leftArmRef = useRef<THREE.Group>(null);
   const rightArmRef = useRef<THREE.Group>(null);
   const leftLegRef = useRef<THREE.Group>(null);
@@ -218,21 +215,33 @@ export function Character({
         />
       )}
 
+      {/* 👇 TORSO — swap between community texture box and standard RoundedBox */}
       <BodyPart slot="torso" partId={bodyParts?.torso}>
-        <RoundedBox
-          args={[0.9, 1, 0.5]}
-          radius={0.06}
-          smoothness={4}
-          position={[0, 0.5, 0]}
-          castShadow
-        >
-          <meshStandardMaterial color={torsoColor} roughness={0.7} />
-        </RoundedBox>
+        {shirtImageUrl ? (
+          <CommunityShirt3D
+            imageUrl={shirtImageUrl}
+            torsoSize={[0.9, 1, 0.5]}
+            torsoPosition={[0, 0.5, 0]}
+          />
+        ) : (
+          <RoundedBox
+            args={[0.9, 1, 0.5]}
+            radius={0.06}
+            smoothness={4}
+            position={[0, 0.5, 0]}
+            castShadow
+          >
+            <meshStandardMaterial color={torsoColor} roughness={0.7} />
+          </RoundedBox>
+        )}
       </BodyPart>
 
-      {config.shirt && <Shirt3D shirtId={config.shirt} skinTone={skin} />}
+      {/* Named shirts keep their flat decal overlay */}
+      {config.shirt && !shirtImageUrl && (
+        <Shirt3D shirtId={config.shirt} skinTone={skin} />
+      )}
 
-      {/* LEFT ARM — pivot at shoulder, always at rest unless walking */}
+      {/* LEFT ARM */}
       <BodyPart slot="leftArm" partId={bodyParts?.leftArm}>
         <group ref={leftArmRef} position={[-0.6, 1.0, 0]}>
           <RoundedBox
@@ -256,7 +265,7 @@ export function Character({
         </group>
       </BodyPart>
 
-      {/* RIGHT ARM — pivot at shoulder, holds accessories */}
+      {/* RIGHT ARM */}
       <BodyPart slot="rightArm" partId={bodyParts?.rightArm}>
         <group ref={rightArmRef} position={[0.6, shoulderY, 0]}>
           <RoundedBox
@@ -290,7 +299,7 @@ export function Character({
         </group>
       </BodyPart>
 
-      {/* LEFT LEG — pivot at hip */}
+      {/* LEFT LEG */}
       <BodyPart slot="leftLeg" partId={bodyParts?.leftLeg}>
         <group ref={leftLegRef} position={[-0.25, 0, 0]}>
           <RoundedBox
@@ -314,7 +323,7 @@ export function Character({
         </group>
       </BodyPart>
 
-      {/* RIGHT LEG — pivot at hip */}
+      {/* RIGHT LEG */}
       <BodyPart slot="rightLeg" partId={bodyParts?.rightLeg}>
         <group ref={rightLegRef} position={[0.25, 0, 0]}>
           <RoundedBox

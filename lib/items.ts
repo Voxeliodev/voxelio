@@ -29,6 +29,10 @@ export type Item = {
   // Owners still see it in their inventory / avatar editor.
   hidden?: boolean;
 
+  // 👇 NEW: URL to an uploaded image (used by community shirts
+  // and any other item that needs a custom texture)
+  imageUrl?: string;
+
   modelPath?: string;
   modelScale?: number;
   modelOffset?: [number, number, number];
@@ -258,7 +262,6 @@ export const ITEMS: Item[] = [
     creator: "Voxelio",
     faceImageUrl: "/faces/radioactive-face-of-the-enraged.png",
   },
-  // 👇 NEW HIDDEN EVENT ITEM
   {
     id: "face-inferno-pumpkin",
     name: "Inferno Pumpkin Face",
@@ -271,7 +274,7 @@ export const ITEMS: Item[] = [
     creator: "Voxelio",
     forSale: false,
     hidden: true,
-    faceImageUrl: "/faces/inferno-pumpkin-face.png",
+    faceImageUrl: "/faces/inferno-pumpkin.png",
   },
 ];
 

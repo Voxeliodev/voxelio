@@ -5,7 +5,7 @@ import { OrbitControls, RoundedBox, useGLTF } from "@react-three/drei";
 import { Suspense, useMemo, useEffect, useState } from "react";
 import * as THREE from "three";
 import { Hat3DGeometry } from "./Hats3D";
-import { Shirt3D } from "./Shirts3D";
+import { Shirt3D, CommunityShirt3D } from "./Shirts3D";
 import { Accessory3DGeometry } from "./Accessories3D";
 import { Hair3DGeometry } from "./Hair3D";
 import type { Item } from "../../lib/items";
@@ -81,6 +81,9 @@ function HatPreview({ item, size }: { item: Item; size: number }) {
 
 function ShirtPreview({ item, size }: { item: Item; size: number }) {
   const torsoColor = item.shirtColorOverride || "#0A0A0A";
+  // 👇 If this shirt has an uploaded texture, use the community renderer
+  const isCommunity = Boolean(item.imageUrl);
+
   return (
     <div
       className="w-full bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] cursor-grab active:cursor-grabbing"
@@ -92,16 +95,37 @@ function ShirtPreview({ item, size }: { item: Item; size: number }) {
         <directionalLight position={[-3, 2, -3]} intensity={0.45} />
         <hemisphereLight args={["#ffffff", "#666680", 0.4]} />
         <group position={[0, -0.55, 0]}>
-          <RoundedBox args={[0.9, 1, 0.5]} radius={0.06} smoothness={4} position={[0, 0.5, 0]} castShadow>
-            <meshStandardMaterial color={torsoColor} roughness={0.7} />
-          </RoundedBox>
-          <RoundedBox args={[0.3, 0.35, 0.3]} radius={0.05} smoothness={4} position={[-0.6, 0.85, 0]} castShadow>
-            <meshStandardMaterial color={torsoColor} roughness={0.7} />
-          </RoundedBox>
-          <RoundedBox args={[0.3, 0.35, 0.3]} radius={0.05} smoothness={4} position={[0.6, 0.85, 0]} castShadow>
-            <meshStandardMaterial color={torsoColor} roughness={0.7} />
-          </RoundedBox>
-          <Shirt3D shirtId={item.id} />
+          {isCommunity ? (
+            <>
+              {/* 👇 Community shirt: UV-mapped torso box */}
+              <CommunityShirt3D
+                imageUrl={item.imageUrl!}
+                torsoSize={[0.9, 1, 0.5]}
+                torsoPosition={[0, 0.5, 0]}
+              />
+              {/* Simple sleeves that match the torso color */}
+              <RoundedBox args={[0.3, 0.35, 0.3]} radius={0.05} smoothness={4} position={[-0.6, 0.85, 0]} castShadow>
+                <meshStandardMaterial color="#d1d5db" roughness={0.7} />
+              </RoundedBox>
+              <RoundedBox args={[0.3, 0.35, 0.3]} radius={0.05} smoothness={4} position={[0.6, 0.85, 0]} castShadow>
+                <meshStandardMaterial color="#d1d5db" roughness={0.7} />
+              </RoundedBox>
+            </>
+          ) : (
+            <>
+              {/* Built-in shirt: RoundedBox + flat decal overlay */}
+              <RoundedBox args={[0.9, 1, 0.5]} radius={0.06} smoothness={4} position={[0, 0.5, 0]} castShadow>
+                <meshStandardMaterial color={torsoColor} roughness={0.7} />
+              </RoundedBox>
+              <RoundedBox args={[0.3, 0.35, 0.3]} radius={0.05} smoothness={4} position={[-0.6, 0.85, 0]} castShadow>
+                <meshStandardMaterial color={torsoColor} roughness={0.7} />
+              </RoundedBox>
+              <RoundedBox args={[0.3, 0.35, 0.3]} radius={0.05} smoothness={4} position={[0.6, 0.85, 0]} castShadow>
+                <meshStandardMaterial color={torsoColor} roughness={0.7} />
+              </RoundedBox>
+              <Shirt3D shirtId={item.id} />
+            </>
+          )}
         </group>
         <OrbitControls
           enablePan={false}
@@ -244,9 +268,6 @@ function FacePreview({ item, size }: { item: Item; size: number }) {
   );
 }
 
-// ============================================================
-// HairPreview — hair on a mock head
-// ============================================================
 function HairPreview({ item, size }: { item: Item; size: number }) {
   const isGLB = Boolean(item.modelPath);
 
@@ -264,7 +285,6 @@ function HairPreview({ item, size }: { item: Item; size: number }) {
         <directionalLight position={[-3, 2, -3]} intensity={0.5} />
         <hemisphereLight args={["#ffffff", "#666680", 0.5]} />
 
-        {/* Mock head — matches the real avatar's head at y=1.4 */}
         <RoundedBox
           args={[0.85, 0.85, 0.85]}
           radius={0.16}
@@ -275,7 +295,6 @@ function HairPreview({ item, size }: { item: Item; size: number }) {
           <meshStandardMaterial color="#F5C6A5" roughness={0.6} />
         </RoundedBox>
 
-        {/* Hair — code-drawn renders at y=1.4 already; GLB gets placed there */}
         {isGLB ? (
           <Suspense fallback={null}>
             <group position={[0, 1.4, 0]}>
