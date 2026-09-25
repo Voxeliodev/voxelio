@@ -5,8 +5,8 @@ import * as THREE from "three";
 
 // ============================================================
 // VOXELIO SHIRTS
-//  - Named shirts (Vox Cooks, Suit, I Heart Vox): flat decal planes
-//  - Community shirts (labeled 3×3 templates): UV-mapped torso box
+//  - Named shirts: flat decal planes
+//  - Community shirts: six flat face planes
 // ============================================================
 
 const SHIRT_Z = 0.262;
@@ -248,7 +248,7 @@ function buildTexture(shirtId: string): THREE.CanvasTexture | null {
 }
 
 // ============================================================
-// NAMED SHIRT (existing flat decal behaviour)
+// NAMED SHIRT (flat decal overlay)
 // ============================================================
 export function Shirt3D({
   shirtId,
@@ -274,75 +274,8 @@ export function Shirt3D({
 }
 
 // ============================================================
-// COMMUNITY SHIRT — labeled 3×3 template
+// COMMUNITY SHIRT — six flat face planes
 // ============================================================
-
-const TEMPLATE_W = 1250;
-const TEMPLATE_H = 1250;
-
-function rectToUV(
-  x: number,
-  y: number,
-  w: number,
-  h: number
-): { u0: number; v0: number; u1: number; v1: number } {
-  const u0 = x / TEMPLATE_W;
-  const u1 = (x + w) / TEMPLATE_W;
-  const v0 = 1 - (y + h) / TEMPLATE_H;
-  const v1 = 1 - y / TEMPLATE_H;
-  return { u0, v0, u1, v1 };
-}
-
-const CELL = 1250 / 3;
-const LABEL_OFFSET_Y = 60;
-const BORDER = 15;
-
-function cellRegion(col: 0 | 1 | 2, row: 0 | 1 | 2) {
-  const x = col * CELL + BORDER;
-  const y = row * CELL + LABEL_OFFSET_Y;
-  const w = CELL - BORDER * 2;
-  const h = CELL - LABEL_OFFSET_Y - BORDER;
-  return rectToUV(x, y, w, h);
-}
-
-const REGIONS = {
-  front: cellRegion(1, 1), // BACK TORSO cell → front of 3D model
-  back: cellRegion(1, 0),  // FRONT TORSO cell → back of 3D model
-  left: cellRegion(0, 0),
-  right: cellRegion(2, 0),
-  top: cellRegion(0, 1),
-  bottom: cellRegion(0, 2),
-};
-
-type UVRect = { u0: number; v0: number; u1: number; v1: number };
-
-function buildBoxUVs(regions: {
-  right: UVRect;
-  left: UVRect;
-  top: UVRect;
-  bottom: UVRect;
-  front: UVRect;
-  back: UVRect;
-}): Float32Array {
-  const uvs = new Float32Array(24 * 2);
-
-  const setFace = (faceIndex: number, r: UVRect) => {
-    const base = faceIndex * 8;
-    uvs[base + 0] = r.u0; uvs[base + 1] = r.v0;
-    uvs[base + 2] = r.u1; uvs[base + 3] = r.v0;
-    uvs[base + 4] = r.u0; uvs[base + 5] = r.v1;
-    uvs[base + 6] = r.u1; uvs[base + 7] = r.v1;
-  };
-
-  setFace(0, regions.right);
-  setFace(1, regions.left);
-  setFace(2, regions.top);
-  setFace(3, regions.bottom);
-  setFace(4, regions.front);
-  setFace(5, regions.back);
-
-  return uvs;
-}
 
 export function CommunityShirt3D({
   imageUrl,
@@ -354,19 +287,21 @@ export function CommunityShirt3D({
   torsoPosition?: [number, number, number];
 }) {
   const [texture, setTexture] = useState<THREE.Texture | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    // 🔍 DEBUG: confirm the component is mounting and what URL it's loading
     console.log("🎨 CommunityShirt3D mounting. imageUrl =", imageUrl);
 
     if (!imageUrl) {
       console.error("❌ CommunityShirt3D got an empty imageUrl");
+      setError("No image URL provided");
       return;
     }
 
     const img = new Image();
+    // ✅ CRITICAL: crossOrigin is REQUIRED for WebGL to accept the texture
     img.crossOrigin = "anonymous";
 
     img.onload = () => {
@@ -380,10 +315,13 @@ export function CommunityShirt3D({
       tex.magFilter = THREE.LinearFilter;
       tex.needsUpdate = true;
       setTexture(tex);
+      setError(null);
     };
 
     img.onerror = (err) => {
+      if (cancelled) return;
       console.error("❌ Image failed to load:", imageUrl, err);
+      setError("Image failed to load (CORS or 404)");
     };
 
     img.src = imageUrl;
@@ -393,21 +331,109 @@ export function CommunityShirt3D({
     };
   }, [imageUrl]);
 
-  const geometry = useMemo(() => {
-    const geo = new THREE.BoxGeometry(...torsoSize);
-    const uvs = buildBoxUVs(REGIONS);
-    geo.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
-    geo.attributes.uv.needsUpdate = true;
-    return geo;
-  }, [torsoSize[0], torsoSize[1], torsoSize[2]]);
+  const [w, h, d] = torsoSize;
+  const [px, py, pz] = torsoPosition;
+
+  const hw = w / 2;
+  const hh = h / 2;
+  const hd = d / 2;
+
+  // Loading state: gray box
+  if (!texture) {
+    return (
+      <group position={[px, py, pz]}>
+        <mesh castShadow>
+          <boxGeometry args={torsoSize} />
+          <meshStandardMaterial
+            color={error ? "#dc2626" : "#d1d5db"}
+            roughness={0.7}
+          />
+        </mesh>
+      </group>
+    );
+  }
+
+  const CELL_W = 1 / 3;
+  const CELL_H = 1 / 3;
+  const INSET_X = 0.10;
+  const INSET_TOP = 0.22;
+  const INSET_BOT = 0.10;
+
+  function makeFaceTexture(col: 0 | 1 | 2, row: 0 | 1 | 2): THREE.Texture {
+    const tex = texture!.clone();
+    tex.needsUpdate = true;
+
+    const u0 = col * CELL_W + INSET_X * CELL_W;
+    const u1 = (col + 1) * CELL_W - INSET_X * CELL_W;
+
+    const rowFromBottom = 2 - row;
+    const cellV0 = rowFromBottom * CELL_H;
+    const cellV1 = (rowFromBottom + 1) * CELL_H;
+
+    const topInset = INSET_TOP * CELL_H;
+    const botInset = INSET_BOT * CELL_H;
+
+    const v0 = cellV0 + botInset;
+    const v1 = cellV1 - topInset;
+
+    tex.offset.set(u0, v0);
+    tex.repeat.set(u1 - u0, v1 - v0);
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+
+    return tex;
+  }
+
+  const frontTex = makeFaceTexture(1, 1);  // BACK TORSO cell → front of model
+  const backTex = makeFaceTexture(1, 0);   // FRONT TORSO cell → back of model
+  const leftTex = makeFaceTexture(0, 0);
+  const rightTex = makeFaceTexture(2, 0);
+  const topTex = makeFaceTexture(0, 1);
+  const bottomTex = makeFaceTexture(0, 2);
 
   return (
-    <mesh geometry={geometry} position={torsoPosition} castShadow>
-      <meshStandardMaterial
-        map={texture || undefined}
-        color={texture ? "#ffffff" : "#d1d5db"}
-        roughness={0.7}
-      />
-    </mesh>
+    <group position={[px, py, pz]}>
+      {/* Solid core — prevents see-through if face planes don't perfectly align */}
+      <mesh castShadow>
+        <boxGeometry args={torsoSize} />
+        <meshStandardMaterial color="#111111" roughness={0.9} />
+      </mesh>
+
+      {/* FRONT (+Z) */}
+      <mesh position={[0, 0, hd + 0.002]}>
+        <planeGeometry args={[w, h]} />
+        <meshStandardMaterial map={frontTex} roughness={0.7} />
+      </mesh>
+
+      {/* BACK (-Z) */}
+      <mesh position={[0, 0, -hd - 0.002]} rotation={[0, Math.PI, 0]}>
+        <planeGeometry args={[w, h]} />
+        <meshStandardMaterial map={backTex} roughness={0.7} />
+      </mesh>
+
+      {/* RIGHT (+X) */}
+      <mesh position={[hw + 0.002, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
+        <planeGeometry args={[d, h]} />
+        <meshStandardMaterial map={rightTex} roughness={0.7} />
+      </mesh>
+
+      {/* LEFT (-X) */}
+      <mesh position={[-hw - 0.002, 0, 0]} rotation={[0, -Math.PI / 2, 0]}>
+        <planeGeometry args={[d, h]} />
+        <meshStandardMaterial map={leftTex} roughness={0.7} />
+      </mesh>
+
+      {/* TOP (+Y) */}
+      <mesh position={[0, hh + 0.002, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[w, d]} />
+        <meshStandardMaterial map={topTex} roughness={0.7} />
+      </mesh>
+
+      {/* BOTTOM (-Y) */}
+      <mesh position={[0, -hh - 0.002, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[w, d]} />
+        <meshStandardMaterial map={bottomTex} roughness={0.7} />
+      </mesh>
+    </group>
   );
 }

@@ -62,38 +62,55 @@ export default function CatalogPage() {
   const [sort, setSort] = useState("relevance");
   const [sales, setSales] = useState<Record<string, number>>({});
 
+  // 👇 Community shirts fetched from Supabase
   const [communityShirts, setCommunityShirts] = useState<Item[]>([]);
 
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
 
   const refreshUser = () => setCurrentUser(getCurrentUser());
 
+  // 👇 Fetch approved community shirts
   useEffect(() => {
     let cancelled = false;
 
     const loadCommunityShirts = async () => {
       console.log("🔍 Fetching community shirts...");
+
       const { data, error } = await supabase
         .from("community_shirts")
         .select("*")
         .eq("status", "approved")
         .order("approved_at", { ascending: false });
 
-      console.log("🔍 Supabase response — data:", data, "error:", error);
+      console.log("🔍 Supabase response — error:", error);
+      console.log("🔍 Supabase response — row count:", data?.length);
 
-      if (cancelled || error || !data) return;
+      if (cancelled) return;
+      if (error || !data) {
+        console.warn("⚠️ Skipping community shirt load due to error or no data");
+        return;
+      }
 
-      const asItems: Item[] = data.map((s) => ({
-        id: `community-${s.id}`,
-        name: s.name,
-        description: s.description || `A community shirt by ${s.creator_username}`,
-        price: s.price,
-        category: "outfits" as const,
-        rarity: "rare" as const,
-        previewEmoji: "👕",
-        creator: s.creator_username,
-        imageUrl: s.image_url,
-      }));
+      const asItems: Item[] = data.map((s) => {
+        console.log("🎽 Raw row from Supabase:", {
+          id: s.id,
+          name: s.name,
+          image_url: s.image_url,
+          status: s.status,
+        });
+
+        return {
+          id: `community-${s.id}`,
+          name: s.name,
+          description: s.description || `A community shirt by ${s.creator_username}`,
+          price: s.price,
+          category: "outfits" as const,
+          rarity: "rare" as const,
+          previewEmoji: "👕",
+          creator: s.creator_username,
+          imageUrl: s.image_url,
+        };
+      });
 
       console.log("📦 Community shirts as items:", asItems);
       setCommunityShirts(asItems);
@@ -158,12 +175,15 @@ export default function CatalogPage() {
 
   const activeCategory = CATEGORIES.find((c) => c.id === category);
 
+  // Static items (with hidden filtering)
   let items = getItemsByCategory(category, currentUser?.ownedItems || []);
 
+  // Merge community shirts into "all", "featured", and "outfits" views
   if (category === "all" || category === "featured" || category === "outfits") {
     items = [...items, ...communityShirts];
   }
 
+  // Apply search filter
   if (search.trim()) {
     const q = search.toLowerCase();
     items = items.filter(

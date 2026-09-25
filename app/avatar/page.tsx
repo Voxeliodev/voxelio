@@ -25,8 +25,9 @@ import Avatar from "../components/Avatar";
 import AccountBadge from "../components/AccountBadge";
 import NavLink from "../components/NavLink";
 import ItemPreview from "../components/ItemPreview";
-import VoxelioLogo from "../components/VoxelioLogo"; // 👈 NEW IMPORT
+import VoxelioLogo from "../components/VoxelioLogo";
 import { getHats, getShirts, getAccessories, getFaces, getHair, type Item } from "../../lib/items";
+import { loadCommunityShirts, findCommunityShirt, subscribeCommunityShirts } from "../../lib/communityShirts";
 
 const SKIN_TONES = ["#F5C6A5", "#E8B08A", "#D69B71", "#B87A54", "#8B5A3C", "#5C3A23", "#3B2314"];
 
@@ -56,6 +57,9 @@ export default function AvatarEditorPage() {
   const [savedFlash, setSavedFlash] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [advancedSlot, setAdvancedSlot] = useState<BodyPartSlot>("head");
+
+  // 👇 NEW: state for community shirts cache
+  const [communityShirts, setCommunityShirts] = useState<Item[]>([]);
 
   const sceneRef = useRef<THREE.Scene | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -105,6 +109,22 @@ export default function AvatarEditorPage() {
       window.removeEventListener("pageshow", refreshFromStorage);
     };
   }, [refreshFromStorage]);
+
+  // 👇 NEW: Load community shirts and listen for cache updates
+  useEffect(() => {
+    loadCommunityShirts();
+    const unsub = subscribeCommunityShirts(() => {
+      // The cache has been refreshed — re-import from the module
+      import("../../lib/communityShirts").then(({ getCachedCommunityShirts }) => {
+        setCommunityShirts(getCachedCommunityShirts());
+      });
+    });
+    // Also seed from cache immediately in case it's already loaded
+    import("../../lib/communityShirts").then(({ getCachedCommunityShirts }) => {
+      setCommunityShirts(getCachedCommunityShirts());
+    });
+    return unsub;
+  }, []);
 
   const handleSignOut = async () => {
     await signOut();
@@ -202,8 +222,15 @@ export default function AvatarEditorPage() {
   };
 
   const owned = user?.ownedItems || [];
+
   const ownedHats = getHats().filter((h) => owned.includes(h.id));
-  const ownedShirts = getShirts().filter((s) => owned.includes(s.id));
+
+  // 👇 NEW: merge static shirts with community shirts
+  const ownedShirts = [
+    ...getShirts(),
+    ...communityShirts,
+  ].filter((s) => owned.includes(s.id));
+
   const ownedAccessories = getAccessories().filter((a) => owned.includes(a.id));
   const ownedFaces = getFaces().filter((f) => owned.includes(f.id));
   const ownedHair = getHair().filter((h) => owned.includes(h.id));
@@ -236,7 +263,6 @@ export default function AvatarEditorPage() {
   };
 
   return (
-    // 👇 Added theme-container for Halloween dark mode
     <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans theme-container">
 
       {savedFlash && (
@@ -278,7 +304,6 @@ export default function AvatarEditorPage() {
 
       <header className="bg-gradient-to-b from-[#6C3CE0] to-[#5A2FC7] border-b-4 border-[#4A1FA8]">
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
-          {/* 👇 New logo component */}
           <VoxelioLogo />
         </div>
       </header>

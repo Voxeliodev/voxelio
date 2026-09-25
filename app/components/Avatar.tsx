@@ -1,16 +1,18 @@
 "use client";
 
-import { useMemo, Suspense, useEffect, useRef } from "react";
+import { useMemo, Suspense, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, useGLTF } from "@react-three/drei";
 import type { AvatarConfig } from "../../lib/auth";
+import type { Item } from "../../lib/items";
 import { Hat3D } from "./Hats3D";
 import { Shirt3D, CommunityShirt3D } from "./Shirts3D";
 import { Accessory3DGeometry } from "./Accessories3D";
 import { Face3D, DefaultFace3D } from "./Faces3D";
 import { Hair3D } from "./Hair3D";
 import { getItem } from "../../lib/items";
+import { findCommunityShirt } from "../../lib/communityShirts";
 import { getBodyPart, type BodyPartSlot } from "../../lib/bodyParts";
 
 // ============================================================
@@ -18,6 +20,33 @@ import { getBodyPart, type BodyPartSlot } from "../../lib/bodyParts";
 // ============================================================
 
 const HELD_ACCESSORIES = ["accessory-vox-sword"];
+
+// Shared UV cell math for community shirt templates
+const CELL_W = 1 / 3;
+const CELL_H = 1 / 3;
+const INSET_X = 0.10;
+const INSET_TOP = 0.22;
+const INSET_BOT = 0.10;
+
+function applyCellUV(tex: THREE.Texture, col: 0 | 1 | 2, row: 0 | 1 | 2) {
+  const u0 = col * CELL_W + INSET_X * CELL_W;
+  const u1 = (col + 1) * CELL_W - INSET_X * CELL_W;
+
+  const rowFromBottom = 2 - row;
+  const cellV0 = rowFromBottom * CELL_H;
+  const cellV1 = (rowFromBottom + 1) * CELL_H;
+
+  const topInset = INSET_TOP * CELL_H;
+  const botInset = INSET_BOT * CELL_H;
+
+  const v0 = cellV0 + botInset;
+  const v1 = cellV1 - topInset;
+
+  tex.offset.set(u0, v0);
+  tex.repeat.set(u1 - u0, v1 - v0);
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+}
 
 function SceneExporter({
   onSceneReady,
@@ -133,26 +162,117 @@ function BodyPart({
 }
 
 // ============================================================
+// SHARED TEXTURE LOADER
+// ============================================================
+let sharedShirtTextureCache: Record<string, THREE.Texture> = {};
+
+function useShirtTexture(imageUrl: string | undefined): THREE.Texture | null {
+  const [texture, setTexture] = useState<THREE.Texture | null>(() => {
+    if (!imageUrl) return null;
+    return sharedShirtTextureCache[imageUrl] || null;
+  });
+
+  useEffect(() => {
+    if (!imageUrl) {
+      setTexture(null);
+      return;
+    }
+    if (sharedShirtTextureCache[imageUrl]) {
+      setTexture(sharedShirtTextureCache[imageUrl]);
+      return;
+    }
+
+    let cancelled = false;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      if (cancelled) return;
+      const tex = new THREE.Texture(img);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 16;
+      tex.minFilter = THREE.LinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      tex.needsUpdate = true;
+      sharedShirtTextureCache[imageUrl] = tex;
+      setTexture(tex);
+    };
+    img.src = imageUrl;
+
+    return () => {
+      cancelled = true;
+    };
+  }, [imageUrl]);
+
+  return texture;
+}
+
+// ============================================================
+// SLEEVE OVERLAY — textures the upper arm with the sleeve cell
+// ============================================================
+function SleeveOverlay({
+  texture,
+  side,
+  armSize,
+  armOffset,
+}: {
+  texture: THREE.Texture;
+  side: "left" | "right";
+  armSize: [number, number, number];
+  armOffset: [number, number, number];
+}) {
+  const [w, h, d] = armSize;
+  const [ox, oy, oz] = armOffset;
+
+  // LEFT SLEEVE is cell (0,0) → texture for LEFT arm
+  // RIGHT SLEEVE is cell (2,0) → texture for RIGHT arm
+  const col: 0 | 2 = side === "left" ? 0 : 2;
+  const row = 0;
+
+  const tex = useMemo(() => {
+    const t = texture.clone();
+    applyCellUV(t, col, row);
+    t.needsUpdate = true;
+    return t;
+  }, [texture, col]);
+
+  return (
+    <mesh position={[ox, oy, oz]}>
+      <boxGeometry args={[w + 0.004, h + 0.004, d + 0.004]} />
+      <meshStandardMaterial map={tex} roughness={0.7} />
+    </mesh>
+  );
+}
+
+// ============================================================
 // CHARACTER
 // ============================================================
 export function Character({
   config,
   hideAccessory = false,
   walking = false,
+  resolvedShirt = null,
 }: {
   config: AvatarConfig;
   hideAccessory?: boolean;
   walking?: boolean;
+  resolvedShirt?: Item | null;
 }) {
   const skin = config.skinTone;
   const pants = config.pantsColor;
   const bodyParts = config.bodyParts;
   const partColors = config.partColors || {};
 
-  const shirtItem = config.shirt ? getItem(config.shirt) : null;
+  const shirtItem =
+    resolvedShirt ||
+    (config.shirt
+      ? (getItem(config.shirt) || findCommunityShirt(config.shirt))
+      : null);
+
   const shirtOverride = shirtItem?.shirtColorOverride || null;
-  // 👇 Community shirt URL (set on items with an uploaded template)
-  const shirtImageUrl = (shirtItem as any)?.imageUrl as string | undefined;
+  const shirtImageUrl = shirtItem?.imageUrl;
+
+  // Load the community shirt texture once; reuse for torso + sleeves
+  const shirtTexture = useShirtTexture(shirtImageUrl);
 
   const torsoColor = shirtOverride || partColors.torso || config.shirtColor;
   const leftArmColor = shirtOverride || partColors.leftArm || config.shirtColor;
@@ -215,7 +335,7 @@ export function Character({
         />
       )}
 
-      {/* 👇 TORSO — swap between community texture box and standard RoundedBox */}
+      {/* TORSO */}
       <BodyPart slot="torso" partId={bodyParts?.torso}>
         {shirtImageUrl ? (
           <CommunityShirt3D
@@ -236,7 +356,6 @@ export function Character({
         )}
       </BodyPart>
 
-      {/* Named shirts keep their flat decal overlay */}
       {config.shirt && !shirtImageUrl && (
         <Shirt3D shirtId={config.shirt} skinTone={skin} />
       )}
@@ -253,6 +372,17 @@ export function Character({
           >
             <meshStandardMaterial color={leftArmColor} roughness={0.7} />
           </RoundedBox>
+
+          {/* 👇 Sleeve texture overlay */}
+          {shirtTexture && (
+            <SleeveOverlay
+              texture={shirtTexture}
+              side="left"
+              armSize={[0.3, 1, 0.3]}
+              armOffset={[0, -0.5, 0]}
+            />
+          )}
+
           <RoundedBox
             args={[0.3, 0.3, 0.3]}
             radius={0.06}
@@ -277,6 +407,16 @@ export function Character({
           >
             <meshStandardMaterial color={rightArmColor} roughness={0.7} />
           </RoundedBox>
+
+          {/* 👇 Sleeve texture overlay */}
+          {shirtTexture && (
+            <SleeveOverlay
+              texture={shirtTexture}
+              side="right"
+              armSize={[0.3, 1, 0.3]}
+              armOffset={[0, -0.5, 0]}
+            />
+          )}
 
           <RoundedBox
             args={[0.3, 0.3, 0.3]}
@@ -393,11 +533,13 @@ export default function Avatar({
   size = 200,
   interactive = false,
   onSceneReady,
+  resolvedShirt = null,
 }: {
   config: AvatarConfig;
   size?: number;
   interactive?: boolean;
   onSceneReady?: (scene: THREE.Scene) => void;
+  resolvedShirt?: Item | null;
 }) {
   const cameraPosition = useMemo(() => computeCameraPosition(config), [config]);
 
@@ -439,7 +581,7 @@ export default function Avatar({
         <directionalLight position={[-3, 2, -3]} intensity={0.35} />
         <hemisphereLight args={["#ffffff", "#666680", 0.4]} />
 
-        <Character config={config} />
+        <Character config={config} resolvedShirt={resolvedShirt} />
 
         {onSceneReady && <SceneExporter onSceneReady={onSceneReady} />}
 

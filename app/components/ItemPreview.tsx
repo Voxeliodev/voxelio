@@ -12,6 +12,9 @@ import type { Item } from "../../lib/items";
 
 // ============================================================
 // ItemPreview — reusable 3D preview for any catalog item.
+//  - Built-in items use a WebGL canvas.
+//  - Community shirts use a static cropped <img> to avoid
+//    WebGL context exhaustion when many cards are shown.
 // ============================================================
 
 function AutoFitModel({ item, targetSize = 1.4 }: { item: Item; targetSize?: number }) {
@@ -81,9 +84,64 @@ function HatPreview({ item, size }: { item: Item; size: number }) {
 
 function ShirtPreview({ item, size }: { item: Item; size: number }) {
   const torsoColor = item.shirtColorOverride || "#0A0A0A";
-  // 👇 If this shirt has an uploaded texture, use the community renderer
   const isCommunity = Boolean(item.imageUrl);
 
+  // ============================================================
+  // COMMUNITY SHIRT — static cropped image of the actual garment
+  // ============================================================
+  //
+  // The uploaded template is a 3×3 grid of labeled cells:
+  //   ┌─────────────┬─────────────┬─────────────┐
+  //   │ LEFT SLEEVE │ FRONT TORSO │RIGHT SLEEVE │
+  //   ├─────────────┼─────────────┼─────────────┤
+  //   │    TOP      │ BACK TORSO  │    TOP      │
+  //   ├─────────────┼─────────────┼─────────────┤
+  //   │   BOTTOM    │             │   BOTTOM    │
+  //   └─────────────┴─────────────┴─────────────┘
+  //
+  // Each cell has:
+  //   - ~5% white border
+  //   - ~12% label text at the top ("BACK TORSO" etc.)
+  //   - ~83% of the actual fabric graphic below
+  //
+  // To show ONLY the fabric graphic (the angry face), we need to
+  // crop INTO the cell, past the label. We do this by:
+  //   1. Zooming the background (background-size) larger than 300%
+  //   2. Shifting the background-position past the label
+  //
+  // The user's main graphic is in the CENTER cell (BACK TORSO).
+  //
+  // Zoom factor: we want just the face, so we push background-size
+  // to about 420% and shift the position to skip the label.
+  // ============================================================
+  if (isCommunity) {
+    return (
+      <div
+        className="w-full bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] flex items-center justify-center overflow-hidden"
+        style={{ height: size }}
+      >
+        <div
+          className="rounded shadow-md overflow-hidden"
+          style={{
+            width: size * 0.72,
+            height: size * 0.72,
+            backgroundImage: `url(${item.imageUrl})`,
+            // 3×3 grid, but zoomed in to skip border + label
+            backgroundSize: "430% 430%",
+            // Center cell, shifted DOWN to skip the "BACK TORSO" label
+            // The label occupies roughly the top 15% of the cell,
+            // so we bias the vertical position toward the bottom.
+            backgroundPosition: "50% 58%",
+            backgroundRepeat: "no-repeat",
+          }}
+        />
+      </div>
+    );
+  }
+
+  // ============================================================
+  // BUILT-IN SHIRT — 3D preview
+  // ============================================================
   return (
     <div
       className="w-full bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] cursor-grab active:cursor-grabbing"
@@ -95,37 +153,16 @@ function ShirtPreview({ item, size }: { item: Item; size: number }) {
         <directionalLight position={[-3, 2, -3]} intensity={0.45} />
         <hemisphereLight args={["#ffffff", "#666680", 0.4]} />
         <group position={[0, -0.55, 0]}>
-          {isCommunity ? (
-            <>
-              {/* 👇 Community shirt: UV-mapped torso box */}
-              <CommunityShirt3D
-                imageUrl={item.imageUrl!}
-                torsoSize={[0.9, 1, 0.5]}
-                torsoPosition={[0, 0.5, 0]}
-              />
-              {/* Simple sleeves that match the torso color */}
-              <RoundedBox args={[0.3, 0.35, 0.3]} radius={0.05} smoothness={4} position={[-0.6, 0.85, 0]} castShadow>
-                <meshStandardMaterial color="#d1d5db" roughness={0.7} />
-              </RoundedBox>
-              <RoundedBox args={[0.3, 0.35, 0.3]} radius={0.05} smoothness={4} position={[0.6, 0.85, 0]} castShadow>
-                <meshStandardMaterial color="#d1d5db" roughness={0.7} />
-              </RoundedBox>
-            </>
-          ) : (
-            <>
-              {/* Built-in shirt: RoundedBox + flat decal overlay */}
-              <RoundedBox args={[0.9, 1, 0.5]} radius={0.06} smoothness={4} position={[0, 0.5, 0]} castShadow>
-                <meshStandardMaterial color={torsoColor} roughness={0.7} />
-              </RoundedBox>
-              <RoundedBox args={[0.3, 0.35, 0.3]} radius={0.05} smoothness={4} position={[-0.6, 0.85, 0]} castShadow>
-                <meshStandardMaterial color={torsoColor} roughness={0.7} />
-              </RoundedBox>
-              <RoundedBox args={[0.3, 0.35, 0.3]} radius={0.05} smoothness={4} position={[0.6, 0.85, 0]} castShadow>
-                <meshStandardMaterial color={torsoColor} roughness={0.7} />
-              </RoundedBox>
-              <Shirt3D shirtId={item.id} />
-            </>
-          )}
+          <RoundedBox args={[0.9, 1, 0.5]} radius={0.06} smoothness={4} position={[0, 0.5, 0]} castShadow>
+            <meshStandardMaterial color={torsoColor} roughness={0.7} />
+          </RoundedBox>
+          <RoundedBox args={[0.3, 0.35, 0.3]} radius={0.05} smoothness={4} position={[-0.6, 0.85, 0]} castShadow>
+            <meshStandardMaterial color={torsoColor} roughness={0.7} />
+          </RoundedBox>
+          <RoundedBox args={[0.3, 0.35, 0.3]} radius={0.05} smoothness={4} position={[0.6, 0.85, 0]} castShadow>
+            <meshStandardMaterial color={torsoColor} roughness={0.7} />
+          </RoundedBox>
+          <Shirt3D shirtId={item.id} />
         </group>
         <OrbitControls
           enablePan={false}
