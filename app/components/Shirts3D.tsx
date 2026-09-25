@@ -276,29 +276,10 @@ export function Shirt3D({
 // ============================================================
 // COMMUNITY SHIRT — labeled 3×3 template
 // ============================================================
-//
-// Template layout (works for any square labeled template):
-//
-//   ┌─────────────┬─────────────┬─────────────┐
-//   │ LEFT SLEEVE │ FRONT TORSO │RIGHT SLEEVE │  ← top row
-//   ├─────────────┼─────────────┼─────────────┤
-//   │   TOP       │ BACK TORSO  │   TOP       │  ← middle row
-//   ├─────────────┼─────────────┼─────────────┤
-//   │  BOTTOM     │             │  BOTTOM     │  ← bottom row
-//   └─────────────┴─────────────┴─────────────┘
-//
-// Because the "BACK TORSO" cell is usually where users put their
-// main graphic (like the angry face), we SWAP front/back so what
-// they see in the BACK TORSO cell appears on the FRONT of the 3D
-// model — which is what they expect when spinning the avatar
-// around to look at it.
-// ============================================================
 
 const TEMPLATE_W = 1250;
 const TEMPLATE_H = 1250;
 
-// Given the template-relative pixel rectangle, compute normalized UVs.
-// three.js UV origin is bottom-left; image origin is top-left.
 function rectToUV(
   x: number,
   y: number,
@@ -312,14 +293,9 @@ function rectToUV(
   return { u0, v0, u1, v1 };
 }
 
-// Cell size: 1250 / 3 ≈ 416.67
 const CELL = 1250 / 3;
-
-// The inner region of each cell (skipping the border/label)
-// Each cell has a ~50px top label area and thin white borders.
-// We sample from just below the label to just above the bottom edge.
-const LABEL_OFFSET_Y = 60; // skip the "LEFT SLEEVE" text
-const BORDER = 15;         // skip the white border
+const LABEL_OFFSET_Y = 60;
+const BORDER = 15;
 
 function cellRegion(col: 0 | 1 | 2, row: 0 | 1 | 2) {
   const x = col * CELL + BORDER;
@@ -330,28 +306,16 @@ function cellRegion(col: 0 | 1 | 2, row: 0 | 1 | 2) {
 }
 
 const REGIONS = {
-  // Front of the 3D torso → grab the "BACK TORSO" cell (middle-center)
-  // because that's where users typically put the main graphic.
-  front: cellRegion(1, 1),
-  // Back of the 3D torso → grab the "FRONT TORSO" cell (top-center)
-  back: cellRegion(1, 0),
-  // Sleeves
-  left: cellRegion(0, 0),   // top-left cell
-  right: cellRegion(2, 0),  // top-right cell
-  // Top & bottom of torso — use the "TOP" cells from row 2
-  // and "BOTTOM" cells from row 3.
+  front: cellRegion(1, 1), // BACK TORSO cell → front of 3D model
+  back: cellRegion(1, 0),  // FRONT TORSO cell → back of 3D model
+  left: cellRegion(0, 0),
+  right: cellRegion(2, 0),
   top: cellRegion(0, 1),
   bottom: cellRegion(0, 2),
 };
 
 type UVRect = { u0: number; v0: number; u1: number; v1: number };
 
-// A BoxGeometry has 6 faces, each with 4 vertices (2 triangles).
-// Vertex order within each face group:
-//   [0]=bottom-left [1]=bottom-right [2]=top-left [3]=top-right
-//
-// three.js face order: +X (right), -X (left), +Y (top), -Y (bottom),
-//                      +Z (front), -Z (back)
 function buildBoxUVs(regions: {
   right: UVRect;
   left: UVRect;
@@ -364,13 +328,9 @@ function buildBoxUVs(regions: {
 
   const setFace = (faceIndex: number, r: UVRect) => {
     const base = faceIndex * 8;
-    // bottom-left
     uvs[base + 0] = r.u0; uvs[base + 1] = r.v0;
-    // bottom-right
     uvs[base + 2] = r.u1; uvs[base + 3] = r.v0;
-    // top-left
     uvs[base + 4] = r.u0; uvs[base + 5] = r.v1;
-    // top-right
     uvs[base + 6] = r.u1; uvs[base + 7] = r.v1;
   };
 
@@ -397,24 +357,37 @@ export function CommunityShirt3D({
 
   useEffect(() => {
     let cancelled = false;
-    const loader = new THREE.TextureLoader();
-    loader.crossOrigin = "anonymous";
-    loader.load(
-      imageUrl,
-      (tex) => {
-        if (cancelled) return;
-        tex.colorSpace = THREE.SRGBColorSpace;
-        tex.anisotropy = 16;
-        tex.minFilter = THREE.LinearFilter;
-        tex.magFilter = THREE.LinearFilter;
-        tex.needsUpdate = true;
-        setTexture(tex);
-      },
-      undefined,
-      (err) => {
-        console.error("Failed to load community shirt texture:", err);
-      }
-    );
+
+    // 🔍 DEBUG: confirm the component is mounting and what URL it's loading
+    console.log("🎨 CommunityShirt3D mounting. imageUrl =", imageUrl);
+
+    if (!imageUrl) {
+      console.error("❌ CommunityShirt3D got an empty imageUrl");
+      return;
+    }
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+
+    img.onload = () => {
+      if (cancelled) return;
+      console.log("✅ Image loaded:", imageUrl, "size:", img.width, "x", img.height);
+
+      const tex = new THREE.Texture(img);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 16;
+      tex.minFilter = THREE.LinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      tex.needsUpdate = true;
+      setTexture(tex);
+    };
+
+    img.onerror = (err) => {
+      console.error("❌ Image failed to load:", imageUrl, err);
+    };
+
+    img.src = imageUrl;
+
     return () => {
       cancelled = true;
     };

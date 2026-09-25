@@ -62,24 +62,24 @@ export default function CatalogPage() {
   const [sort, setSort] = useState("relevance");
   const [sales, setSales] = useState<Record<string, number>>({});
 
-  // 👇 NEW: approved community shirts fetched from Supabase
   const [communityShirts, setCommunityShirts] = useState<Item[]>([]);
 
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
 
   const refreshUser = () => setCurrentUser(getCurrentUser());
 
-  // 👇 NEW: Fetch approved community shirts once, and re-run when
-  // the window regains focus (in case a shirt was just approved)
   useEffect(() => {
     let cancelled = false;
 
     const loadCommunityShirts = async () => {
+      console.log("🔍 Fetching community shirts...");
       const { data, error } = await supabase
         .from("community_shirts")
         .select("*")
         .eq("status", "approved")
         .order("approved_at", { ascending: false });
+
+      console.log("🔍 Supabase response — data:", data, "error:", error);
 
       if (cancelled || error || !data) return;
 
@@ -95,6 +95,7 @@ export default function CatalogPage() {
         imageUrl: s.image_url,
       }));
 
+      console.log("📦 Community shirts as items:", asItems);
       setCommunityShirts(asItems);
     };
 
@@ -116,7 +117,6 @@ export default function CatalogPage() {
     const syncFromUrl = () => {
       const slug = getSlugFromUrl();
       if (slug) {
-        // Check static items first, then community shirts
         let item = getItemBySlug(slug);
         if (!item) {
           const decoded = decodeURIComponent(slug).toLowerCase();
@@ -158,15 +158,12 @@ export default function CatalogPage() {
 
   const activeCategory = CATEGORIES.find((c) => c.id === category);
 
-  // 👇 Static items (with hidden filtering)
   let items = getItemsByCategory(category, currentUser?.ownedItems || []);
 
-  // 👇 Merge community shirts into "all", "featured", and "outfits" views
   if (category === "all" || category === "featured" || category === "outfits") {
     items = [...items, ...communityShirts];
   }
 
-  // Apply search filter
   if (search.trim()) {
     const q = search.toLowerCase();
     items = items.filter(
