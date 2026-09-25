@@ -25,6 +25,10 @@ export type Item = {
   // If false, item can't be purchased (still ownable via redeem/admin)
   forSale?: boolean;
 
+  // If true, item is completely hidden from the catalog.
+  // Owners still see it in their inventory / avatar editor.
+  hidden?: boolean;
+
   modelPath?: string;
   modelScale?: number;
   modelOffset?: [number, number, number];
@@ -242,7 +246,6 @@ export const ITEMS: Item[] = [
     forSale: false,
     faceImageUrl: "/faces/ruby-anger-face.png",
   },
-  // 👇 NEW ITEM
   {
     id: "face-radioactive-enraged",
     name: "Radioactive Face of the Enraged",
@@ -254,6 +257,21 @@ export const ITEMS: Item[] = [
     previewEmoji: "☢️",
     creator: "Voxelio",
     faceImageUrl: "/faces/radioactive-face-of-the-enraged.png",
+  },
+  // 👇 NEW HIDDEN EVENT ITEM
+  {
+    id: "face-inferno-pumpkin",
+    name: "Inferno Pumpkin Face",
+    description:
+      "A blazing jack-o'-lantern face burning with eternal flame. This item was only available for purchase from October 1st to October 31st, 2026. It is no longer for sale.",
+    price: 0,
+    category: "faces",
+    rarity: "legendary",
+    previewEmoji: "🔥",
+    creator: "Voxelio",
+    forSale: false,
+    hidden: true,
+    faceImageUrl: "/faces/inferno-pumpkin.png",
   },
 ];
 
@@ -275,9 +293,17 @@ export function getItemBySlug(slug: string): Item | undefined {
   return ITEMS.find((i) => slugify(i.name).toLowerCase() === decoded);
 }
 
-export function getItemsByCategory(category: string): Item[] {
-  if (category === "all" || category === "featured") return ITEMS;
-  return ITEMS.filter((i) => i.category === category);
+// ============ CATALOG HELPERS (filter out hidden) ============
+/**
+ * Returns items for the catalog. Hidden items are excluded unless
+ * the user explicitly owns them.
+ */
+export function getItemsByCategory(category: string, ownedIds: string[] = []): Item[] {
+  // Visible items only (not hidden), OR items the user already owns
+  const visible = ITEMS.filter((i) => !i.hidden || ownedIds.includes(i.id));
+
+  if (category === "all" || category === "featured") return visible;
+  return visible.filter((i) => i.category === category);
 }
 
 export function getHats(): Item[] {
