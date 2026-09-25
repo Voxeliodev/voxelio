@@ -271,7 +271,7 @@ export const ITEMS: Item[] = [
     creator: "Voxelio",
     forSale: false,
     hidden: true,
-    faceImageUrl: "/faces/inferno-pumpkin.png",
+    faceImageUrl: "/faces/inferno-pumpkin-face.png",
   },
 ];
 
