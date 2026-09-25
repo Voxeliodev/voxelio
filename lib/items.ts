@@ -263,7 +263,7 @@ export const ITEMS: Item[] = [
     id: "face-inferno-pumpkin",
     name: "Inferno Pumpkin Face",
     description:
-      "A blazing jack-o'-lantern face burning with eternal flame. This item was only available for purchase from October 1st to October 31st, 2026. It is no longer for sale.",
+      "A blazing jack-o'-lantern face burning with eternal flame. This item is only available for purchase from October 1st to October 31st, 2026.",
     price: 0,
     category: "faces",
     rarity: "legendary",
