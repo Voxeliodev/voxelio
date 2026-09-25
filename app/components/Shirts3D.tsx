@@ -286,10 +286,8 @@ export function Shirt3D({
 //   │   BOTTOM    │             │   BOTTOM    │  ← row 2
 //   └─────────────┴─────────────┴─────────────┘
 //
-// Community shirt renders:
-//   - Torso box with 6 textured faces
-//   - Left arm box (long) with LEFT SLEEVE texture
-//   - Right arm box (long) with RIGHT SLEEVE texture
+// Sleeve cells are cropped tightly to skip their label + border,
+// so we only see the actual fabric. Torso cells use a lighter crop.
 // ============================================================
 
 export function CommunityShirt3D({
@@ -298,7 +296,7 @@ export function CommunityShirt3D({
   torsoPosition = [0, 0.5, 0],
   armSize = [0.3, 1, 0.3],
   armOffsetX = 0.6,
-  armOffsetY = 0.5,
+  armOffsetY = 1.0,
 }: {
   imageUrl: string;
   torsoSize?: [number, number, number];
@@ -359,7 +357,6 @@ export function CommunityShirt3D({
   const hh = h / 2;
   const hd = d / 2;
 
-  // Loading state
   if (!texture) {
     return (
       <group position={[px, py, pz]}>
@@ -376,23 +373,38 @@ export function CommunityShirt3D({
 
   const CELL_W = 1 / 3;
   const CELL_H = 1 / 3;
+
+  // Loose crop (for torso cells — the main graphic is centred)
   const INSET_X = 0.10;
   const INSET_TOP = 0.22;
   const INSET_BOT = 0.10;
 
-  function makeFaceTexture(col: 0 | 1 | 2, row: 0 | 1 | 2): THREE.Texture {
+  // Tight crop (for sleeve cells — push into the fabric and skip the label)
+  const SLEEVE_INSET_X = 0.18;
+  const SLEEVE_INSET_TOP = 0.32;
+  const SLEEVE_INSET_BOT = 0.18;
+
+  function makeFaceTexture(
+    col: 0 | 1 | 2,
+    row: 0 | 1 | 2,
+    tight: boolean = false
+  ): THREE.Texture {
     const tex = texture!.clone();
     tex.needsUpdate = true;
 
-    const u0 = col * CELL_W + INSET_X * CELL_W;
-    const u1 = (col + 1) * CELL_W - INSET_X * CELL_W;
+    const insetX = tight ? SLEEVE_INSET_X : INSET_X;
+    const insetTop = tight ? SLEEVE_INSET_TOP : INSET_TOP;
+    const insetBot = tight ? SLEEVE_INSET_BOT : INSET_BOT;
+
+    const u0 = col * CELL_W + insetX * CELL_W;
+    const u1 = (col + 1) * CELL_W - insetX * CELL_W;
 
     const rowFromBottom = 2 - row;
     const cellV0 = rowFromBottom * CELL_H;
     const cellV1 = (rowFromBottom + 1) * CELL_H;
 
-    const topInset = INSET_TOP * CELL_H;
-    const botInset = INSET_BOT * CELL_H;
+    const topInset = insetTop * CELL_H;
+    const botInset = insetBot * CELL_H;
 
     const v0 = cellV0 + botInset;
     const v1 = cellV1 - topInset;
@@ -405,10 +417,12 @@ export function CommunityShirt3D({
     return tex;
   }
 
-  const frontTex = makeFaceTexture(1, 1);  // BACK TORSO → front of model
-  const backTex = makeFaceTexture(1, 0);   // FRONT TORSO → back of model
-  const leftTex = makeFaceTexture(0, 0);   // LEFT SLEEVE
-  const rightTex = makeFaceTexture(2, 0);  // RIGHT SLEEVE
+  const frontTex = makeFaceTexture(1, 1);          // BACK TORSO → front
+  const backTex = makeFaceTexture(1, 0);           // FRONT TORSO → back
+  const leftSleeveTex = makeFaceTexture(0, 0, true);   // LEFT SLEEVE
+  const rightSleeveTex = makeFaceTexture(2, 0, true);  // RIGHT SLEEVE
+  const torsoLeftTex = makeFaceTexture(0, 1);      // TOP cell → left side
+  const torsoRightTex = makeFaceTexture(2, 1);     // TOP cell → right side
   const topTex = makeFaceTexture(0, 1);
   const bottomTex = makeFaceTexture(0, 2);
 
@@ -432,12 +446,12 @@ export function CommunityShirt3D({
 
       <mesh position={[hw + 0.002, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
         <planeGeometry args={[d, h]} />
-        <meshStandardMaterial map={rightTex} roughness={0.7} />
+        <meshStandardMaterial map={torsoRightTex} roughness={0.7} />
       </mesh>
 
       <mesh position={[-hw - 0.002, 0, 0]} rotation={[0, -Math.PI / 2, 0]}>
         <planeGeometry args={[d, h]} />
-        <meshStandardMaterial map={leftTex} roughness={0.7} />
+        <meshStandardMaterial map={torsoLeftTex} roughness={0.7} />
       </mesh>
 
       <mesh position={[0, hh + 0.002, 0]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -450,19 +464,19 @@ export function CommunityShirt3D({
         <meshStandardMaterial map={bottomTex} roughness={0.7} />
       </mesh>
 
-      {/* ===== LEFT ARM (upper portion, sleeve texture) ===== */}
-      <group position={[-armOffsetX, armOffsetY - hh, 0]}>
+      {/* ===== LEFT ARM (upper portion, tight sleeve texture) ===== */}
+      <group position={[-armOffsetX, armOffsetY - hh - (ah / 2), 0]}>
         <mesh castShadow>
           <boxGeometry args={[aw, ah, ad]} />
-          <meshStandardMaterial map={leftTex} roughness={0.7} />
+          <meshStandardMaterial map={leftSleeveTex} roughness={0.7} />
         </mesh>
       </group>
 
-      {/* ===== RIGHT ARM (upper portion, sleeve texture) ===== */}
-      <group position={[armOffsetX, armOffsetY - hh, 0]}>
+      {/* ===== RIGHT ARM (upper portion, tight sleeve texture) ===== */}
+      <group position={[armOffsetX, armOffsetY - hh - (ah / 2), 0]}>
         <mesh castShadow>
           <boxGeometry args={[aw, ah, ad]} />
-          <meshStandardMaterial map={rightTex} roughness={0.7} />
+          <meshStandardMaterial map={rightSleeveTex} roughness={0.7} />
         </mesh>
       </group>
     </group>
