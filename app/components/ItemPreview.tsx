@@ -10,10 +10,6 @@ import { Accessory3DGeometry } from "./Accessories3D";
 import { Hair3DGeometry } from "./Hair3D";
 import type { Item } from "../../lib/items";
 
-// ============================================================
-// ItemPreview — hybrid: 3D for the first N cards + community shirts
-// ============================================================
-
 const MAX_3D_PREVIEWS = 12;
 
 function AutoFitModel({ item, targetSize = 1.4 }: { item: Item; targetSize?: number }) {
@@ -120,14 +116,13 @@ function HatPreview3D({ item, size }: { item: Item; size: number }) {
 function ShirtPreview3D({ item, size }: { item: Item; size: number }) {
   const torsoColor = item.shirtColorOverride || "#0A0A0A";
 
-  // Community shirt → full 3D torso + arms with sleeve textures
   if (item.imageUrl) {
     return (
       <div
         className="w-full bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] cursor-grab active:cursor-grabbing"
         style={{ height: size }}
       >
-        <Canvas camera={{ position: [0, 0.15, 2.6], fov: 45 }} dpr={[1, 2]}>
+        <Canvas camera={{ position: [0, 0.15, 3.0], fov: 45 }} dpr={[1, 2]}>
           <ambientLight intensity={0.75} />
           <directionalLight position={[3, 5, 4]} intensity={1.15} />
           <directionalLight position={[-3, 2, -3]} intensity={0.45} />
@@ -138,9 +133,9 @@ function ShirtPreview3D({ item, size }: { item: Item; size: number }) {
               imageUrl={item.imageUrl}
               torsoSize={[0.9, 1, 0.5]}
               torsoPosition={[0, 0.5, 0]}
-              armSize={[0.3, 1, 0.3]}
-              armOffsetX={0.6}
-              armOffsetY={1.0}
+              armSize={[0.32, 1, 0.32]}
+              armOffsetX={0.57}
+              armOffsetY={0.95}
             />
           </group>
 
@@ -157,7 +152,6 @@ function ShirtPreview3D({ item, size }: { item: Item; size: number }) {
     );
   }
 
-  // Built-in shirt → flat-decal render
   return (
     <div
       className="w-full bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] cursor-grab active:cursor-grabbing"
@@ -403,7 +397,7 @@ function AccessoryPreview3D({ item, size }: { item: Item; size: number }) {
 }
 
 // ============================================================
-// STATIC PREVIEWS (fallback for items past MAX_3D_PREVIEWS)
+// STATIC FALLBACKS
 // ============================================================
 
 function StaticFace({ item, size }: { item: Item; size: number }) {
@@ -444,7 +438,6 @@ export default function ItemPreview({
   size?: number;
   renderIndex?: number;
 }) {
-  // Community shirts ALWAYS get 3D (they need it to show sleeves/arms).
   const use3D = Boolean(item.imageUrl) || renderIndex < MAX_3D_PREVIEWS;
 
   if (!use3D) {

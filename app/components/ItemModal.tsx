@@ -100,7 +100,7 @@ export default function ItemModal({
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 p-4">
           <div className="lg:col-span-3">
             <div className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden">
-              <ItemPreview3D item={item} size={380} />
+              <ItemPreview3D item={item} size={420} />
             </div>
           </div>
 

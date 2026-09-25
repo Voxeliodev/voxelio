@@ -276,27 +276,14 @@ export function Shirt3D({
 // ============================================================
 // COMMUNITY SHIRT — torso + arms with template textures
 // ============================================================
-//
-// Template layout (labeled 3×3 grid):
-//   ┌─────────────┬─────────────┬─────────────┐
-//   │ LEFT SLEEVE │ FRONT TORSO │RIGHT SLEEVE │  ← row 0
-//   ├─────────────┼─────────────┼─────────────┤
-//   │    TOP      │ BACK TORSO  │    TOP      │  ← row 1
-//   ├─────────────┼─────────────┼─────────────┤
-//   │   BOTTOM    │             │   BOTTOM    │  ← row 2
-//   └─────────────┴─────────────┴─────────────┘
-//
-// Sleeve cells are cropped tightly to skip their label + border,
-// so we only see the actual fabric. Torso cells use a lighter crop.
-// ============================================================
 
 export function CommunityShirt3D({
   imageUrl,
   torsoSize = [0.9, 1, 0.5],
   torsoPosition = [0, 0.5, 0],
-  armSize = [0.3, 1, 0.3],
-  armOffsetX = 0.6,
-  armOffsetY = 1.0,
+  armSize = [0.32, 1, 0.32],
+  armOffsetX = 0.57,
+  armOffsetY = 0.95,
 }: {
   imageUrl: string;
   torsoSize?: [number, number, number];
@@ -374,12 +361,12 @@ export function CommunityShirt3D({
   const CELL_W = 1 / 3;
   const CELL_H = 1 / 3;
 
-  // Loose crop (for torso cells — the main graphic is centred)
+  // Loose crop for torso cells
   const INSET_X = 0.10;
   const INSET_TOP = 0.22;
   const INSET_BOT = 0.10;
 
-  // Tight crop (for sleeve cells — push into the fabric and skip the label)
+  // Tight crop for sleeve cells
   const SLEEVE_INSET_X = 0.18;
   const SLEEVE_INSET_TOP = 0.32;
   const SLEEVE_INSET_BOT = 0.18;
@@ -417,18 +404,18 @@ export function CommunityShirt3D({
     return tex;
   }
 
-  const frontTex = makeFaceTexture(1, 1);          // BACK TORSO → front
-  const backTex = makeFaceTexture(1, 0);           // FRONT TORSO → back
-  const leftSleeveTex = makeFaceTexture(0, 0, true);   // LEFT SLEEVE
-  const rightSleeveTex = makeFaceTexture(2, 0, true);  // RIGHT SLEEVE
-  const torsoLeftTex = makeFaceTexture(0, 1);      // TOP cell → left side
-  const torsoRightTex = makeFaceTexture(2, 1);     // TOP cell → right side
+  const frontTex = makeFaceTexture(1, 1);
+  const backTex = makeFaceTexture(1, 0);
+  const leftSleeveTex = makeFaceTexture(0, 0, true);
+  const rightSleeveTex = makeFaceTexture(2, 0, true);
+  const torsoLeftTex = makeFaceTexture(0, 1);
+  const torsoRightTex = makeFaceTexture(2, 1);
   const topTex = makeFaceTexture(0, 1);
   const bottomTex = makeFaceTexture(0, 2);
 
   return (
     <group position={[px, py, pz]}>
-      {/* ===== TORSO ===== */}
+      {/* TORSO */}
       <mesh castShadow>
         <boxGeometry args={torsoSize} />
         <meshStandardMaterial color="#111111" roughness={0.9} />
@@ -464,16 +451,16 @@ export function CommunityShirt3D({
         <meshStandardMaterial map={bottomTex} roughness={0.7} />
       </mesh>
 
-      {/* ===== LEFT ARM (upper portion, tight sleeve texture) ===== */}
-      <group position={[-armOffsetX, armOffsetY - hh - (ah / 2), 0]}>
+      {/* LEFT ARM — overlaps torso slightly */}
+      <group position={[-armOffsetX, armOffsetY - hh - (ah / 2) + 0.02, 0]}>
         <mesh castShadow>
           <boxGeometry args={[aw, ah, ad]} />
           <meshStandardMaterial map={leftSleeveTex} roughness={0.7} />
         </mesh>
       </group>
 
-      {/* ===== RIGHT ARM (upper portion, tight sleeve texture) ===== */}
-      <group position={[armOffsetX, armOffsetY - hh - (ah / 2), 0]}>
+      {/* RIGHT ARM — overlaps torso slightly */}
+      <group position={[armOffsetX, armOffsetY - hh - (ah / 2) + 0.02, 0]}>
         <mesh castShadow>
           <boxGeometry args={[aw, ah, ad]} />
           <meshStandardMaterial map={rightSleeveTex} roughness={0.7} />
