@@ -29,8 +29,8 @@ export type Item = {
   // Owners still see it in their inventory / avatar editor.
   hidden?: boolean;
 
-  // 👇 NEW: URL to an uploaded image (used by community shirts
-  // and any other item that needs a custom texture)
+  // URL to an uploaded image (used by community shirts and any
+  // other item that needs a custom texture)
   imageUrl?: string;
 
   modelPath?: string;
@@ -262,18 +262,17 @@ export const ITEMS: Item[] = [
     creator: "Voxelio",
     faceImageUrl: "/faces/radioactive-face-of-the-enraged.png",
   },
+  // 👇 Now on sale for 310 V$ — visible to everyone
   {
     id: "face-inferno-pumpkin",
     name: "Inferno Pumpkin Face",
     description:
-      "A blazing jack-o'-lantern face burning with eternal flame. This item is only available for purchase from October 1st to October 31st, 2026.",
-    price: 0,
+      "A blazing jack-o'-lantern face burning with eternal flame. Only available during the 2026 Halloween season, October 1st to October 31st.",
+    price: 310,
     category: "faces",
     rarity: "legendary",
     previewEmoji: "🔥",
     creator: "Voxelio",
-    forSale: false,
-    hidden: true,
     faceImageUrl: "/faces/inferno-pumpkin.png",
   },
 ];
@@ -302,7 +301,6 @@ export function getItemBySlug(slug: string): Item | undefined {
  * the user explicitly owns them.
  */
 export function getItemsByCategory(category: string, ownedIds: string[] = []): Item[] {
-  // Visible items only (not hidden), OR items the user already owns
   const visible = ITEMS.filter((i) => !i.hidden || ownedIds.includes(i.id));
 
   if (category === "all" || category === "featured") return visible;
