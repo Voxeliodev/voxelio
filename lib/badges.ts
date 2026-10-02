@@ -3,7 +3,7 @@
 // ============================================================
 
 export const OWNER_USERNAME = "voxelio";
-export const ADMIN_USERNAMES: string[] = ["CrazyVox"];
+export const ADMIN_USERNAMES: string[] = ["CrazyVox", "swedish_fih"];
 export const MODERATOR_USERNAMES: string[] = ["Testerrdw"];
 
 export const OWNER_ID: string = OWNER_USERNAME;
