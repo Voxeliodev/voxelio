@@ -21,12 +21,16 @@ export async function fetchTopTimes(
   worldId: string,
   limit: number = 10
 ): Promise<LeaderboardEntry[]> {
+  // Fetch a bit more than needed to account for duplicates per user
+  // (voxelio may have 100 entries, so we need to fetch many to get all unique users)
+  const FETCH_MULTIPLIER = 20;
+
   const { data, error } = await supabase
     .from("obby_leaderboard")
     .select("id, user_id, username, time_ms, completed_at")
     .eq("world_id", worldId)
     .order("time_ms", { ascending: true })
-    .limit(limit * 3);
+    .limit(limit * FETCH_MULTIPLIER);
 
   if (error || !data) return [];
 
@@ -82,8 +86,6 @@ export async function submitTime(
     return { success: false, error: "Not signed in" };
   }
 
-  // Send the Supabase access token with the request so the
-  // API route can identify the user.
   const res = await fetch("/api/obby/submit", {
     method: "POST",
     headers: {
@@ -104,9 +106,6 @@ export async function submitTime(
 
 // ============================================================
 // Time formatting
-// ============================================================
-// All formatters use Math.round on milliseconds first, then floor
-// on seconds, to prevent floating-point artifacts.
 // ============================================================
 
 export function formatShortTime(ms: number): string {
