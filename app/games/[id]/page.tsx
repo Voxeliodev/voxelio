@@ -16,6 +16,7 @@ import Log, { type LogData } from "@/app/components/lumberyard/Log";
 import Sawmill from "@/app/components/lumberyard/Sawmill";
 import { getCurrentUser, formatVoxbux, awardPlayedWithOwner, type User, type AvatarConfig } from "../../../lib/auth";
 import { supabase } from "../../../lib/supabase";
+import { playError } from "../../../lib/sounds";
 import {
   fetchWorldById,
   incrementWorldVisits,
@@ -62,7 +63,8 @@ const HEARTBEAT_INTERVAL = 400;
 const STALE_TIMEOUT = 3000;
 const CHAT_LIFETIME_MS = 5000;
 const CHAT_MAX_LENGTH = 120;
-const CHAT_MIN_INTERVAL_MS = 500;
+const CHAT_MUTE_DURATION_MS = 60_000;
+const CHAT_SPAM_THRESHOLD = 3;
 
 const touchState = { moveX: 0, moveZ: 0, jumpQueued: false };
 const touchLookState = { yawDelta: 0, pitchDelta: 0 };
@@ -628,8 +630,11 @@ export default function WorldPage() {
 
   const [chatOpen, setChatOpen] = useState(false);
   const [draft, setDraft] = useState("");
+  const [systemMessage, setSystemMessage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastChatSentRef = useRef(0);
+  const recentMessagesRef = useRef<string[]>([]);
+  const muteUntilRef = useRef(0);
 
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
@@ -758,12 +763,51 @@ export default function WorldPage() {
     return () => clearInterval(timer);
   }, []);
 
+  // Auto-clear system message
+  useEffect(() => {
+    if (!systemMessage) return;
+    const t = setTimeout(() => setSystemMessage(null), 3000);
+    return () => clearTimeout(t);
+  }, [systemMessage]);
+
   const sendChat = useCallback(() => {
     const me = user;
     const text = draft.trim();
     if (!me || !text) { setChatOpen(false); setDraft(""); return; }
+
     const now = Date.now();
-    if (now - lastChatSentRef.current < CHAT_MIN_INTERVAL_MS) return;
+
+    // ===== Check if muted =====
+    if (now < muteUntilRef.current) {
+      const remaining = Math.ceil((muteUntilRef.current - now) / 1000);
+      setSystemMessage(`🚫 You are muted for spamming. ${remaining}s remaining.`);
+      playError();
+      setDraft("");
+      setChatOpen(false);
+      return;
+    }
+
+    // ===== Track recent messages for spam detection =====
+    const recent = recentMessagesRef.current;
+    recent.push(text);
+    while (recent.length > CHAT_SPAM_THRESHOLD) recent.shift();
+
+    // ===== Check for spam (same message sent CHAT_SPAM_THRESHOLD times in a row) =====
+    const isSpam =
+      recent.length >= CHAT_SPAM_THRESHOLD &&
+      recent.every((m) => m === recent[0]);
+
+    if (isSpam) {
+      muteUntilRef.current = now + CHAT_MUTE_DURATION_MS;
+      recentMessagesRef.current = [];
+      setSystemMessage("🚫 Muted for 1 minute — you spammed the same message.");
+      playError();
+      setDraft("");
+      setChatOpen(false);
+      return;
+    }
+
+    // ===== Send the message (no rate limit — type as fast as you want) =====
     lastChatSentRef.current = now;
     const filtered = filterMessage(text.slice(0, CHAT_MAX_LENGTH));
     const id = typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -954,6 +998,15 @@ export default function WorldPage() {
             <p key={p.id} className="truncate text-white/80 flex items-center gap-1"><span className="truncate">• {p.username}</span><AccountBadge username={p.username} userId={p.id} size={11} /></p>
           ))}
           {others.length > 8 && <p className="text-white/50">+{others.length - 8} more</p>}
+        </div>
+      )}
+
+      {/* ===== System messages (mute warning, etc.) ===== */}
+      {systemMessage && (
+        <div className="absolute bottom-44 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+          <div className="bg-red-600/90 backdrop-blur px-4 py-2 rounded-lg text-white text-sm font-bold shadow-2xl border border-red-300">
+            {systemMessage}
+          </div>
         </div>
       )}
 

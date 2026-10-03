@@ -159,38 +159,40 @@ export function startAmbientMusic() {
   const ctx = getCtx();
   if (!ctx) return;
 
+  // Force resume on user interaction
+  if (ctx.state === "suspended") {
+    ctx.resume().catch(() => {});
+  }
+
   musicEnabled = true;
 
-  // ---- Master gain (quiet, gentle background) ----
+  // ---- Master gain (gentle background volume) ----
   const masterGain = ctx.createGain();
-  masterGain.gain.value = 0.04;
+  masterGain.gain.value = 0.12;
   masterGain.connect(ctx.destination);
 
   // ---- Reverb (long, dreamy tail) ----
   const reverb = ctx.createConvolver();
-  const reverbLength = ctx.sampleRate * 3.5;
+  const reverbLength = Math.floor(ctx.sampleRate * 3.5);
   const reverbBuffer = ctx.createBuffer(2, reverbLength, ctx.sampleRate);
   for (let channel = 0; channel < 2; channel++) {
     const data = reverbBuffer.getChannelData(channel);
     for (let i = 0; i < reverbLength; i++) {
-      // Exponential decay tail for a smooth, ambient reverb
       data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / reverbLength, 2.5);
     }
   }
   reverb.buffer = reverbBuffer;
 
   const reverbGain = ctx.createGain();
-  reverbGain.gain.value = 0.55;
+  reverbGain.gain.value = 0.5;
   reverbGain.connect(reverb);
   reverb.connect(masterGain);
 
-  // Dry signal (also goes direct, but quieter)
   const dryGain = ctx.createGain();
-  dryGain.gain.value = 0.3;
+  dryGain.gain.value = 0.35;
   dryGain.connect(masterGain);
 
-  // ---- Lush major-7th chords (slow, warm, meditative) ----
-  // Fmaj7 -> Cmaj7 -> Am7 -> Gmaj7 (looped)
+  // ---- Lush major-7th chords ----
   const chords: number[][] = [
     [174.61, 220.0, 261.63, 329.63],   // Fmaj7
     [130.81, 164.81, 196.0, 246.94],   // Cmaj7
@@ -199,17 +201,15 @@ export function startAmbientMusic() {
   ];
 
   const NUM_VOICES = 4;
-  const CHORD_DURATION = 10; // seconds per chord — slow and calm
+  const CHORD_DURATION = 10;
 
   const oscillators: OscillatorNode[] = [];
-  const gains: GainNode[] = [];
 
   for (let i = 0; i < NUM_VOICES; i++) {
     const osc = ctx.createOscillator();
-    // Triangle is warmer than sine for chords
     osc.type = "triangle";
     osc.frequency.value = chords[0][i];
-    osc.detune.value = (i - NUM_VOICES / 2) * 4; // slight detune for width
+    osc.detune.value = (i - NUM_VOICES / 2) * 4;
 
     const gain = ctx.createGain();
     gain.gain.value = 0.25 / NUM_VOICES;
@@ -218,22 +218,21 @@ export function startAmbientMusic() {
     gain.connect(reverbGain);
     gain.connect(dryGain);
 
-    osc.start();
+    osc.start(ctx.currentTime);
     oscillators.push(osc);
-    gains.push(gain);
   }
 
-  // ---- Bass pad (warm low note) ----
+  // ---- Bass pad ----
   const bassOsc = ctx.createOscillator();
   bassOsc.type = "sine";
-  bassOsc.frequency.value = 65.41; // C2
+  bassOsc.frequency.value = 65.41;
 
   const bassGain = ctx.createGain();
   bassGain.gain.value = 0.35;
   bassOsc.connect(bassGain);
   bassGain.connect(reverbGain);
   bassGain.connect(dryGain);
-  bassOsc.start();
+  bassOsc.start(ctx.currentTime);
 
   // ---- Chord progression ----
   let chordIndex = 0;
@@ -247,14 +246,13 @@ export function startAmbientMusic() {
       const target = chord[i % chord.length];
       osc.frequency.cancelScheduledValues(now);
       osc.frequency.setValueAtTime(osc.frequency.value, now);
-      // Slow 3.5s glide — feels like the chord is breathing
       osc.frequency.linearRampToValueAtTime(target, now + 3.5);
     });
 
     chordIndex = (chordIndex + 1) % chords.length;
   };
 
-  advanceChord();
+  // First chord switch happens after 10s, not immediately
   const interval = setInterval(advanceChord, CHORD_DURATION * 1000);
 
   musicNodes = {
