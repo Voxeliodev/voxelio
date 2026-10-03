@@ -28,19 +28,16 @@ const ROT_LERP = 14;
 const AIR_CONTROL = 0.55;
 const COYOTE_TIME = 0.12;
 
-// Capsule collider — total height 1.7, radius 0.35
 const CAPSULE_HALF_HEIGHT = 0.5;
 const CAPSULE_RADIUS = 0.35;
 const CAPSULE_TOTAL = CAPSULE_HALF_HEIGHT * 2 + CAPSULE_RADIUS * 2; // 1.7
 
 // ============================================================
-// SPAWN_YAW — the direction the player faces on spawn
-//   0            = facing -Z (north) — the obby path direction
-//   Math.PI / 2  = facing +X (east)
-//   Math.PI      = facing +Z (south)
-//   -Math.PI / 2 = facing -X (west)
+// SPAWN_YAW — flips the character 180° from the default
+// Math.PI = 180° — the character faces the opposite direction
+// and the camera follows behind them.
 // ============================================================
-const SPAWN_YAW = 0;
+const SPAWN_YAW = Math.PI;
 
 const VISUAL_OFFSET_Y = 0.65;
 
@@ -162,14 +159,14 @@ export default function ObbyPlayer({
     bodyRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
     bodyRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
 
-    // Rotate physics body to match SPAWN_YAW
+    // Rotate physics body to face SPAWN_YAW
     const halfYaw = SPAWN_YAW / 2;
     bodyRef.current.setRotation(
       { x: 0, y: Math.sin(halfYaw), z: 0, w: Math.cos(halfYaw) },
       true
     );
 
-    // Rotate visual model to match SPAWN_YAW
+    // Rotate the visual model to face SPAWN_YAW
     if (visualRef.current) {
       visualRef.current.rotation.set(0, SPAWN_YAW, 0);
     }
@@ -179,12 +176,25 @@ export default function ObbyPlayer({
     coyoteTimerRef.current = 0;
     jumpRequestedRef.current = false;
 
+    // Flip the camera behind the new facing direction
     cameraYawRef.current = SPAWN_YAW;
     cameraPitchRef.current = 0.35;
-  }, [spawnPosition]);
 
-  // Force the character to face SPAWN_YAW for the first 100ms after spawn,
-  // so the walk-animation doesn't override it before the player moves.
+    // IMPORTANT: Snap the camera to its new position immediately so you don't
+    // see it "fly" around the player on spawn.
+    const horizDist = CAMERA_DIST * Math.cos(cameraPitchRef.current);
+    const vertDist = CAMERA_DIST * Math.sin(cameraPitchRef.current);
+    const lookX = spawnPosition[0];
+    const lookY = spawnPosition[1] + 0.3;
+    const lookZ = spawnPosition[2];
+    camera.position.set(
+      lookX - Math.sin(SPAWN_YAW) * horizDist,
+      lookY + CAMERA_HEIGHT + vertDist,
+      lookZ - Math.cos(SPAWN_YAW) * horizDist
+    );
+    camera.lookAt(lookX, lookY, lookZ);
+  }, [spawnPosition, camera]);
+
   useEffect(() => {
     forcedFacingRef.current = SPAWN_YAW;
     const timer = setTimeout(() => {
