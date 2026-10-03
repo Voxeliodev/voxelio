@@ -12,9 +12,6 @@ import { getAxe, type AxeId } from "../../../lib/lumberyard";
 // ============================================================
 // REMOTE LUMBER PLAYER — other players in the lumberyard
 // ============================================================
-// Receives position + rotation + chop-swing state from the network
-// and animates smoothly between updates.
-// ============================================================
 
 export type RemoteLumberData = {
   id: string;
@@ -27,7 +24,6 @@ export type RemoteLumberData = {
   lastSeen: number;
 };
 
-// Shared axe mesh component — same as the one in LumberyardPlayer
 function RemoteAxeMesh({ axeId }: { axeId: AxeId }) {
   const axe = getAxe(axeId);
 
@@ -59,8 +55,7 @@ function RemoteAxeMesh({ axeId }: { axeId: AxeId }) {
   );
 }
 
-// Matches VISUAL_OFFSET_Y in LumberyardPlayer.tsx — needed so the
-// remote player's feet align with the ground (not sunk into it).
+// Matches VISUAL_OFFSET_Y in LumberyardPlayer.tsx
 const VISUAL_OFFSET_Y = 0.65;
 
 export default function RemoteLumberPlayer({ data }: { data: RemoteLumberData }) {
@@ -69,7 +64,6 @@ export default function RemoteLumberPlayer({ data }: { data: RemoteLumberData })
   const currentRotRef = useRef(data.targetRotY);
   const walkRef = useRef(false);
 
-  // Detect movement to trigger walk animation
   useFrame((_, delta) => {
     if (!groupRef.current) return;
     const target = new THREE.Vector3(...data.targetPos);
@@ -78,21 +72,18 @@ export default function RemoteLumberPlayer({ data }: { data: RemoteLumberData })
     currentPosRef.current.lerp(target, lerp);
     groupRef.current.position.copy(currentPosRef.current);
 
-    // Smooth rotation
     let diff = data.targetRotY - currentRotRef.current;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
     currentRotRef.current += diff * Math.min(1, delta * 14);
     groupRef.current.rotation.y = currentRotRef.current;
 
-    // Walking state
     const moved = before.distanceTo(currentPosRef.current) > 0.01;
     walkRef.current = moved;
   });
 
   return (
     <group ref={groupRef} position={data.targetPos}>
-      {/* Nametag */}
       <Html
         position={[0, 2.55 + VISUAL_OFFSET_Y, 0]}
         center
@@ -124,7 +115,6 @@ export default function RemoteLumberPlayer({ data }: { data: RemoteLumberData })
         </div>
       </Html>
 
-      {/* FIX: Offset the visual model so its feet are on the ground */}
       <group position={[0, VISUAL_OFFSET_Y, 0]}>
         <Character
           config={data.avatarConfig}
