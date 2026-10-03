@@ -1,29 +1,194 @@
 "use client";
 
-import Link from "next/link";
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useParams } from "next/navigation";
+import { Suspense, useState, useRef, useCallback, useEffect } from "react";
+import { Canvas } from "@react-three/fiber";
+import { KeyboardControls, Sky } from "@react-three/drei";
+import { Physics, RigidBody } from "@react-three/rapier";
 import * as THREE from "three";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { KeyboardControls, useKeyboardControls, Sky, Html } from "@react-three/drei";
-import { Character } from "../../components/Avatar";
-import AccountBadge from "../../components/AccountBadge";
-import ObbyGame from "../../components/obby/ObbyGame";
-import LumberyardGame from "../../components/lumberyard/LumberyardGame";
-import { getCurrentUser, formatVoxbux, awardPlayedWithOwner, type User, type AvatarConfig } from "../../../lib/auth";
+import type { AvatarConfig } from "../../../lib/auth";
+import type { World } from "../../../lib/worlds";
 import { supabase } from "../../../lib/supabase";
+import LumberyardPlayer from "./LumberyardPlayer";
+import RemoteLumberPlayer, { type RemoteLumberData } from "./RemoteLumberPlayer";
+import LumberHud from "./LumberHud";
+import Shop from "./Shop";
+import Tree from "./Tree";
+import Log, { type LogData } from "./Log";
+import Sawmill from "./Sawmill";
 import {
-  fetchWorldById,
-  incrementWorldVisits,
-  hasLikedWorld,
-  likeWorld,
-  unlikeWorld,
-  type World,
-} from "../../../lib/worlds";
-import { getLayout, type BlockData } from "../../../lib/worldLayouts";
-import { filterMessage } from "../../../lib/chatFilter";
+  TREE_SPAWNS,
+  getTreeType,
+  getAxe,
+  LUMBERYARD_SPAWN,
+  SAWMILL_POSITION,
+  SAWMILL_RADIUS,
+  WORLD_BOUNDS,
+  LOG_PICKUP_RADIUS,
+  type AxeId,
+} from "../../../lib/lumberyard";
+import {
+  loadProgress,
+  saveProgress,
+  buyAxe,
+  formatCoins,
+  type LumberyardProgress,
+} from "../../../lib/lumberyardProgress";
+import {
+  playChop,
+  playTreeFall,
+  playCoin,
+  playPickup,
+  playError,
+  startAmbientMusic,
+  stopAmbientMusic,
+} from "../../../lib/sounds";
 
-const ENABLE_OWNER_BADGE_DETECTION = true;
+// ============================================================
+// GLOBAL CHANNEL MANAGER
+// ------------------------------------------------------------
+// A single global Map that persists for the tab's lifetime,
+// preventing React StrictMode double-mounts from trying to
+// re-subscribe to the same channel.
+// ============================================================
+
+type ChannelState = {
+  channel: any;
+  name: string;
+  subscribers: Set<(data: RemoteLumberData) => void>;
+  presenceSubscribers: Set<(count: number) => void>;
+  subscribed: boolean;
+  selfUserId: string;
+};
+
+const channels = new Map<string, ChannelState>();
+
+function ensureChannel(
+  channelName: string,
+  selfUserId: string,
+  selfUsername: string,
+  selfConfig: AvatarConfig,
+  getSelfState: () => {
+    pos: [number, number, number];
+    rotY: number;
+    axeId: AxeId;
+  },
+  worldId: string
+): ChannelState {
+  // If we already have a live subscribed channel, return it.
+  const existing = channels.get(channelName);
+  if (existing && existing.subscribed) {
+    console.log("[ensureChannel] reusing subscribed channel:", channelName);
+    return existing;
+  }
+
+  // Remove any stale Supabase channel with that name. This is CRITICAL
+  // because Supabase caches channels internally by name, and calling
+  // .on() on an already-subscribed one throws.
+  const allSupabaseChannels = supabase.getChannels();
+  for (const c of allSupabaseChannels) {
+    const topic = (c as any).topic || "";
+    if (topic === `realtime:${channelName}` || topic === channelName) {
+      console.log("[ensureChannel] removing stale channel:", topic);
+      try {
+        supabase.removeChannel(c);
+      } catch (e) {
+        console.warn("failed to remove stale channel", e);
+      }
+    }
+  }
+
+  console.log("[ensureChannel] creating fresh channel:", channelName, "for user:", selfUserId);
+
+  const state: ChannelState = {
+    channel: null,
+    name: channelName,
+    subscribers: existing?.subscribers || new Set(),
+    presenceSubscribers: existing?.presenceSubscribers || new Set(),
+    subscribed: false,
+    selfUserId,
+  };
+
+  const channel = supabase.channel(channelName, {
+    config: {
+      broadcast: { self: false },
+      presence: { key: selfUserId },
+    },
+  });
+
+  channel.on("broadcast", { event: "lumber-move" }, ({ payload }: any) => {
+    console.log(
+      "[broadcast:recv] lumber-move from:",
+      payload?.id,
+      "self:",
+      selfUserId,
+      "subs:",
+      state.subscribers.size
+    );
+    if (!payload || payload.id === selfUserId) return;
+    const data: RemoteLumberData = {
+      id: payload.id,
+      username: payload.username,
+      displayId: payload.displayId ?? null,
+      avatarConfig: payload.avatarConfig,
+      currentAxeId: payload.currentAxeId,
+      targetPos: payload.pos,
+      targetRotY: payload.rotY,
+      lastSeen: Date.now(),
+    };
+    state.subscribers.forEach((fn) => fn(data));
+  });
+
+  channel.on("presence", { event: "sync" }, () => {
+    const presenceState = channel.presenceState();
+    const count = Math.max(1, Object.keys(presenceState).length);
+    console.log("[presence:sync] count:", count);
+    state.presenceSubscribers.forEach((fn) => fn(count));
+
+    const s = getSelfState();
+    channel.send({
+      type: "broadcast",
+      event: "lumber-move",
+      payload: {
+        id: selfUserId,
+        username: selfUsername,
+        displayId: null,
+        avatarConfig: selfConfig,
+        currentAxeId: s.axeId,
+        pos: s.pos,
+        rotY: s.rotY,
+      },
+    });
+  });
+
+  channel.on("presence", { event: "leave" }, () => {
+    const presenceState = channel.presenceState();
+    const count = Math.max(1, Object.keys(presenceState).length);
+    console.log("[presence:leave] count:", count);
+    state.presenceSubscribers.forEach((fn) => fn(count));
+  });
+
+  channel.subscribe((status: string) => {
+    console.log("[channel] subscribe status:", status);
+    if (status === "SUBSCRIBED") {
+      state.subscribed = true;
+      channel.track({
+        id: selfUserId,
+        username: selfUsername,
+        worldId,
+        joinedAt: Date.now(),
+      });
+    }
+  });
+
+  state.channel = channel;
+  channels.set(channelName, state);
+
+  return state;
+}
+
+// ============================================================
+// LUMBERYARD INC — main game
+// ============================================================
 
 const KEY_MAP = [
   { name: "forward", keys: ["w", "W", "ArrowUp"] },
@@ -33,942 +198,561 @@ const KEY_MAP = [
   { name: "jump", keys: [" ", "Space"] },
 ];
 
-const MOVE_SPEED = 7.5;
-const ACCEL = 60;
-const DECEL = 80;
-const ROTATION_LERP = 18;
-
-const CAMERA_MIN_DIST = 3;
-const CAMERA_MAX_DIST = 18;
-const CAMERA_DEFAULT_DIST = 9;
-const CAMERA_DEFAULT_PITCH = 0.32;
-const CAMERA_MIN_PITCH = -0.25;
-const CAMERA_MAX_PITCH = 1.15;
-const CAMERA_LOOK_OFFSET = -0.2;
-const CAMERA_LERP = 10;
-
-const CHARACTER_Y_OFFSET = 1.6;
-const GRAVITY = -28;
-const JUMP_VELOCITY = 10;
-const PLAYER_RADIUS = 0.42;
-const PLAYER_HEIGHT = 1.8;
-
-const BROADCAST_INTERVAL = 50;
-const HEARTBEAT_INTERVAL = 400;
 const STALE_TIMEOUT = 3000;
-const CHAT_LIFETIME_MS = 5000;
-const CHAT_MAX_LENGTH = 120;
-const CHAT_MIN_INTERVAL_MS = 500;
+const BROADCAST_INTERVAL = 66;
 
-const touchState = { moveX: 0, moveZ: 0, jumpQueued: false };
-const touchLookState = { yawDelta: 0, pitchDelta: 0 };
-
-type RemotePlayerData = {
-  id: string;
-  username: string;
-  displayId?: number | null;
-  avatarConfig: AvatarConfig;
-  targetPos: [number, number, number];
-  targetRotY: number;
-  lastSeen: number;
+type TreeState = {
+  spawnId: string;
+  damage: number;
+  deadAt: number | null;
 };
 
-type ChatMessage = {
-  id: string;
-  userId: string;
-  username: string;
-  text: string;
-  expiresAt: number;
-};
-
-function findSafeSpawn(blocks: BlockData[]): THREE.Vector3 {
-  const spawn = new THREE.Vector3(0, CHARACTER_Y_OFFSET, 0);
-  const maxIter = blocks.length + 2;
-
-  for (let iter = 0; iter < maxIter; iter++) {
-    let pushedUp = false;
-    const pFeetY = spawn.y - CHARACTER_Y_OFFSET;
-    const pTopY = pFeetY + PLAYER_HEIGHT;
-    const pMinX = spawn.x - PLAYER_RADIUS;
-    const pMaxX = spawn.x + PLAYER_RADIUS;
-    const pMinZ = spawn.z - PLAYER_RADIUS;
-    const pMaxZ = spawn.z + PLAYER_RADIUS;
-
-    for (const b of blocks) {
-      const [bx, by, bz] = b.position;
-      const [sx, sy, sz] = b.size;
-      const bMinX = bx - sx / 2;
-      const bMaxX = bx + sx / 2;
-      const bMinY = by - sy / 2;
-      const bMaxY = by + sy / 2;
-      const bMinZ = bz - sz / 2;
-      const bMaxZ = bz + sz / 2;
-      if (pMaxX <= bMinX || pMinX >= bMaxX) continue;
-      if (pMaxZ <= bMinZ || pMinZ >= bMaxZ) continue;
-      if (pTopY <= bMinY || pFeetY >= bMaxY) continue;
-      spawn.y = Math.max(spawn.y, bMaxY + CHARACTER_Y_OFFSET + 0.05);
-      pushedUp = true;
-    }
-    if (!pushedUp) break;
-  }
-  if (spawn.y > 60) spawn.y = 60;
-  return spawn;
-}
-
-function resolveBlockCollisions(pos: THREE.Vector3, blocks: BlockData[]): void {
-  for (let iter = 0; iter < 4; iter++) {
-    let anyResolved = false;
-    for (const b of blocks) {
-      const [bx, by, bz] = b.position;
-      const [sx, sy, sz] = b.size;
-      const bMinX = bx - sx / 2;
-      const bMaxX = bx + sx / 2;
-      const bMinY = by - sy / 2;
-      const bMaxY = by + sy / 2;
-      const bMinZ = bz - sz / 2;
-      const bMaxZ = bz + sz / 2;
-      const pMinX = pos.x - PLAYER_RADIUS;
-      const pMaxX = pos.x + PLAYER_RADIUS;
-      const pFeetY = pos.y - CHARACTER_Y_OFFSET;
-      const pTopY = pFeetY + PLAYER_HEIGHT;
-      const pMinZ = pos.z - PLAYER_RADIUS;
-      const pMaxZ = pos.z + PLAYER_RADIUS;
-      if (pMaxX <= bMinX || pMinX >= bMaxX || pTopY <= bMinY || pFeetY >= bMaxY || pMaxZ <= bMinZ || pMinZ >= bMaxZ) continue;
-      const penX = Math.min(pMaxX - bMinX, bMaxX - pMinX);
-      const penY = Math.min(pTopY - bMinY, bMaxY - pFeetY);
-      const penZ = Math.min(pMaxZ - bMinZ, bMaxZ - pMinZ);
-      if (penX <= penY && penX <= penZ) pos.x += pos.x < bx ? -penX : penX;
-      else if (penY <= penZ) pos.y += pos.y < by + CHARACTER_Y_OFFSET ? -penY : penY;
-      else pos.z += pos.z < bz ? -penZ : penZ;
-      anyResolved = true;
-    }
-    if (!anyResolved) break;
-  }
-}
-
-function isGrounded(pos: THREE.Vector3, blocks: BlockData[]): boolean {
-  const feetY = pos.y - CHARACTER_Y_OFFSET;
-  if (feetY <= 0.08) return true;
-  for (const b of blocks) {
-    const topY = b.position[1] + b.size[1] / 2;
-    if (Math.abs(feetY - topY) < 0.15 && Math.abs(pos.x - b.position[0]) < b.size[0] / 2 + PLAYER_RADIUS * 0.7 && Math.abs(pos.z - b.position[2]) < b.size[2] / 2 + PLAYER_RADIUS * 0.7) return true;
-  }
-  return false;
-}
-
-function resolvePlayerCollisions(pos: THREE.Vector3, myId: string, remotePositions: Map<string, THREE.Vector3>): void {
-  const minDist = PLAYER_RADIUS * 2;
-  for (const [id, other] of remotePositions) {
-    if (id === myId) continue;
-    const myFeetY = pos.y - CHARACTER_Y_OFFSET;
-    const otherFeetY = other.y - CHARACTER_Y_OFFSET;
-    if (Math.abs(myFeetY - otherFeetY) > PLAYER_HEIGHT * 0.9) continue;
-    const dx = pos.x - other.x;
-    const dz = pos.z - other.z;
-    const distSq = dx * dx + dz * dz;
-    if (distSq >= minDist * minDist) continue;
-    const dist = Math.sqrt(distSq);
-    if (dist < 0.001) { pos.x += minDist * 0.5; continue; }
-    const overlap = minDist - dist;
-    pos.x += (dx / dist) * overlap;
-    pos.z += (dz / dist) * overlap;
-  }
-}
-
-function Nametag({ username, userId }: { username: string; userId: string }) {
-  return (
-    <Html position={[0, 2.55, 0]} center distanceFactor={10} zIndexRange={[10, 0]} style={{ pointerEvents: "none", overflow: "visible" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap", fontFamily: "system-ui, -apple-system, sans-serif" }}>
-        <span style={{ color: "#FFFFFF", fontWeight: 700, fontSize: 14, lineHeight: 1, textShadow: "0 0 2px #000, 0 0 2px #000, 0 0 2px #000, 0 0 2px #000" }}>{username}</span>
-        <AccountBadge username={username} userId={userId} size={16} />
-      </div>
-    </Html>
-  );
-}
-
-function ChatBubble({ text }: { text: string }) {
-  return (
-    <Html position={[0, 3.2, 0]} center distanceFactor={10} zIndexRange={[15, 10]} style={{ pointerEvents: "none", overflow: "visible" }}>
-      <div style={{ display: "inline-block", whiteSpace: "nowrap", background: "rgba(26, 26, 46, 0.92)", color: "#FFFFFF", padding: "6px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.2)", fontSize: 14, lineHeight: 1.2, boxShadow: "0 4px 12px rgba(0,0,0,0.4)", fontFamily: "system-ui, -apple-system, sans-serif" }}>
-        {text}
-      </div>
-    </Html>
-  );
-}
-
-function RemotePlayer({
-  data, chatMessage, remotePositions,
-}: {
-  data: RemotePlayerData;
-  chatMessage?: ChatMessage | null;
-  remotePositions: React.MutableRefObject<Map<string, THREE.Vector3>>;
-}) {
-  const groupRef = useRef<THREE.Group>(null);
-  const currentRef = useRef(new THREE.Vector3(...data.targetPos));
-  const currentRotRef = useRef(data.targetRotY);
-  const walkingRef = useRef(false);
-
-  useEffect(() => {
-    remotePositions.current.set(data.id, currentRef.current);
-    return () => { remotePositions.current.delete(data.id); };
-  }, [data.id, remotePositions]);
-
-  useFrame((_, delta) => {
-    if (!groupRef.current) return;
-    const target = new THREE.Vector3(...data.targetPos);
-    const lerp = Math.min(1, delta * 12);
-    currentRef.current.lerp(target, lerp);
-    groupRef.current.position.copy(currentRef.current);
-    let diff = data.targetRotY - currentRotRef.current;
-    while (diff > Math.PI) diff -= Math.PI * 2;
-    while (diff < -Math.PI) diff += Math.PI * 2;
-    currentRotRef.current += diff * Math.min(1, delta * 14);
-    groupRef.current.rotation.y = currentRotRef.current;
-    const dist = currentRef.current.distanceTo(target);
-    walkingRef.current = dist > 0.05;
-  });
-
-  return (
-    <group ref={groupRef} position={data.targetPos}>
-      <Nametag username={data.username} userId={data.id} />
-      {chatMessage && <ChatBubble text={chatMessage.text} />}
-      <Character config={data.avatarConfig} hideAccessory walking={walkingRef.current} />
-    </group>
-  );
-}
-
-function LocalPlayer({
-  config, myId, blocks, onMove, chatMessage, inputDisabled, remotePositions, isTouchDevice,
-}: {
-  config: AvatarConfig;
-  myId: string;
-  blocks: BlockData[];
-  onMove: (pos: [number, number, number], rotY: number) => void;
-  chatMessage?: ChatMessage | null;
-  inputDisabled: boolean;
-  remotePositions: React.MutableRefObject<Map<string, THREE.Vector3>>;
-  isTouchDevice: boolean;
-}) {
-  const { gl } = useThree();
-  const [, getKeys] = useKeyboardControls();
-  const safeSpawn = useMemo(() => findSafeSpawn(blocks), [blocks]);
-
-  const groupRef = useRef<THREE.Group>(null);
-  const positionRef = useRef(safeSpawn.clone());
-  const velocityRef = useRef(new THREE.Vector2(0, 0));
-  const facingRef = useRef(0);
-  const velocityYRef = useRef(0);
-  const groundedRef = useRef(false);
-  const lastBroadcastRef = useRef(0);
-  const needsBroadcastRef = useRef(true);
-
-  const cameraYawRef = useRef(0);
-  const cameraPitchRef = useRef(CAMERA_DEFAULT_PITCH);
-  const cameraDistRef = useRef(CAMERA_DEFAULT_DIST);
-
-  const [walking, setWalking] = useState(false);
-  const walkingStateRef = useRef(false);
-
-  useEffect(() => {
-    if (isTouchDevice) return;
-    const canvas = gl.domElement;
-    let dragging = false;
-    let lastX = 0;
-    let lastY = 0;
-
-    const onMouseDown = (e: MouseEvent) => {
-      if (e.button === 0 || e.button === 2) {
-        dragging = true;
-        lastX = e.clientX;
-        lastY = e.clientY;
-        canvas.style.cursor = "grabbing";
-        e.preventDefault();
-      }
-    };
-
-    const onMouseMove = (e: MouseEvent) => {
-      if (!dragging) return;
-      const dx = e.clientX - lastX;
-      const dy = e.clientY - lastY;
-      lastX = e.clientX;
-      lastY = e.clientY;
-      cameraYawRef.current -= dx * 0.005;
-      cameraPitchRef.current = Math.max(CAMERA_MIN_PITCH, Math.min(CAMERA_MAX_PITCH, cameraPitchRef.current + dy * 0.005));
-    };
-
-    const onMouseUp = () => {
-      if (dragging) {
-        dragging = false;
-        canvas.style.cursor = "grab";
-      }
-    };
-
-    const onContextMenu = (e: MouseEvent) => e.preventDefault();
-
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      cameraDistRef.current = Math.max(CAMERA_MIN_DIST, Math.min(CAMERA_MAX_DIST, cameraDistRef.current + e.deltaY * 0.01));
-    };
-
-    canvas.style.cursor = "grab";
-    canvas.addEventListener("mousedown", onMouseDown);
-    canvas.addEventListener("contextmenu", onContextMenu);
-    canvas.addEventListener("wheel", onWheel, { passive: false });
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-
-    return () => {
-      canvas.removeEventListener("mousedown", onMouseDown);
-      canvas.removeEventListener("contextmenu", onContextMenu);
-      canvas.removeEventListener("wheel", onWheel);
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
-      canvas.style.cursor = "";
-    };
-  }, [gl, isTouchDevice]);
-
-  useFrame((state, delta) => {
-    if (!groupRef.current) return;
-    const keys = getKeys();
-
-    if (isTouchDevice) {
-      cameraYawRef.current += touchLookState.yawDelta;
-      cameraPitchRef.current = Math.max(CAMERA_MIN_PITCH, Math.min(CAMERA_MAX_PITCH, cameraPitchRef.current + touchLookState.pitchDelta));
-      touchLookState.yawDelta = 0;
-      touchLookState.pitchDelta = 0;
-    }
-
-    let localX = 0;
-    let localZ = 0;
-
-    if (!inputDisabled) {
-      if (keys.forward) localZ += 1;
-      if (keys.backward) localZ -= 1;
-      if (keys.left) localX += 1;
-      if (keys.right) localX -= 1;
-      if (isTouchDevice) {
-        if (Math.abs(touchState.moveX) > 0.05) localX = -touchState.moveX;
-        if (Math.abs(touchState.moveZ) > 0.05) localZ = -touchState.moveZ;
-      }
-    }
-
-    const inputLen = Math.hypot(localX, localZ);
-    const hasInput = inputLen > 0.001;
-    if (hasInput) { localX /= inputLen; localZ /= inputLen; }
-
-    const yaw = cameraYawRef.current;
-    const cosY = Math.cos(yaw);
-    const sinY = Math.sin(yaw);
-    const worldX = localX * cosY + localZ * sinY;
-    const worldZ = -localX * sinY + localZ * cosY;
-
-    if (hasInput) {
-      const targetAngle = Math.atan2(worldX, worldZ);
-      const current = groupRef.current.rotation.y;
-      let diff = targetAngle - current;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      groupRef.current.rotation.y = current + diff * Math.min(1, delta * ROTATION_LERP);
-      facingRef.current = groupRef.current.rotation.y;
-    }
-
-    const targetVX = hasInput ? worldX * MOVE_SPEED : 0;
-    const targetVZ = hasInput ? worldZ * MOVE_SPEED : 0;
-
-    const rate = hasInput ? ACCEL : DECEL;
-    const dvx = targetVX - velocityRef.current.x;
-    const dvz = targetVZ - velocityRef.current.y;
-    const dvLen = Math.hypot(dvx, dvz);
-    if (dvLen > 0.001) {
-      const step = Math.min(rate * delta, dvLen);
-      velocityRef.current.x += (dvx / dvLen) * step;
-      velocityRef.current.y += (dvz / dvLen) * step;
-    } else {
-      velocityRef.current.x = targetVX;
-      velocityRef.current.y = targetVZ;
-    }
-
-    positionRef.current.x += velocityRef.current.x * delta;
-    positionRef.current.z += velocityRef.current.y * delta;
-
-    const speedSq = velocityRef.current.x ** 2 + velocityRef.current.y ** 2;
-    const isMoving = speedSq > 1.0;
-    if (isMoving !== walkingStateRef.current) {
-      walkingStateRef.current = isMoving;
-      setWalking(isMoving);
-    }
-
-    const wantJump = (!inputDisabled && keys.jump) || (isTouchDevice && touchState.jumpQueued);
-    if (wantJump && groundedRef.current) {
-      velocityYRef.current = JUMP_VELOCITY;
-      groundedRef.current = false;
-    }
-    if (isTouchDevice) touchState.jumpQueued = false;
-
-    velocityYRef.current += GRAVITY * delta;
-    positionRef.current.y += velocityYRef.current * delta;
-
-    if (positionRef.current.y < CHARACTER_Y_OFFSET) {
-      positionRef.current.y = CHARACTER_Y_OFFSET;
-      velocityYRef.current = 0;
-    }
-
-    resolveBlockCollisions(positionRef.current, blocks);
-    resolvePlayerCollisions(positionRef.current, myId, remotePositions.current);
-
-    const grounded = isGrounded(positionRef.current, blocks) && velocityYRef.current <= 0.01;
-    groundedRef.current = grounded;
-    if (grounded && velocityYRef.current < 0) velocityYRef.current = 0;
-
-    const bound = 95;
-    positionRef.current.x = Math.max(-bound, Math.min(bound, positionRef.current.x));
-    positionRef.current.z = Math.max(-bound, Math.min(bound, positionRef.current.z));
-    groupRef.current.position.copy(positionRef.current);
-
-    const camYaw = cameraYawRef.current;
-    const camPitch = cameraPitchRef.current;
-    const camDist = cameraDistRef.current;
-    const horizDist = camDist * Math.cos(camPitch);
-    const vertDist = camDist * Math.sin(camPitch);
-    const lookX = positionRef.current.x;
-    const lookY = positionRef.current.y + CAMERA_LOOK_OFFSET;
-    const lookZ = positionRef.current.z;
-    const targetCamX = lookX - Math.sin(camYaw) * horizDist;
-    const targetCamY = lookY + vertDist;
-    const targetCamZ = lookZ - Math.cos(camYaw) * horizDist;
-
-    const camLerp = Math.min(1, delta * CAMERA_LERP);
-    state.camera.position.x += (targetCamX - state.camera.position.x) * camLerp;
-    state.camera.position.y += (Math.max(0.5, targetCamY) - state.camera.position.y) * camLerp;
-    state.camera.position.z += (targetCamZ - state.camera.position.z) * camLerp;
-    state.camera.lookAt(lookX, lookY, lookZ);
-
-    const now = performance.now();
-    const sinceLast = now - lastBroadcastRef.current;
-    const shouldFast = needsBroadcastRef.current && sinceLast >= BROADCAST_INTERVAL;
-    const shouldHeartbeat = sinceLast >= HEARTBEAT_INTERVAL;
-
-    if (shouldFast || shouldHeartbeat) {
-      lastBroadcastRef.current = now;
-      needsBroadcastRef.current = false;
-      onMove([positionRef.current.x, positionRef.current.y, positionRef.current.z], facingRef.current);
-    }
-  });
-
-  return (
-    <group ref={groupRef} position={safeSpawn}>
-      {chatMessage && <ChatBubble text={chatMessage.text} />}
-      <Character config={config} hideAccessory walking={walking} />
-    </group>
-  );
-}
-
-function Ground({ color }: { color: string }) {
-  return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-      <planeGeometry args={[200, 200]} />
-      <meshStandardMaterial color={color} roughness={0.95} />
-    </mesh>
-  );
-}
-
-function WorldScene({
-  config, userId, username, world, others, chatMessages, onMove, inputDisabled, isTouchDevice,
-}: {
+type Props = {
   config: AvatarConfig;
   userId: string;
   username: string;
   world: World;
-  others: RemotePlayerData[];
-  chatMessages: ChatMessage[];
-  onMove: (pos: [number, number, number], rotY: number) => void;
   inputDisabled: boolean;
   isTouchDevice: boolean;
-}) {
-  const layout = getLayout(world.layout);
-  const blocks = layout.blocks;
-  const remotePositions = useRef<Map<string, THREE.Vector3>>(new Map());
+};
 
-  const latestFor = (id: string): ChatMessage | null => {
-    let best: ChatMessage | null = null;
-    for (const m of chatMessages) {
-      if (m.userId !== id) continue;
-      if (!best || m.expiresAt > best.expiresAt) best = m;
-    }
-    return best;
-  };
+export default function LumberyardGame({
+  config,
+  userId,
+  username,
+  world,
+  inputDisabled,
+  isTouchDevice,
+}: Props) {
+  const [progress, setProgress] = useState<LumberyardProgress>({
+    lumbercoins: 0,
+    currentAxe: "rusty",
+    treesChopped: 0,
+    logsSold: 0,
+  });
+  const [loaded, setLoaded] = useState(false);
+  const [musicOn, setMusicOn] = useState(true);
 
-  return (
-    <>
-      <Sky sunPosition={[100, 50, 100]} />
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[20, 30, 20]} intensity={1.15} castShadow shadow-mapSize-width={2048} shadow-mapSize-height={2048} shadow-camera-left={-50} shadow-camera-right={50} shadow-camera-top={50} shadow-camera-bottom={-50} />
-      <hemisphereLight args={["#ffffff", "#88aa88", 0.4]} />
-      <Ground color={layout.groundColor} />
-      {blocks.map((b, i) => (
-        <mesh key={i} position={b.position} castShadow receiveShadow>
-          <boxGeometry args={b.size} />
-          <meshStandardMaterial color={b.color} roughness={0.75} />
-        </mesh>
-      ))}
-      <LocalPlayer config={config} myId={userId} blocks={blocks} onMove={onMove} chatMessage={latestFor(userId)} inputDisabled={inputDisabled} remotePositions={remotePositions} isTouchDevice={isTouchDevice} />
-      {others.map((p) => (
-        <RemotePlayer key={p.id} data={p} chatMessage={latestFor(p.id)} remotePositions={remotePositions} />
-      ))}
-    </>
+  const [trees, setTrees] = useState<TreeState[]>(
+    TREE_SPAWNS.map((s) => ({ spawnId: s.id, damage: 0, deadAt: null }))
   );
-}
 
-function Joystick() {
-  const baseRef = useRef<HTMLDivElement>(null);
-  const [active, setActive] = useState(false);
-  const [knobPos, setKnobPos] = useState({ x: 0, y: 0 });
-  const pointerIdRef = useRef<number | null>(null);
-  const baseCenterRef = useRef({ x: 0, y: 0 });
-  const maxDist = 55;
+  const [logs, setLogs] = useState<LogData[]>([]);
 
-  const handlePointerDown = (e: React.PointerEvent) => {
-    e.preventDefault();
-    if (!baseRef.current) return;
-    const rect = baseRef.current.getBoundingClientRect();
-    baseCenterRef.current = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-    pointerIdRef.current = e.pointerId;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    setActive(true);
-    updateFromPointer(e.clientX, e.clientY);
-  };
+  const [equippedLog, setEquippedLog] = useState<{
+    id: string;
+    value: number;
+    treeType: string;
+  } | null>(null);
 
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (pointerIdRef.current !== e.pointerId) return;
-    e.preventDefault();
-    updateFromPointer(e.clientX, e.clientY);
-  };
+  const playerPosRef = useRef<[number, number, number]>(LUMBERYARD_SPAWN);
+  const playerRotYRef = useRef(0);
 
-  const handlePointerUp = (e: React.PointerEvent) => {
-    if (pointerIdRef.current !== e.pointerId) return;
-    pointerIdRef.current = null;
-    setActive(false);
-    setKnobPos({ x: 0, y: 0 });
-    touchState.moveX = 0;
-    touchState.moveZ = 0;
-  };
+  const [shopOpen, setShopOpen] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const messageTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const updateFromPointer = (clientX: number, clientY: number) => {
-    const dx = clientX - baseCenterRef.current.x;
-    const dy = clientY - baseCenterRef.current.y;
-    const dist = Math.hypot(dx, dy);
-    const clamped = Math.min(dist, maxDist);
-    const nx = dist > 0 ? (dx / dist) * clamped : 0;
-    const ny = dist > 0 ? (dy / dist) * clamped : 0;
-    setKnobPos({ x: nx, y: ny });
-    touchState.moveX = nx / maxDist;
-    touchState.moveZ = ny / maxDist;
-  };
+  const swingTriggerRef = useRef(0);
 
-  return (
-    <div ref={baseRef} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp}
-      className="fixed bottom-6 left-6 rounded-full border-2 border-white/30 backdrop-blur touch-none select-none z-30"
-      style={{ width: 140, height: 140, background: active ? "rgba(108, 60, 224, 0.25)" : "rgba(0, 0, 0, 0.35)" }}>
-      <div className="absolute rounded-full bg-white/80 shadow-lg pointer-events-none"
-        style={{ width: 60, height: 60, left: "50%", top: "50%", transform: `translate(calc(-50% + ${knobPos.x}px), calc(-50% + ${knobPos.y}px))`, transition: active ? "none" : "transform 0.15s ease" }} />
-    </div>
-  );
-}
+  const currentAxe = getAxe(progress.currentAxe);
+  const currentAxeIdRef = useRef<AxeId>(progress.currentAxe);
 
-function JumpButton() {
-  const [pressed, setPressed] = useState(false);
-  const down = (e: React.PointerEvent) => { e.preventDefault(); touchState.jumpQueued = true; setPressed(true); };
-  const up = () => setPressed(false);
-  return (
-    <button onPointerDown={down} onPointerUp={up} onPointerCancel={up}
-      className={`fixed bottom-6 right-6 rounded-full border-2 border-white/30 backdrop-blur touch-none select-none z-30 flex items-center justify-center text-white text-2xl font-black transition ${pressed ? "scale-95 bg-[#22C55E]/60" : "bg-black/40"}`}
-      style={{ width: 90, height: 90 }}>⬆️</button>
-  );
-}
+  useEffect(() => {
+    currentAxeIdRef.current = progress.currentAxe;
+  }, [progress.currentAxe]);
 
-function TouchLookArea({ onLook }: { onLook: (dx: number, dy: number) => void }) {
-  const pointerIdRef = useRef<number | null>(null);
-  const lastRef = useRef({ x: 0, y: 0 });
-  const down = (e: React.PointerEvent) => {
-    if (pointerIdRef.current !== null) return;
-    pointerIdRef.current = e.pointerId;
-    lastRef.current = { x: e.clientX, y: e.clientY };
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  };
-  const move = (e: React.PointerEvent) => {
-    if (pointerIdRef.current !== e.pointerId) return;
-    const dx = e.clientX - lastRef.current.x;
-    const dy = e.clientY - lastRef.current.y;
-    lastRef.current = { x: e.clientX, y: e.clientY };
-    onLook(dx, dy);
-  };
-  const up = (e: React.PointerEvent) => {
-    if (pointerIdRef.current !== e.pointerId) return;
-    pointerIdRef.current = null;
-  };
-  return <div onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} className="fixed top-0 right-0 w-1/2 h-full touch-none select-none z-20" style={{ background: "transparent" }} />;
-}
-
-export default function WorldPage() {
-  const params = useParams();
-  const worldId = (params.id as string) || "";
-
-  const [user, setUser] = useState<User | null>(null);
-  const [world, setWorld] = useState<World | null>(null);
-  const [notFound, setNotFound] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const [isTouchDevice, setIsTouchDevice] = useState(false);
-  const [others, setOthers] = useState<RemotePlayerData[]>([]);
+  const [others, setOthers] = useState<RemoteLumberData[]>([]);
   const [onlineCount, setOnlineCount] = useState(1);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-
-  const [chatOpen, setChatOpen] = useState(false);
-  const [draft, setDraft] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-  const lastChatSentRef = useRef(0);
-
-  const [liked, setLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(0);
-  const [liking, setLiking] = useState(false);
-
   const channelRef = useRef<any>(null);
-  const lobbyRef = useRef<any>(null);
-  const localPosRef = useRef<{ pos: [number, number, number]; rotY: number }>({ pos: [0, CHARACTER_Y_OFFSET, 0], rotY: 0 });
 
   useEffect(() => {
-    const touch = typeof window !== "undefined" && ("ontouchstart" in window || navigator.maxTouchPoints > 0);
-    setIsTouchDevice(touch);
+    (async () => {
+      const p = await loadProgress();
+      setProgress(p);
+      setLoaded(true);
+    })();
   }, []);
 
   useEffect(() => {
-    const u = getCurrentUser();
-    setUser(u);
-    setMounted(true);
-    fetchWorldById(worldId).then((w) => {
-      if (!w) { setNotFound(true); return; }
-      setWorld(w);
-      setLikeCount(w.likes);
-      hasLikedWorld(worldId).then((yes) => setLiked(yes));
-      if (typeof window === "undefined") return;
-      const visitKey = `voxelio-visited-${worldId}`;
-      if (sessionStorage.getItem(visitKey) !== "1") {
-        sessionStorage.setItem(visitKey, "1");
-        incrementWorldVisits(worldId);
-      }
-    });
-  }, [worldId]);
+    const handleFirstInteraction = () => {
+      if (musicOn) startAmbientMusic();
+      window.removeEventListener("click", handleFirstInteraction);
+      window.removeEventListener("keydown", handleFirstInteraction);
+    };
+    window.addEventListener("click", handleFirstInteraction);
+    window.addEventListener("keydown", handleFirstInteraction);
 
-  useEffect(() => {
-    if (!user || !worldId) return;
-    const lobby = supabase.channel("world-lobby", { config: { presence: { key: user.id } } });
-    lobby.subscribe((status: string) => {
-      if (status === "SUBSCRIBED") {
-        lobby.track({ userId: user.id, username: user.username, worldId, joinedAt: Date.now() });
-      }
-    });
-    lobbyRef.current = lobby;
     return () => {
-      lobby.untrack();
-      supabase.removeChannel(lobby);
-      lobbyRef.current = null;
+      window.removeEventListener("click", handleFirstInteraction);
+      window.removeEventListener("keydown", handleFirstInteraction);
+      stopAmbientMusic();
     };
-  }, [user, worldId]);
+  }, [musicOn]);
 
-  // ===== Award "Played with the Owner" =====
-  useEffect(() => {
-    if (!ENABLE_OWNER_BADGE_DETECTION) return;
-    if (!user || !worldId) return;
-    if (user.username.toLowerCase() === "voxelio") return;
-    if (user.playedWithOwner) return;
-
-    let cancelled = false;
-    let awarded = false;
-
-    const checkOwner = async () => {
-      if (cancelled || awarded) return;
-      try {
-        const candidates = [channelRef.current, lobbyRef.current].filter(
-          (c) => c && typeof c.presenceState === "function"
-        );
-        let ownerPresent = false;
-
-        for (const ch of candidates) {
-          let state: Record<string, any[]> = {};
-          try { state = ch.presenceState() as Record<string, any[]>; } catch { continue; }
-          if (!state || typeof state !== "object") continue;
-
-          for (const key of Object.keys(state)) {
-            const entries = state[key];
-            if (!Array.isArray(entries)) continue;
-            for (const e of entries) {
-              if (!e || typeof e !== "object") continue;
-              const name = String((e as any).username || "").toLowerCase();
-              const wid = (e as any).worldId;
-              if (name === "voxelio" && (!wid || wid === worldId)) {
-                ownerPresent = true;
-                break;
-              }
-            }
-            if (ownerPresent) break;
-          }
-          if (ownerPresent) break;
-        }
-
-        if (ownerPresent) {
-          awarded = true;
-          try {
-            await awardPlayedWithOwner(user.id);
-          } catch {
-            awarded = false;
-          }
-        }
-      } catch (err) {
-        if (typeof console !== "undefined") console.warn("[owner-badge] check failed:", err);
-      }
-    };
-
-    const interval = setInterval(checkOwner, 3000);
-    checkOwner();
-
-    return () => { cancelled = true; clearInterval(interval); };
-  }, [user, worldId]);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const active = document.activeElement as HTMLElement | null;
-      const inInput = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA");
-      if ((e.key === "t" || e.key === "T") && !chatOpen && !inInput) { e.preventDefault(); setChatOpen(true); }
-      else if (e.key === "Escape" && chatOpen) { e.preventDefault(); setChatOpen(false); setDraft(""); }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [chatOpen]);
-
-  useEffect(() => { if (chatOpen && inputRef.current) inputRef.current.focus(); }, [chatOpen]);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const now = Date.now();
-      setChatMessages((prev) => prev.filter((m) => m.expiresAt > now));
-    }, 500);
-    return () => clearInterval(timer);
+  const showMessage = useCallback((text: string, durationMs = 1800) => {
+    setMessage(text);
+    if (messageTimeoutRef.current) clearTimeout(messageTimeoutRef.current);
+    messageTimeoutRef.current = setTimeout(() => setMessage(null), durationMs);
   }, []);
 
-  const sendChat = useCallback(() => {
-    const me = user;
-    const text = draft.trim();
-    if (!me || !text) { setChatOpen(false); setDraft(""); return; }
-    const now = Date.now();
-    if (now - lastChatSentRef.current < CHAT_MIN_INTERVAL_MS) return;
-    lastChatSentRef.current = now;
-    const filtered = filterMessage(text.slice(0, CHAT_MAX_LENGTH));
-    const id = typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const msg: ChatMessage = { id, userId: me.id, username: me.username, text: filtered, expiresAt: Date.now() + CHAT_LIFETIME_MS };
-    setChatMessages((prev) => [...prev, msg]);
-    const channel = channelRef.current;
-    if (channel) {
-      channel.send({ type: "broadcast", event: "chat", payload: { id: msg.id, userId: msg.userId, username: msg.username, text: msg.text } });
-    }
-    setDraft(""); setChatOpen(false);
-  }, [draft, user]);
-
-  const cancelChat = useCallback(() => { setChatOpen(false); setDraft(""); }, []);
-
-  const handleLike = useCallback(async () => {
-    if (!user || liking) return;
-    setLiking(true);
-    const wasLiked = liked;
-    const prevCount = likeCount;
-    setLiked(!wasLiked);
-    setLikeCount(wasLiked ? Math.max(0, prevCount - 1) : prevCount + 1);
-    const ok = wasLiked ? await unlikeWorld(worldId) : await likeWorld(worldId);
-    if (!ok) { setLiked(wasLiked); setLikeCount(prevCount); }
-    setLiking(false);
-  }, [user, liking, liked, likeCount, worldId]);
-
-  const handleMove = useCallback((pos: [number, number, number], rotY: number) => {
-    localPosRef.current = { pos, rotY };
-    const channel = channelRef.current;
-    const me = user;
-    if (!channel || !me) return;
-    channel.send({ type: "broadcast", event: "move", payload: { id: me.id, username: me.username, displayId: me.displayId ?? null, avatarConfig: me.avatarConfig, pos, rotY } });
-  }, [user]);
-
   useEffect(() => {
-    if (!user || !worldId) return;
-    const channel = supabase.channel(`world-${worldId}`, { config: { broadcast: { self: false }, presence: { key: user.id } } });
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setTrees((prev) =>
+        prev.map((t) => {
+          if (
+            t.deadAt &&
+            now - t.deadAt >=
+              getTreeType(
+                TREE_SPAWNS.find((s) => s.id === t.spawnId)?.type || "small"
+              ).regrowMs
+          ) {
+            return { ...t, damage: 0, deadAt: null };
+          }
+          return t;
+        })
+      );
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
-    channel
-      .on("broadcast", { event: "move" }, ({ payload }) => {
-        if (!payload || payload.id === user.id) return;
-        setOthers((prev) => {
-          const existing = prev.findIndex((p) => p.id === payload.id);
-          const next: RemotePlayerData = { id: payload.id, username: payload.username, displayId: payload.displayId, avatarConfig: payload.avatarConfig, targetPos: payload.pos, targetRotY: payload.rotY, lastSeen: Date.now() };
-          if (existing >= 0) { const copy = [...prev]; copy[existing] = next; return copy; }
-          return [...prev, next];
-        });
-      })
-      .on("broadcast", { event: "chat" }, ({ payload }) => {
-        if (!payload || payload.userId === user.id) return;
-        setChatMessages((prev) => {
-          if (prev.some((m) => m.id === payload.id)) return prev;
-          return [...prev, { id: payload.id, userId: payload.userId, username: payload.username, text: filterMessage(String(payload.text || "").slice(0, CHAT_MAX_LENGTH)), expiresAt: Date.now() + CHAT_LIFETIME_MS }];
-        });
-      })
-      .on("presence", { event: "sync" }, () => {
-        const state = channel.presenceState();
-        setOnlineCount(Object.keys(state).length);
-        const me = localPosRef.current;
-        channel.send({ type: "broadcast", event: "move", payload: { id: user.id, username: user.username, displayId: user.displayId ?? null, avatarConfig: user.avatarConfig, pos: me.pos, rotY: me.rotY } });
-      })
-      .subscribe((status: string) => {
-        if (status === "SUBSCRIBED") {
-          channel.track({ id: user.id, username: user.username, worldId });
+  // Multiplayer attach
+  useEffect(() => {
+    if (!world?.id || !userId) return;
+
+    const channelName = `world-${world.id}`;
+    console.log("[useEffect] attaching to channel:", channelName);
+
+    const state = ensureChannel(
+      channelName,
+      userId,
+      username,
+      config,
+      () => ({
+        pos: playerPosRef.current,
+        rotY: playerRotYRef.current,
+        axeId: currentAxeIdRef.current,
+      }),
+      world.id
+    );
+
+    channelRef.current = state.channel;
+
+    const onPlayer = (data: RemoteLumberData) => {
+      console.log("[subscriber:onPlayer] got remote player:", data.username);
+      setOthers((prev) => {
+        const existing = prev.findIndex((p) => p.id === data.id);
+        if (existing >= 0) {
+          const copy = [...prev];
+          copy[existing] = data;
+          return copy;
         }
+        return [...prev, data];
       });
+    };
 
-    channelRef.current = channel;
+    const onPresence = (count: number) => {
+      console.log("[subscriber:onPresence] count:", count);
+      setOnlineCount(count);
+    };
+
+    state.subscribers.add(onPlayer);
+    state.presenceSubscribers.add(onPresence);
+    console.log("[useEffect] subscribers now:", state.subscribers.size);
 
     const staleTimer = setInterval(() => {
       const now = Date.now();
       setOthers((prev) => prev.filter((p) => now - p.lastSeen < STALE_TIMEOUT));
-    }, 2000);
+    }, 1500);
 
     return () => {
       clearInterval(staleTimer);
-      channel.untrack();
-      supabase.removeChannel(channel);
-      channelRef.current = null;
+      state.subscribers.delete(onPlayer);
+      state.presenceSubscribers.delete(onPresence);
     };
-  }, [user, worldId, handleMove]);
+  }, [world?.id, userId, username, config]);
 
-  const touchLook = useCallback((dx: number, dy: number) => {
-    touchLookState.yawDelta -= dx * 0.005;
-    touchLookState.pitchDelta += dy * 0.005;
-  }, []);
+  // Position broadcast
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const channel = channelRef.current;
+      if (!channel) return;
+      channel.send({
+        type: "broadcast",
+        event: "lumber-move",
+        payload: {
+          id: userId,
+          username,
+          displayId: null,
+          avatarConfig: config,
+          currentAxeId: currentAxeIdRef.current,
+          pos: playerPosRef.current,
+          rotY: playerRotYRef.current,
+        },
+      });
+    }, BROADCAST_INTERVAL);
 
-  if (!mounted) return <div className="fixed inset-0 bg-black flex items-center justify-center text-white">Loading…</div>;
+    return () => clearInterval(interval);
+  }, [userId, username, config]);
 
-  if (!user) {
+  const handleChop = useCallback(
+    (spawnId: string) => {
+      const spawn = TREE_SPAWNS.find((s) => s.id === spawnId);
+      if (!spawn) return;
+
+      const tree = trees.find((t) => t.spawnId === spawnId);
+      if (!tree || tree.deadAt) return;
+
+      const type = getTreeType(spawn.type);
+      const axeIndex = ["rusty", "iron", "steel", "gold", "diamond"].indexOf(
+        progress.currentAxe
+      );
+      const minIndex = ["rusty", "iron", "steel", "gold", "diamond"].indexOf(
+        type.minAxe
+      );
+
+      if (axeIndex < minIndex) {
+        showMessage(`🔒 Need a ${getAxe(type.minAxe).name} to chop ${type.name}!`);
+        playError();
+        return;
+      }
+
+      swingTriggerRef.current += 1;
+      playChop();
+
+      const channel = channelRef.current;
+      if (channel) {
+        channel.send({
+          type: "broadcast",
+          event: "lumber-chop",
+          payload: { id: userId },
+        });
+      }
+
+      const newDamage = tree.damage + currentAxe.damage;
+      const isDead = newDamage >= type.hp;
+
+      setTrees((prev) =>
+        prev.map((t) =>
+          t.spawnId === spawnId
+            ? { ...t, damage: newDamage, deadAt: isDead ? Date.now() : null }
+            : t
+        )
+      );
+
+      if (isDead) {
+        setTimeout(() => playTreeFall(), 150);
+
+        const logId = `log-${spawnId}-${Date.now()}`;
+        const logPos: [number, number, number] = [
+          spawn.position[0] + (Math.random() - 0.5) * 2,
+          0.4,
+          spawn.position[2] + (Math.random() - 0.5) * 2,
+        ];
+
+        setLogs((prev) => [
+          ...prev,
+          {
+            id: logId,
+            position: logPos,
+            value: type.logValue,
+            treeType: type.name,
+          },
+        ]);
+
+        const newProgress = {
+          ...progress,
+          treesChopped: progress.treesChopped + 1,
+        };
+        setProgress(newProgress);
+        saveProgress(newProgress);
+
+        showMessage(`🌲 ${type.name} chopped! +1 log`);
+      }
+    },
+    [trees, progress, currentAxe, showMessage, userId]
+  );
+
+  const tryPickupLog = useCallback(() => {
+    if (equippedLog) {
+      showMessage("🪵 Already carrying a log — sell it first!");
+      return;
+    }
+
+    const [px, , pz] = playerPosRef.current;
+
+    let nearest: LogData | null = null;
+    let nearestDist = LOG_PICKUP_RADIUS;
+    for (const log of logs) {
+      const dx = log.position[0] - px;
+      const dz = log.position[2] - pz;
+      const d = Math.hypot(dx, dz);
+      if (d < nearestDist) {
+        nearest = log;
+        nearestDist = d;
+      }
+    }
+
+    if (!nearest) {
+      showMessage("🚶 Walk closer to a log to pick it up");
+      return;
+    }
+
+    setEquippedLog({
+      id: nearest.id,
+      value: nearest.value,
+      treeType: nearest.treeType,
+    });
+    setLogs((prev) => prev.filter((l) => l.id !== nearest!.id));
+    showMessage(`🪵 Picked up ${nearest.treeType} log`);
+    playPickup();
+  }, [equippedLog, logs, showMessage]);
+
+  const trySellLog = useCallback(() => {
+    if (!equippedLog) {
+      showMessage("🪵 You're not carrying a log");
+      return;
+    }
+
+    const [px, , pz] = playerPosRef.current;
+    const [sx, , sz] = SAWMILL_POSITION;
+    const dist = Math.hypot(px - sx, pz - sz);
+
+    if (dist > SAWMILL_RADIUS) {
+      showMessage("🏭 Walk to the sawmill to sell");
+      return;
+    }
+
+    const earned = equippedLog.value;
+    const newProgress: LumberyardProgress = {
+      ...progress,
+      lumbercoins: progress.lumbercoins + earned,
+      logsSold: progress.logsSold + 1,
+    };
+    setProgress(newProgress);
+    saveProgress(newProgress);
+    showMessage(`💰 Sold ${equippedLog.treeType} for ${formatCoins(earned)} 🪙`);
+    playCoin();
+    setEquippedLog(null);
+  }, [equippedLog, progress, showMessage]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (inputDisabled) return;
+      const active = document.activeElement;
+      if (
+        active &&
+        (active.tagName === "INPUT" || active.tagName === "TEXTAREA")
+      )
+        return;
+
+      if (e.key === "e" || e.key === "E") {
+        e.preventDefault();
+        if (equippedLog) trySellLog();
+        else tryPickupLog();
+      }
+      if (e.key === "Escape") setShopOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [inputDisabled, equippedLog, tryPickupLog, trySellLog]);
+
+  const handleBuy = useCallback(
+    async (axeId: AxeId, price: number) => {
+      const result = await buyAxe(axeId, price);
+      if (result.success && result.progress) {
+        setProgress(result.progress);
+        showMessage(`✅ Bought ${getAxe(axeId).name}!`);
+        playCoin();
+        setShopOpen(false);
+      } else {
+        showMessage(`❌ ${result.error}`);
+        playError();
+      }
+    },
+    [showMessage]
+  );
+
+  const handlePositionUpdate = useCallback(
+    (pos: [number, number, number], rotY: number) => {
+      playerPosRef.current = pos;
+      playerRotYRef.current = rotY;
+    },
+    []
+  );
+
+  const canDamageTree = useCallback(
+    (typeId: string) => {
+      const type = getTreeType(typeId);
+      const axeIndex = ["rusty", "iron", "steel", "gold", "diamond"].indexOf(
+        progress.currentAxe
+      );
+      const minIndex = ["rusty", "iron", "steel", "gold", "diamond"].indexOf(
+        type.minAxe
+      );
+      return axeIndex >= minIndex;
+    },
+    [progress.currentAxe]
+  );
+
+  const toggleMusic = () => {
+    if (musicOn) {
+      stopAmbientMusic();
+      setMusicOn(false);
+    } else {
+      startAmbientMusic();
+      setMusicOn(true);
+    }
+  };
+
+  if (!loaded) {
     return (
-      <div className="fixed inset-0 bg-[#1A1A2E] flex flex-col items-center justify-center text-white p-6">
-        <div className="text-6xl mb-4">🔒</div>
-        <h1 className="text-2xl font-black mb-2">Sign in to play</h1>
-        <p className="text-sm text-white/70 mb-6">You need an account to enter worlds.</p>
-        <div className="flex gap-2">
-          <Link href="/signin" className="bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white font-bold text-sm px-6 py-2.5 rounded border border-[#4A1FA8] hover:from-[#8B5FFF] hover:to-[#6A3FD7] transition">Sign In</Link>
-          <Link href="/games" className="bg-white/10 text-white font-bold text-sm px-6 py-2.5 rounded border border-white/20 hover:bg-white/20 transition">← Back</Link>
-        </div>
+      <div className="absolute inset-0 bg-black flex items-center justify-center text-white">
+        Loading lumberyard…
       </div>
     );
   }
-
-  if (notFound) {
-    return (
-      <div className="fixed inset-0 bg-[#1A1A2E] flex flex-col items-center justify-center text-white p-6">
-        <div className="text-6xl mb-4">🌍</div>
-        <h1 className="text-2xl font-black mb-2">World Not Found</h1>
-        <p className="text-sm text-white/70 mb-6">This world doesn't exist or was removed.</p>
-        <Link href="/games" className="bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white font-bold text-sm px-6 py-2.5 rounded border border-[#4A1FA8] hover:from-[#8B5FFF] hover:to-[#6A3FD7] transition">← Back to Games</Link>
-      </div>
-    );
-  }
-
-  if (!world) return <div className="fixed inset-0 bg-black flex items-center justify-center text-white">Loading world…</div>;
 
   return (
-    <div className="fixed inset-0 bg-black overflow-hidden">
-      {world.layout === "obby" ? (
-        <ObbyGame
-          config={user.avatarConfig}
-          userId={user.id}
-          username={user.username}
-          world={world}
-          inputDisabled={chatOpen}
-          isTouchDevice={isTouchDevice}
-        />
-      ) : world.layout === "lumberyard" ? (
-        <LumberyardGame
-          config={user.avatarConfig}
-          userId={user.id}
-          username={user.username}
-          world={world}
-          inputDisabled={chatOpen}
-          isTouchDevice={isTouchDevice}
-        />
-      ) : (
-        <KeyboardControls map={KEY_MAP}>
-          <Canvas shadows camera={{ position: [0, 5, 9], fov: 55 }} dpr={[1, 2]} style={{ background: "#87CEEB" }}>
-            <WorldScene config={user.avatarConfig} userId={user.id} username={user.username} world={world} others={others} chatMessages={chatMessages} onMove={handleMove} inputDisabled={chatOpen} isTouchDevice={isTouchDevice} />
-          </Canvas>
-        </KeyboardControls>
-      )}
+    <div className="absolute inset-0">
+      <KeyboardControls map={KEY_MAP}>
+        <Canvas
+          shadows
+          camera={{ position: [0, 6, 30], fov: 60 }}
+          dpr={[1, 2]}
+          style={{ background: "#87CEEB" }}
+        >
+          <Physics gravity={[0, -30, 0]} timeStep="vary">
+            <Suspense fallback={null}>
+              <Sky sunPosition={[100, 50, 100]} />
+              <ambientLight intensity={0.6} />
+              <directionalLight
+                position={[20, 40, 20]}
+                intensity={1.2}
+                castShadow
+                shadow-mapSize-width={2048}
+                shadow-mapSize-height={2048}
+                shadow-camera-left={-80}
+                shadow-camera-right={80}
+                shadow-camera-top={80}
+                shadow-camera-bottom={-80}
+              />
+              <hemisphereLight args={["#ffffff", "#88aa88", 0.4]} />
 
-      {isTouchDevice && !chatOpen && world.layout !== "obby" && world.layout !== "lumberyard" && (<><TouchLookArea onLook={touchLook} /><Joystick /><JumpButton /></>)}
+              <RigidBody type="fixed" colliders="cuboid">
+                <mesh position={[0, -0.5, 0]} receiveShadow>
+                  <boxGeometry
+                    args={[WORLD_BOUNDS * 2, 1, WORLD_BOUNDS * 2]}
+                  />
+                  <meshStandardMaterial color="#65A30D" roughness={0.95} />
+                </mesh>
+              </RigidBody>
 
-      <div className="absolute top-3 left-3 flex items-center gap-2 z-30">
-        <Link href="/games" className="bg-black/60 hover:bg-black/80 backdrop-blur text-white text-xs font-bold px-3 py-2 rounded border border-white/20">← Exit</Link>
-        <div className="bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs hidden sm:flex items-center gap-2">
-          <span className="text-lg leading-none">{world.thumbnailEmoji}</span>
-          <div className="leading-tight"><div className="font-bold">{world.name}</div><div className="text-[10px] text-white/60">{world.category}</div></div>
+              {TREE_SPAWNS.map((spawn) => {
+                const state = trees.find((t) => t.spawnId === spawn.id);
+                if (!state || state.deadAt) return null;
+                return (
+                  <Tree
+                    key={spawn.id}
+                    spawn={spawn}
+                    currentDamage={state.damage}
+                    onClick={handleChop}
+                    canDamage={canDamageTree(spawn.type)}
+                  />
+                );
+              })}
+
+              {logs.map((log) => {
+                const [px, , pz] = playerPosRef.current;
+                const d = Math.hypot(
+                  log.position[0] - px,
+                  log.position[2] - pz
+                );
+                return (
+                  <Log
+                    key={log.id}
+                    log={log}
+                    canPickup={d < LOG_PICKUP_RADIUS && !equippedLog}
+                    onPickup={() => {}}
+                  />
+                );
+              })}
+
+              <Sawmill />
+
+              <LumberyardPlayer
+                config={config}
+                spawnPosition={LUMBERYARD_SPAWN}
+                inputDisabled={inputDisabled || shopOpen}
+                isTouchDevice={isTouchDevice}
+                currentAxeId={progress.currentAxe}
+                onPositionUpdate={handlePositionUpdate}
+                swingTriggerRef={swingTriggerRef}
+              />
+
+              {others.map((p) => (
+                <RemoteLumberPlayer key={p.id} data={p} />
+              ))}
+            </Suspense>
+          </Physics>
+        </Canvas>
+      </KeyboardControls>
+
+      <LumberHud
+        lumbercoins={progress.lumbercoins}
+        currentAxe={progress.currentAxe}
+        equippedLog={equippedLog}
+        onOpenShop={() => setShopOpen(true)}
+        message={message}
+      />
+
+      <div className="absolute top-3 right-3 z-30 flex flex-col gap-2 items-end">
+        <div className="bg-black/70 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs flex items-center gap-2">
+          <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+          <strong>{onlineCount}</strong>
+          <span className="text-white/60">online</span>
         </div>
-      </div>
-
-      <div className="absolute top-3 right-3 flex items-center gap-2 z-30">
-        <button onClick={handleLike} disabled={liking} title={liked ? "Unlike this world" : "Like this world"}
-          className={`backdrop-blur px-3 py-2 rounded border text-white text-xs font-bold flex items-center gap-2 transition ${liked ? "bg-pink-500/80 border-pink-300 hover:bg-pink-500" : "bg-black/60 border-white/20 hover:bg-black/80"} ${liking ? "opacity-70 cursor-wait" : ""}`}>
-          <span>{liked ? "❤️" : "🤍"}</span><span className="hidden sm:inline">{likeCount}</span>
-        </button>
-        <div className="bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs flex items-center gap-2">
-          <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" /><strong>{onlineCount}</strong>
-        </div>
-        {isTouchDevice && (
-          <button onClick={() => setChatOpen(true)} className="bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs font-bold" title="Open chat">💬</button>
+        {others.length > 0 && (
+          <div className="bg-black/70 backdrop-blur rounded border border-white/20 px-3 py-2 text-white/80 text-[11px] max-w-[180px] space-y-1">
+            <p className="font-bold text-white/60 mb-1">In this world</p>
+            {others.slice(0, 6).map((p) => (
+              <p key={p.id} className="truncate">
+                • {p.username}
+              </p>
+            ))}
+            {others.length > 6 && (
+              <p className="text-white/40">+{others.length - 6} more</p>
+            )}
+          </div>
         )}
-        <div className="hidden md:flex bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs items-center gap-2">
-          <span className="font-bold inline-flex items-center">{user.username}<AccountBadge username={user.username} userId={user.id} size={12} /></span>
-          <span className="text-[#FFD700] font-bold">{formatVoxbux(user.voxbux)}</span>
-        </div>
       </div>
 
-      {world.layout !== "obby" && world.layout !== "lumberyard" && (
-        <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1 hidden md:block z-30">
-          <p className="font-bold mb-1">🎮 Controls</p>
-          <p><kbd className="bg-white/10 px-1 rounded">W</kbd> <kbd className="bg-white/10 px-1 rounded">A</kbd> <kbd className="bg-white/10 px-1 rounded">S</kbd> <kbd className="bg-white/10 px-1 rounded">D</kbd> — Move</p>
-          <p><kbd className="bg-white/10 px-1 rounded">Space</kbd> — Jump</p>
-          <p className="text-white/70">🖱️ <strong>Drag</strong> to look around · <strong>Scroll</strong> to zoom</p>
-          <p><kbd className="bg-white/10 px-1 rounded">T</kbd> — Chat</p>
-        </div>
-      )}
+      <button
+        onClick={toggleMusic}
+        className="fixed bottom-6 right-6 md:bottom-6 md:right-6 z-40 w-12 h-12 rounded-full bg-black/70 border-2 border-white/30 backdrop-blur flex items-center justify-center text-xl hover:bg-black/90 transition"
+        title={musicOn ? "Mute music" : "Unmute music"}
+      >
+        {musicOn ? "🔊" : "🔇"}
+      </button>
 
-      {others.length > 0 && (
-        <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1 max-w-[180px] hidden md:block z-30">
-          <p className="font-bold mb-1">👥 In this world</p>
-          {others.slice(0, 8).map((p) => (
-            <p key={p.id} className="truncate text-white/80 flex items-center gap-1"><span className="truncate">• {p.username}</span><AccountBadge username={p.username} userId={p.id} size={11} /></p>
-          ))}
-          {others.length > 8 && <p className="text-white/50">+{others.length - 8} more</p>}
-        </div>
-      )}
+      <Shop
+        open={shopOpen}
+        onClose={() => setShopOpen(false)}
+        currentAxe={progress.currentAxe}
+        lumbercoins={progress.lumbercoins}
+        onBuy={handleBuy}
+      />
 
-      {chatOpen && (
-        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 w-[min(560px,90vw)] z-40">
-          <form onSubmit={(e) => { e.preventDefault(); sendChat(); }} className="bg-black/85 backdrop-blur border-2 border-[#6C3CE0] rounded-lg px-3 py-2 flex items-center gap-2 shadow-2xl">
-            <span className="text-[#00E5FF] font-bold text-sm flex-shrink-0">💬</span>
-            <input ref={inputRef} type="text" value={draft} onChange={(e) => setDraft(e.target.value.slice(0, CHAT_MAX_LENGTH))} placeholder="Type a message…" className="flex-1 bg-transparent text-white text-sm outline-none placeholder-white/40" maxLength={CHAT_MAX_LENGTH} autoComplete="off" />
-            <button type="submit" className="text-white bg-[#6C3CE0] hover:bg-[#5A2FC7] text-xs font-bold px-3 py-1.5 rounded flex-shrink-0">Send</button>
-            <button type="button" onClick={cancelChat} className="text-white/60 hover:text-white text-sm flex-shrink-0" title="Cancel (Esc)">✕</button>
-          </form>
-          <p className="text-[10px] text-white/50 text-center mt-1">Esc to cancel</p>
-        </div>
-      )}
-
-      {!chatOpen && !isTouchDevice && (
-        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-none z-20">
-          <div className="bg-black/40 backdrop-blur px-3 py-1 rounded-full text-white/50 text-[10px]">Press <kbd className="bg-white/10 px-1 rounded">T</kbd> to chat</div>
-        </div>
+      {isTouchDevice && (
+        <button
+          onClick={() => {
+            if (equippedLog) trySellLog();
+            else tryPickupLog();
+          }}
+          className="fixed bottom-24 right-6 z-40 w-20 h-20 rounded-full bg-gradient-to-b from-[#FBBF24] to-[#E08A1C] border-4 border-[#A8680C] text-[#1A1A2E] text-3xl font-black active:scale-95 shadow-2xl"
+        >
+          E
+        </button>
       )}
     </div>
   );

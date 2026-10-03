@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Anti-cheat
-    const MIN_TIME_MS = 15_000;
+    const MIN_TIME_MS = 1_000;
     const MAX_TIME_MS = 600_000;
 
     if (timeMs < MIN_TIME_MS) {

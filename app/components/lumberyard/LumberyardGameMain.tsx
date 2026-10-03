@@ -44,7 +44,7 @@ import {
 } from "../../../lib/sounds";
 
 // ============================================================
-// GLOBAL CHANNEL MANAGER — module-level, runs once per tab
+// GLOBAL CHANNEL MANAGER
 // ============================================================
 
 type ChannelState = {
@@ -70,24 +70,19 @@ function ensureChannel(
   },
   worldId: string
 ): ChannelState {
-  // First: do we already have this channel in our module cache?
   const existing = channels.get(channelName);
   if (existing && existing.subscribed) {
+    console.log("[ensureChannel] reusing existing channel:", channelName);
     return existing;
   }
 
-  // Second: does Supabase already have a channel with this exact name?
-  // If so, we CANNOT call .on() on it — but we can still borrow it
-  // for broadcasting. We just won't receive messages on it.
-  // (This shouldn't happen normally, but protects against hot-reload bugs.)
   const supabaseChannels = supabase.getChannels();
   const alreadyInSupabase = supabaseChannels.find(
     (c: any) => c.topic === `realtime:${channelName}` || c.topic === channelName
   );
 
   if (alreadyInSupabase) {
-    // Reuse whatever listeners were registered on it originally.
-    // We just wrap it in our own state and return.
+    console.log("[ensureChannel] found channel already in Supabase, reusing:", channelName);
     const reused: ChannelState = {
       channel: alreadyInSupabase,
       name: channelName,
@@ -100,7 +95,8 @@ function ensureChannel(
     return reused;
   }
 
-  // Third: fresh channel. Build + chain + subscribe exactly once.
+  console.log("[ensureChannel] creating NEW channel:", channelName, "for user:", selfUserId);
+
   const state: ChannelState = {
     channel: null,
     name: channelName,
@@ -118,6 +114,14 @@ function ensureChannel(
   });
 
   channel.on("broadcast", { event: "lumber-move" }, ({ payload }: any) => {
+    console.log(
+      "[broadcast:recv] lumber-move from:",
+      payload?.id,
+      "self:",
+      selfUserId,
+      "subscribers:",
+      state.subscribers.size
+    );
     if (!payload || payload.id === selfUserId) return;
     const data: RemoteLumberData = {
       id: payload.id,
@@ -135,6 +139,7 @@ function ensureChannel(
   channel.on("presence", { event: "sync" }, () => {
     const presenceState = channel.presenceState();
     const count = Math.max(1, Object.keys(presenceState).length);
+    console.log("[presence:sync] count:", count);
     state.presenceSubscribers.forEach((fn) => fn(count));
 
     const s = getSelfState();
@@ -156,10 +161,12 @@ function ensureChannel(
   channel.on("presence", { event: "leave" }, () => {
     const presenceState = channel.presenceState();
     const count = Math.max(1, Object.keys(presenceState).length);
+    console.log("[presence:leave] count:", count);
     state.presenceSubscribers.forEach((fn) => fn(count));
   });
 
   channel.subscribe((status: string) => {
+    console.log("[channel] subscribe status:", status, "for", channelName);
     if (status === "SUBSCRIBED") {
       state.subscribed = true;
       channel.track({
@@ -313,6 +320,7 @@ export default function LumberyardGame({
     if (!world?.id || !userId) return;
 
     const channelName = `world-${world.id}`;
+    console.log("[useEffect] attaching to channel:", channelName, "as user:", userId);
 
     const state = ensureChannel(
       channelName,
@@ -330,6 +338,7 @@ export default function LumberyardGame({
     channelRef.current = state.channel;
 
     const onPlayer = (data: RemoteLumberData) => {
+      console.log("[subscriber:onPlayer] got remote player:", data.username);
       setOthers((prev) => {
         const existing = prev.findIndex((p) => p.id === data.id);
         if (existing >= 0) {
@@ -342,11 +351,13 @@ export default function LumberyardGame({
     };
 
     const onPresence = (count: number) => {
+      console.log("[subscriber:onPresence] count:", count);
       setOnlineCount(count);
     };
 
     state.subscribers.add(onPlayer);
     state.presenceSubscribers.add(onPresence);
+    console.log("[useEffect] subscribers now:", state.subscribers.size);
 
     const staleTimer = setInterval(() => {
       const now = Date.now();
@@ -364,7 +375,10 @@ export default function LumberyardGame({
   useEffect(() => {
     const interval = setInterval(() => {
       const channel = channelRef.current;
-      if (!channel) return;
+      if (!channel) {
+        console.warn("[broadcast:send] no channel yet");
+        return;
+      }
       channel.send({
         type: "broadcast",
         event: "lumber-move",
@@ -592,6 +606,13 @@ export default function LumberyardGame({
       setMusicOn(true);
     }
   };
+
+  // Log every render so we can see the state
+  console.log("[render] LumberyardGame", {
+    othersCount: others.length,
+    onlineCount,
+    usernames: others.map((o) => o.username),
+  });
 
   if (!loaded) {
     return (
