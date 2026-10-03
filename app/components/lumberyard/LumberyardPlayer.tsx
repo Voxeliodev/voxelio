@@ -46,6 +46,72 @@ type Props = {
   swingTriggerRef: React.MutableRefObject<number>;
 };
 
+// ============================================================
+// Axe mesh — rendered INSIDE the hand group via rightHandContent
+// ============================================================
+function AxeMesh({
+  axeId,
+  swingRef,
+}: {
+  axeId: AxeId;
+  swingRef: React.MutableRefObject<number>;
+}) {
+  const axeGroupRef = useRef<THREE.Group>(null);
+  const lastSwingRef = useRef(0);
+  const swingProgressRef = useRef(0);
+
+  useFrame((_, delta) => {
+    if (!axeGroupRef.current) return;
+
+    // Detect a swing trigger change (game increments this on chop)
+    if (swingRef.current !== lastSwingRef.current) {
+      lastSwingRef.current = swingRef.current;
+      swingProgressRef.current = 1;
+    }
+
+    // Animate the swing
+    if (swingProgressRef.current > 0) {
+      swingProgressRef.current = Math.max(0, swingProgressRef.current - delta * 2.8);
+      const curve = Math.sin((1 - swingProgressRef.current) * Math.PI);
+      axeGroupRef.current.rotation.x = 0.2 - curve * 1.6;
+    } else {
+      axeGroupRef.current.rotation.x = 0.2;
+    }
+  });
+
+  const axe = getAxe(axeId);
+
+  return (
+    <group ref={axeGroupRef} position={[0, 0.15, 0.2]} rotation={[0.2, 0, 0]}>
+      {/* Handle */}
+      <mesh castShadow position={[0, 0.4, 0]}>
+        <boxGeometry args={[0.08, 1, 0.08]} />
+        <meshStandardMaterial color={axe.color} roughness={0.9} />
+      </mesh>
+      {/* Blade */}
+      <mesh castShadow position={[0.25, 0.85, 0]}>
+        <boxGeometry args={[0.45, 0.3, 0.08]} />
+        <meshStandardMaterial
+          color={axe.bladeColor}
+          metalness={0.7}
+          roughness={0.3}
+        />
+      </mesh>
+      {/* Blade edge highlight */}
+      <mesh castShadow position={[0.47, 0.85, 0]}>
+        <boxGeometry args={[0.05, 0.3, 0.08]} />
+        <meshStandardMaterial
+          color="#FFFFFF"
+          emissive={new THREE.Color(axe.bladeColor)}
+          emissiveIntensity={0.5}
+          metalness={0.9}
+          roughness={0.1}
+        />
+      </mesh>
+    </group>
+  );
+}
+
 export default function LumberyardPlayer({
   config,
   spawnPosition,
@@ -58,8 +124,6 @@ export default function LumberyardPlayer({
 }: Props) {
   const bodyRef = useRef<RapierRigidBody>(null);
   const visualRef = useRef<THREE.Group>(null);
-  const rightHandRef = useRef<THREE.Group>(null);
-  const axeAnchorRef = useRef<THREE.Group>(null);
   const [, getKeys] = useKeyboardControls();
   const { camera } = useThree();
   const { rapier, world } = useRapier();
@@ -76,10 +140,7 @@ export default function LumberyardPlayer({
   const coyoteTimerRef = useRef(0);
   const forcedFacingRef = useRef<number | null>(null);
 
-  const swingAnimRef = useRef(0);
   const lastSwingTriggerRef = useRef(0);
-
-  const axe = getAxe(currentAxeId);
 
   useEffect(() => {
     if (isTouchDevice) return;
@@ -247,30 +308,10 @@ export default function LumberyardPlayer({
       visualRef.current.rotation.y += diff * Math.min(1, ROT_LERP * dt);
     }
 
-    // Swing animation
+    // On-chop hook
     if (swingTriggerRef.current !== lastSwingTriggerRef.current) {
       lastSwingTriggerRef.current = swingTriggerRef.current;
-      swingAnimRef.current = 1;
       if (onChopSwing) onChopSwing();
-    }
-    if (swingAnimRef.current > 0) {
-      swingAnimRef.current = Math.max(0, swingAnimRef.current - dt * 2.5);
-    }
-
-    // Attach the axe to the hand — copy the hand's world transform to the axe anchor
-    if (rightHandRef.current && axeAnchorRef.current) {
-      // Get hand's world position, rotation, scale
-      rightHandRef.current.updateWorldMatrix(true, false);
-      const handWorld = new THREE.Matrix4();
-      rightHandRef.current.matrixWorld.decompose(
-        axeAnchorRef.current.position,
-        axeAnchorRef.current.quaternion,
-        axeAnchorRef.current.scale
-      );
-
-      // Apply the swing rotation offset on top of the hand position
-      const swingCurve = Math.sin((1 - swingAnimRef.current) * Math.PI);
-      axeAnchorRef.current.rotateX(-swingCurve * 1.4);
     }
 
     // Camera
@@ -319,37 +360,10 @@ export default function LumberyardPlayer({
           config={config}
           hideAccessory
           walking={walking}
-          rightHandRef={rightHandRef}
+          rightHandContent={
+            <AxeMesh axeId={currentAxeId} swingRef={swingTriggerRef} />
+          }
         />
-
-        {/* Axe anchor — positioned at the right hand each frame via useFrame */}
-        <group ref={axeAnchorRef}>
-          {/* Handle */}
-          <mesh castShadow position={[0, 0.3, 0]}>
-            <boxGeometry args={[0.08, 1, 0.08]} />
-            <meshStandardMaterial color={axe.color} roughness={0.9} />
-          </mesh>
-          {/* Blade */}
-          <mesh castShadow position={[0.25, 0.75, 0]}>
-            <boxGeometry args={[0.45, 0.3, 0.08]} />
-            <meshStandardMaterial
-              color={axe.bladeColor}
-              metalness={0.7}
-              roughness={0.3}
-            />
-          </mesh>
-          {/* Blade edge highlight */}
-          <mesh castShadow position={[0.47, 0.75, 0]}>
-            <boxGeometry args={[0.05, 0.3, 0.08]} />
-            <meshStandardMaterial
-              color="#FFFFFF"
-              emissive={new THREE.Color(axe.bladeColor)}
-              emissiveIntensity={0.5}
-              metalness={0.9}
-              roughness={0.1}
-            />
-          </mesh>
-        </group>
       </group>
     </RigidBody>
   );

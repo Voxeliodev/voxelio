@@ -142,12 +142,14 @@ export function Character({
   hideAccessory = false,
   walking = false,
   rightHandRef,
+  rightHandContent,
   resolvedShirt = null,
 }: {
   config: AvatarConfig;
   hideAccessory?: boolean;
   walking?: boolean;
   rightHandRef?: React.MutableRefObject<THREE.Group | null>;
+  rightHandContent?: React.ReactNode;
   resolvedShirt?: Item | null;
 }) {
   const skin = config.skinTone;
@@ -296,6 +298,8 @@ export function Character({
             >
               <meshStandardMaterial color={rightHandColor} roughness={0.6} />
             </RoundedBox>
+            {/* External content (e.g., axe in Lumberyard) renders inside the hand */}
+            {rightHandContent}
           </group>
 
           {!hideAccessory && config.accessory && (
