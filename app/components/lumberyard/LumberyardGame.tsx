@@ -44,13 +44,142 @@ import {
 } from "../../../lib/sounds";
 
 // ============================================================
-// Module-level cache — survives React StrictMode remounts
-// so we don't try to subscribe to the same channel twice.
+// GLOBAL CHANNEL MANAGER — module-level, runs once per tab
 // ============================================================
-const activeChannels = new Map<string, any>();
+
+type ChannelState = {
+  channel: any;
+  name: string;
+  subscribers: Set<(data: RemoteLumberData) => void>;
+  presenceSubscribers: Set<(count: number) => void>;
+  initialized: boolean;
+  subscribed: boolean;
+};
+
+const channels = new Map<string, ChannelState>();
+
+function ensureChannel(
+  channelName: string,
+  selfUserId: string,
+  selfUsername: string,
+  selfConfig: AvatarConfig,
+  getSelfState: () => {
+    pos: [number, number, number];
+    rotY: number;
+    axeId: AxeId;
+  },
+  worldId: string
+): ChannelState {
+  // First: do we already have this channel in our module cache?
+  const existing = channels.get(channelName);
+  if (existing && existing.subscribed) {
+    return existing;
+  }
+
+  // Second: does Supabase already have a channel with this exact name?
+  // If so, we CANNOT call .on() on it — but we can still borrow it
+  // for broadcasting. We just won't receive messages on it.
+  // (This shouldn't happen normally, but protects against hot-reload bugs.)
+  const supabaseChannels = supabase.getChannels();
+  const alreadyInSupabase = supabaseChannels.find(
+    (c: any) => c.topic === `realtime:${channelName}` || c.topic === channelName
+  );
+
+  if (alreadyInSupabase) {
+    // Reuse whatever listeners were registered on it originally.
+    // We just wrap it in our own state and return.
+    const reused: ChannelState = {
+      channel: alreadyInSupabase,
+      name: channelName,
+      subscribers: existing?.subscribers || new Set(),
+      presenceSubscribers: existing?.presenceSubscribers || new Set(),
+      initialized: true,
+      subscribed: true,
+    };
+    channels.set(channelName, reused);
+    return reused;
+  }
+
+  // Third: fresh channel. Build + chain + subscribe exactly once.
+  const state: ChannelState = {
+    channel: null,
+    name: channelName,
+    subscribers: existing?.subscribers || new Set(),
+    presenceSubscribers: existing?.presenceSubscribers || new Set(),
+    initialized: false,
+    subscribed: false,
+  };
+
+  const channel = supabase.channel(channelName, {
+    config: {
+      broadcast: { self: false },
+      presence: { key: selfUserId },
+    },
+  });
+
+  channel.on("broadcast", { event: "lumber-move" }, ({ payload }: any) => {
+    if (!payload || payload.id === selfUserId) return;
+    const data: RemoteLumberData = {
+      id: payload.id,
+      username: payload.username,
+      displayId: payload.displayId ?? null,
+      avatarConfig: payload.avatarConfig,
+      currentAxeId: payload.currentAxeId,
+      targetPos: payload.pos,
+      targetRotY: payload.rotY,
+      lastSeen: Date.now(),
+    };
+    state.subscribers.forEach((fn) => fn(data));
+  });
+
+  channel.on("presence", { event: "sync" }, () => {
+    const presenceState = channel.presenceState();
+    const count = Math.max(1, Object.keys(presenceState).length);
+    state.presenceSubscribers.forEach((fn) => fn(count));
+
+    const s = getSelfState();
+    channel.send({
+      type: "broadcast",
+      event: "lumber-move",
+      payload: {
+        id: selfUserId,
+        username: selfUsername,
+        displayId: null,
+        avatarConfig: selfConfig,
+        currentAxeId: s.axeId,
+        pos: s.pos,
+        rotY: s.rotY,
+      },
+    });
+  });
+
+  channel.on("presence", { event: "leave" }, () => {
+    const presenceState = channel.presenceState();
+    const count = Math.max(1, Object.keys(presenceState).length);
+    state.presenceSubscribers.forEach((fn) => fn(count));
+  });
+
+  channel.subscribe((status: string) => {
+    if (status === "SUBSCRIBED") {
+      state.subscribed = true;
+      channel.track({
+        id: selfUserId,
+        username: selfUsername,
+        worldId,
+        joinedAt: Date.now(),
+      });
+    }
+  });
+
+  state.channel = channel;
+  state.initialized = true;
+  channels.set(channelName, state);
+
+  return state;
+}
 
 // ============================================================
-// LUMBERYARD INC — main game (multiplayer presence)
+// LUMBERYARD INC
 // ============================================================
 
 const KEY_MAP = [
@@ -118,12 +247,16 @@ export default function LumberyardGame({
   const swingTriggerRef = useRef(0);
 
   const currentAxe = getAxe(progress.currentAxe);
+  const currentAxeIdRef = useRef<AxeId>(progress.currentAxe);
+
+  useEffect(() => {
+    currentAxeIdRef.current = progress.currentAxe;
+  }, [progress.currentAxe]);
 
   const [others, setOthers] = useState<RemoteLumberData[]>([]);
   const [onlineCount, setOnlineCount] = useState(1);
   const channelRef = useRef<any>(null);
 
-  // Load progress on mount
   useEffect(() => {
     (async () => {
       const p = await loadProgress();
@@ -132,7 +265,6 @@ export default function LumberyardGame({
     })();
   }, []);
 
-  // Ambient music — start on first user interaction
   useEffect(() => {
     const handleFirstInteraction = () => {
       if (musicOn) startAmbientMusic();
@@ -155,7 +287,6 @@ export default function LumberyardGame({
     messageTimeoutRef.current = setTimeout(() => setMessage(null), durationMs);
   }, []);
 
-  // Tree regrowth loop
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
@@ -177,92 +308,46 @@ export default function LumberyardGame({
     return () => clearInterval(interval);
   }, []);
 
-  // ============================================================
-  // MULTIPLAYER — shared channel with module-level cache so
-  // React StrictMode's double-mount doesn't crash.
-  // ============================================================
+  // Multiplayer attach
   useEffect(() => {
     if (!world?.id || !userId) return;
 
     const channelName = `world-${world.id}`;
 
-    // If this channel is already active (StrictMode double-mount), reuse it.
-    let channel = activeChannels.get(channelName);
+    const state = ensureChannel(
+      channelName,
+      userId,
+      username,
+      config,
+      () => ({
+        pos: playerPosRef.current,
+        rotY: playerRotYRef.current,
+        axeId: currentAxeIdRef.current,
+      }),
+      world.id
+    );
 
-    if (!channel) {
-      channel = supabase.channel(channelName, {
-        config: {
-          broadcast: { self: false },
-          presence: { key: userId },
-        },
+    channelRef.current = state.channel;
+
+    const onPlayer = (data: RemoteLumberData) => {
+      setOthers((prev) => {
+        const existing = prev.findIndex((p) => p.id === data.id);
+        if (existing >= 0) {
+          const copy = [...prev];
+          copy[existing] = data;
+          return copy;
+        }
+        return [...prev, data];
       });
+    };
 
-      channel
-        .on("broadcast", { event: "lumber-move" }, ({ payload }: any) => {
-          if (!payload || payload.id === userId) return;
-          setOthers((prev) => {
-            const existing = prev.findIndex((p) => p.id === payload.id);
-            const next: RemoteLumberData = {
-              id: payload.id,
-              username: payload.username,
-              displayId: payload.displayId ?? null,
-              avatarConfig: payload.avatarConfig,
-              currentAxeId: payload.currentAxeId,
-              targetPos: payload.pos,
-              targetRotY: payload.rotY,
-              lastSeen: Date.now(),
-            };
-            if (existing >= 0) {
-              const copy = [...prev];
-              copy[existing] = next;
-              return copy;
-            }
-            return [...prev, next];
-          });
-        })
-        .on("broadcast", { event: "lumber-chop" }, () => {
-          // placeholder — no sound for others' chops yet
-        })
-        .on("presence", { event: "sync" }, () => {
-          const state = channel.presenceState();
-          setOnlineCount(Math.max(1, Object.keys(state).length));
+    const onPresence = (count: number) => {
+      setOnlineCount(count);
+    };
 
-          // Re-broadcast our position so newcomers see us immediately
-          channel.send({
-            type: "broadcast",
-            event: "lumber-move",
-            payload: {
-              id: userId,
-              username,
-              displayId: null,
-              avatarConfig: config,
-              currentAxeId: progress.currentAxe,
-              pos: playerPosRef.current,
-              rotY: playerRotYRef.current,
-            },
-          });
-        })
-        .on("presence", { event: "leave" }, () => {
-          const state = channel.presenceState();
-          setOnlineCount(Math.max(1, Object.keys(state).length));
-        })
-        .subscribe((status: string) => {
-          if (status === "SUBSCRIBED") {
-            channel.track({
-              id: userId,
-              username,
-              worldId: world.id,
-              joinedAt: Date.now(),
-            });
-          }
-        });
+    state.subscribers.add(onPlayer);
+    state.presenceSubscribers.add(onPresence);
 
-      activeChannels.set(channelName, channel);
-    }
-
-    channelRef.current = channel;
-
-    // Stale player cleanup
     const staleTimer = setInterval(() => {
       const now = Date.now();
       setOthers((prev) => prev.filter((p) => now - p.lastSeen < STALE_TIMEOUT));
@@ -270,27 +355,12 @@ export default function LumberyardGame({
 
     return () => {
       clearInterval(staleTimer);
-      // Do NOT remove the channel — StrictMode may remount and reuse it.
+      state.subscribers.delete(onPlayer);
+      state.presenceSubscribers.delete(onPresence);
     };
-  }, [world?.id, userId, username, config, progress.currentAxe]);
+  }, [world?.id, userId, username, config]);
 
-  // ============================================================
-  // Real unmount — untrack presence so others see us leave.
-  // ============================================================
-  useEffect(() => {
-    return () => {
-      const channel = channelRef.current;
-      if (channel) {
-        try {
-          channel.untrack();
-        } catch {}
-      }
-    };
-  }, []);
-
-  // ============================================================
-  // Broadcast our position every ~66ms
-  // ============================================================
+  // Position broadcast
   useEffect(() => {
     const interval = setInterval(() => {
       const channel = channelRef.current;
@@ -303,7 +373,7 @@ export default function LumberyardGame({
           username,
           displayId: null,
           avatarConfig: config,
-          currentAxeId: progress.currentAxe,
+          currentAxeId: currentAxeIdRef.current,
           pos: playerPosRef.current,
           rotY: playerRotYRef.current,
         },
@@ -311,7 +381,7 @@ export default function LumberyardGame({
     }, BROADCAST_INTERVAL);
 
     return () => clearInterval(interval);
-  }, [userId, username, config, progress.currentAxe]);
+  }, [userId, username, config]);
 
   const handleChop = useCallback(
     (spawnId: string) => {
@@ -557,7 +627,6 @@ export default function LumberyardGame({
               />
               <hemisphereLight args={["#ffffff", "#88aa88", 0.4]} />
 
-              {/* Ground */}
               <RigidBody type="fixed" colliders="cuboid">
                 <mesh position={[0, -0.5, 0]} receiveShadow>
                   <boxGeometry
@@ -567,7 +636,6 @@ export default function LumberyardGame({
                 </mesh>
               </RigidBody>
 
-              {/* Trees */}
               {TREE_SPAWNS.map((spawn) => {
                 const state = trees.find((t) => t.spawnId === spawn.id);
                 if (!state || state.deadAt) return null;
@@ -582,7 +650,6 @@ export default function LumberyardGame({
                 );
               })}
 
-              {/* Logs on the ground */}
               {logs.map((log) => {
                 const [px, , pz] = playerPosRef.current;
                 const d = Math.hypot(
@@ -599,10 +666,8 @@ export default function LumberyardGame({
                 );
               })}
 
-              {/* Sawmill */}
               <Sawmill />
 
-              {/* Local player */}
               <LumberyardPlayer
                 config={config}
                 spawnPosition={LUMBERYARD_SPAWN}
@@ -613,7 +678,6 @@ export default function LumberyardGame({
                 swingTriggerRef={swingTriggerRef}
               />
 
-              {/* Remote players */}
               {others.map((p) => (
                 <RemoteLumberPlayer key={p.id} data={p} />
               ))}
@@ -630,7 +694,6 @@ export default function LumberyardGame({
         message={message}
       />
 
-      {/* Online counter + player list */}
       <div className="absolute top-3 right-3 z-30 flex flex-col gap-2 items-end">
         <div className="bg-black/70 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs flex items-center gap-2">
           <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
@@ -652,7 +715,6 @@ export default function LumberyardGame({
         )}
       </div>
 
-      {/* Music toggle */}
       <button
         onClick={toggleMusic}
         className="fixed bottom-6 right-6 md:bottom-6 md:right-6 z-40 w-12 h-12 rounded-full bg-black/70 border-2 border-white/30 backdrop-blur flex items-center justify-center text-xl hover:bg-black/90 transition"
@@ -669,7 +731,6 @@ export default function LumberyardGame({
         onBuy={handleBuy}
       />
 
-      {/* Mobile E button */}
       {isTouchDevice && (
         <button
           onClick={() => {
