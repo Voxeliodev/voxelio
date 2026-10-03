@@ -3,7 +3,12 @@
 import { useRef, useEffect, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useKeyboardControls } from "@react-three/drei";
-import { RigidBody, CapsuleCollider, useRapier, type RapierRigidBody } from "@react-three/rapier";
+import {
+  RigidBody,
+  CapsuleCollider,
+  useRapier,
+  type RapierRigidBody,
+} from "@react-three/rapier";
 import * as THREE from "three";
 import { Character } from "../Avatar";
 import type { AvatarConfig } from "../../../lib/auth";
@@ -21,6 +26,11 @@ const CAMERA_MIN_PITCH = -0.5;
 const CAMERA_MAX_PITCH = 1.2;
 const ROT_LERP = 14;
 const AIR_CONTROL = 0.55;
+const COYOTE_TIME = 0.12;
+
+const CAPSULE_HALF_HEIGHT = 0.5;
+const CAPSULE_RADIUS = 0.35;
+const CAPSULE_BOTTOM_OFFSET = CAPSULE_HALF_HEIGHT + CAPSULE_RADIUS; // 0.85
 
 type Props = {
   config: AvatarConfig;
@@ -50,17 +60,16 @@ export default function ObbyPlayer({
   const [walking, setWalking] = useState(false);
   const walkingRef = useRef(false);
 
-  // Camera state
   const cameraYawRef = useRef(0);
   const cameraPitchRef = useRef(0.35);
   const lastBroadcastRef = useRef(0);
 
-  // Input smoothing
   const velocityXZRef = useRef(new THREE.Vector2(0, 0));
 
-  // Track if player has "jumped this frame" so we don't double-jump
   const jumpCooldownRef = useRef(0);
   const groundedRef = useRef(false);
+  const coyoteTimerRef = useRef(0);
+  const jumpRequestedRef = useRef(false);
 
   // Handle mouse look on desktop
   useEffect(() => {
@@ -109,19 +118,28 @@ export default function ObbyPlayer({
     };
   }, [isTouchDevice]);
 
-  // Ground detection using a ray cast downward from the player's feet
+  // Ground check — cast a short ray downward from just below the capsule's bottom
   function checkGrounded(): boolean {
     if (!bodyRef.current) return false;
     const pos = bodyRef.current.translation();
+
     const ray = new rapier.Ray(
-      { x: pos.x, y: pos.y - 0.9, z: pos.z },
+      { x: pos.x, y: pos.y - CAPSULE_BOTTOM_OFFSET + 0.05, z: pos.z },
       { x: 0, y: -1, z: 0 }
     );
-    const hit = world.castRay(ray, 0.2, true, undefined, undefined, undefined, bodyRef.current);
+    const hit = world.castRay(
+      ray,
+      0.15,
+      true,
+      undefined,
+      undefined,
+      undefined,
+      bodyRef.current
+    );
     return hit !== null;
   }
 
-  // ===== Apply teleport when spawn changes (respawn) =====
+  // Respawn when spawn changes
   useEffect(() => {
     if (!bodyRef.current) return;
     bodyRef.current.setTranslation(
@@ -130,6 +148,8 @@ export default function ObbyPlayer({
     );
     bodyRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
     velocityXZRef.current.set(0, 0);
+    groundedRef.current = false;
+    coyoteTimerRef.current = 0;
   }, [spawnPosition]);
 
   useFrame((_, delta) => {
@@ -137,7 +157,16 @@ export default function ObbyPlayer({
     const keys = getKeys();
     const dt = Math.min(delta, 0.05);
 
-    // ===== Directional input =====
+    // Grounded detection with coyote time
+    const grounded = checkGrounded();
+    if (grounded) {
+      coyoteTimerRef.current = COYOTE_TIME;
+    } else {
+      coyoteTimerRef.current = Math.max(0, coyoteTimerRef.current - dt);
+    }
+    groundedRef.current = grounded;
+
+    // Directional input
     let localX = 0;
     let localZ = 0;
     if (!inputDisabled) {
@@ -157,24 +186,21 @@ export default function ObbyPlayer({
       localZ /= inputLen;
     }
 
-    // ===== Rotate input by camera yaw =====
+    // Rotate input by camera yaw
     const yaw = cameraYawRef.current;
     const cosY = Math.cos(yaw);
     const sinY = Math.sin(yaw);
     const worldX = localX * cosY + localZ * sinY;
     const worldZ = -localX * sinY + localZ * cosY;
 
-    // ===== Smooth velocity =====
-    const grounded = checkGrounded();
-    groundedRef.current = grounded;
-    const rate = grounded ? 12 : 12 * AIR_CONTROL;
-
+    // Smooth velocity
+    const rate = grounded ? 14 : 14 * AIR_CONTROL;
     const targetVX = worldX * MOVE_SPEED;
     const targetVZ = worldZ * MOVE_SPEED;
     velocityXZRef.current.x += (targetVX - velocityXZRef.current.x) * Math.min(1, rate * dt);
     velocityXZRef.current.y += (targetVZ - velocityXZRef.current.y) * Math.min(1, rate * dt);
 
-    // ===== Apply horizontal velocity =====
+    // Apply horizontal velocity
     const current = bodyRef.current.linvel();
     bodyRef.current.setLinvel(
       {
@@ -185,22 +211,34 @@ export default function ObbyPlayer({
       true
     );
 
-    // ===== Jump =====
+    // Jump
     jumpCooldownRef.current -= dt;
+
     const wantsJump =
       (!inputDisabled && keys.jump) || (isTouchDevice && touchState.jumpQueued);
 
-    if (wantsJump && grounded && jumpCooldownRef.current <= 0) {
+    if (wantsJump && jumpCooldownRef.current <= 0) {
+      jumpRequestedRef.current = true;
+    }
+    if (isTouchDevice) touchState.jumpQueued = false;
+
+    const canJump = grounded || coyoteTimerRef.current > 0;
+    if (jumpRequestedRef.current && canJump && jumpCooldownRef.current <= 0) {
       bodyRef.current.setLinvel(
         { x: current.x, y: JUMP_VELOCITY, z: current.z },
         true
       );
-      jumpCooldownRef.current = 0.15;
+      jumpCooldownRef.current = 0.2;
+      coyoteTimerRef.current = 0;
       groundedRef.current = false;
+      jumpRequestedRef.current = false;
     }
-    if (isTouchDevice) touchState.jumpQueued = false;
 
-    // ===== Facing direction =====
+    if (jumpRequestedRef.current && coyoteTimerRef.current <= 0 && !grounded) {
+      jumpRequestedRef.current = false;
+    }
+
+    // Facing direction
     const pos = bodyRef.current.translation();
     const speed = Math.hypot(velocityXZRef.current.x, velocityXZRef.current.y);
     const isMoving = speed > 0.8;
@@ -217,19 +255,19 @@ export default function ObbyPlayer({
       visualRef.current.rotation.y += diff * Math.min(1, ROT_LERP * dt);
     }
 
-    // ===== Fall detection =====
+    // Fall detection
     if (pos.y < OBBY_KILL_Y) {
       onFall();
     }
 
-    // ===== Camera follow =====
+    // Camera follow
     if (visualRef.current) {
       const camYaw = cameraYawRef.current;
       const camPitch = cameraPitchRef.current;
       const horizDist = CAMERA_DIST * Math.cos(camPitch);
       const vertDist = CAMERA_DIST * Math.sin(camPitch);
       const lookX = pos.x;
-      const lookY = pos.y + 0.5;
+      const lookY = pos.y + 0.3;
       const lookZ = pos.z;
       const targetCamX = lookX - Math.sin(camYaw) * horizDist;
       const targetCamY = lookY + CAMERA_HEIGHT + vertDist;
@@ -242,7 +280,7 @@ export default function ObbyPlayer({
       camera.lookAt(lookX, lookY, lookZ);
     }
 
-    // ===== Broadcast position (for multiplayer later) =====
+    // Broadcast position
     const now = performance.now();
     if (onPositionUpdate && now - lastBroadcastRef.current > 66) {
       lastBroadcastRef.current = now;
@@ -254,6 +292,7 @@ export default function ObbyPlayer({
   return (
     <RigidBody
       ref={bodyRef}
+      name="obby-player"
       position={spawnPosition}
       colliders={false}
       enabledRotations={[false, false, false]}
@@ -262,9 +301,9 @@ export default function ObbyPlayer({
       restitution={0}
       mass={1}
     >
-      <CapsuleCollider args={[0.5, 0.35]} />
-      {/* Visual character rendered at feet position (offset up by capsule half-height) */}
-      <group ref={visualRef} position={[0, 0, 0]}>
+      <CapsuleCollider args={[CAPSULE_HALF_HEIGHT, CAPSULE_RADIUS]} />
+
+      <group ref={visualRef} position={[0, -CAPSULE_BOTTOM_OFFSET, 0]}>
         <Character config={config} hideAccessory walking={walking} />
       </group>
     </RigidBody>

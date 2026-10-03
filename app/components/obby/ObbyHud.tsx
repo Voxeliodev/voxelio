@@ -41,7 +41,6 @@ export default function ObbyHud({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [newBest, setNewBest] = useState(false);
 
-  // Load leaderboard on mount
   useEffect(() => {
     fetchTopTimes(worldId, 10).then(setLeaderboard);
     fetchPersonalBest(worldId).then((pb) => {
@@ -49,7 +48,6 @@ export default function ObbyHud({
     });
   }, [worldId]);
 
-  // When the player finishes, submit their time
   useEffect(() => {
     if (!finished || submitted) return;
     (async () => {
@@ -59,7 +57,6 @@ export default function ObbyHud({
         setSubmitError(result.error || "Failed to submit");
       } else {
         setNewBest(Boolean(result.newBest));
-        // Refresh leaderboard + personal best
         fetchTopTimes(worldId, 10).then(setLeaderboard);
         fetchPersonalBest(worldId).then((pb) => {
           if (pb) setPersonalBest(pb.timeMs);
@@ -67,6 +64,10 @@ export default function ObbyHud({
       }
     })();
   }, [finished, submitted, finalTime, worldId, setSubmitted]);
+
+  // Timer display: clamp to 0 decimals
+  const currentDisplay = finished ? finalTime : elapsed;
+  const currentSeconds = currentDisplay / 1000;
 
   return (
     <>
@@ -76,7 +77,11 @@ export default function ObbyHud({
           Time
         </div>
         <div className="text-2xl font-black text-[#FFD700] tabular-nums">
-          {formatShortTime(finished ? finalTime : elapsed)}
+          {currentSeconds < 60
+            ? `${currentSeconds.toFixed(2)}s`
+            : `${Math.floor(currentSeconds / 60)}:${(currentSeconds % 60)
+                .toFixed(2)
+                .padStart(5, "0")}`}
         </div>
       </div>
 
@@ -110,7 +115,6 @@ export default function ObbyHud({
               You conquered the Impossible Obby.
             </p>
 
-            {/* Final time */}
             <div className="bg-black/50 rounded-lg p-4 mb-4 border border-white/10">
               <div className="text-[10px] text-white/60 uppercase font-bold tracking-wide mb-1">
                 Final Time
@@ -130,11 +134,9 @@ export default function ObbyHud({
               )}
             </div>
 
-            {/* Leaderboard */}
             <div className="bg-black/50 rounded-lg p-4 mb-6 border border-white/10 max-h-64 overflow-y-auto">
-              <div className="text-[10px] text-white/60 uppercase font-bold tracking-wide mb-3 flex items-center justify-between">
-                <span>Top Times</span>
-                <span className="text-white/40 normal-case">World</span>
+              <div className="text-[10px] text-white/60 uppercase font-bold tracking-wide mb-3">
+                Top Times
               </div>
               {leaderboard.length === 0 ? (
                 <p className="text-white/40 text-xs italic">No times recorded yet</p>
@@ -160,15 +162,12 @@ export default function ObbyHud({
               )}
             </div>
 
-            {/* Buttons */}
-            <div className="flex gap-3">
-              <button
-                onClick={onRestart}
-                className="flex-1 bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] hover:from-[#8B5FFF] hover:to-[#6A3FD7] text-white font-black text-base py-3 rounded-lg border-2 border-[#4A1FA8] transition shadow-lg"
-              >
-                🔄 Play Again
-              </button>
-            </div>
+            <button
+              onClick={onRestart}
+              className="w-full bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] hover:from-[#8B5FFF] hover:to-[#6A3FD7] text-white font-black text-base py-3 rounded-lg border-2 border-[#4A1FA8] transition shadow-lg"
+            >
+              🔄 Play Again
+            </button>
           </div>
         </div>
       )}

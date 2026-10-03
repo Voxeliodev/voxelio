@@ -3,7 +3,7 @@
 import { Suspense, useState, useRef, useCallback, useEffect } from "react";
 import { Canvas } from "@react-three/fiber";
 import { KeyboardControls, Sky } from "@react-three/drei";
-import { Physics, RigidBody } from "@react-three/rapier";
+import { Physics, RigidBody, CuboidCollider } from "@react-three/rapier";
 import * as THREE from "three";
 import type { AvatarConfig } from "../../../lib/auth";
 import type { World } from "../../../lib/worlds";
@@ -13,10 +13,10 @@ import {
   OBBY_PLATFORMS,
   OBBY_MOVING_PLATFORMS,
   OBBY_CHECKPOINTS,
+  OBBY_SPINNERS,
   OBBY_FINISH,
   OBBY_FINISH_BASE,
   OBBY_START_SPAWN,
-  OBBY_GROUND_COLOR,
 } from "../../../lib/obbyLevel";
 
 // ============================================================
@@ -31,13 +31,13 @@ const KEY_MAP = [
   { name: "jump", keys: [" ", "Space"] },
 ];
 
-// Touch state shared with player
 const touchState = { moveX: 0, moveZ: 0, jumpQueued: false };
-export function getObbyTouchState() {
-  return touchState;
-}
 
-// Simple moving platform
+const PLAYER_RB_NAME = "obby-player";
+
+// ============================================================
+// Moving platform
+// ============================================================
 function MovingPlatform({
   from,
   to,
@@ -52,24 +52,22 @@ function MovingPlatform({
   color: string;
 }) {
   const bodyRef = useRef<any>(null);
-  const progressRef = useRef(0);
-  const directionRef = useRef(1);
 
   useEffect(() => {
     if (!bodyRef.current) return;
+
     const totalDist = Math.sqrt(
       Math.pow(to[0] - from[0], 2) +
         Math.pow(to[1] - from[1], 2) +
         Math.pow(to[2] - from[2], 2)
     );
-    const startTime = performance.now() / 1000;
     const period = (totalDist * 2) / speed;
+    const startTime = performance.now() / 1000;
 
     const interval = setInterval(() => {
       if (!bodyRef.current) return;
       const elapsed = performance.now() / 1000 - startTime;
       const cycle = (elapsed % period) / period;
-      // Ping-pong: 0 → 1 → 0
       const t = cycle < 0.5 ? cycle * 2 : 2 - cycle * 2;
 
       bodyRef.current.setNextKinematicTranslation({
@@ -98,8 +96,9 @@ function MovingPlatform({
   );
 }
 
-// Spin blocker — a rotating bar that kills on contact (we skip damage for v1,
-// it's just visual + physics obstacle)
+// ============================================================
+// Spinning blade
+// ============================================================
 function SpinningBlade({
   position,
   length,
@@ -141,9 +140,105 @@ function SpinningBlade({
   );
 }
 
+// ============================================================
+// Checkpoint sensor — listens for player entry
+// ============================================================
+function CheckpointSensor({
+  index,
+  position,
+  unlocked,
+  onTrigger,
+}: {
+  index: number;
+  position: [number, number, number];
+  unlocked: boolean;
+  onTrigger: (i: number) => void;
+}) {
+  return (
+    <RigidBody
+      type="fixed"
+      position={position}
+      colliders={false}
+      sensor
+    >
+      {/* Sensor collider — invisible trigger zone */}
+      <CuboidCollider
+        args={[1.5, 2, 1.5]}
+        sensor
+        onIntersectionEnter={(payload) => {
+          const otherName = payload.other?.rigidBodyObject?.name;
+          if (otherName === PLAYER_RB_NAME) {
+            onTrigger(index);
+          }
+        }}
+      />
+
+      {/* Visual ring marker */}
+      <mesh position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.6, 0.85, 32]} />
+        <meshBasicMaterial
+          color={unlocked ? "#22C55E" : "#FBBF24"}
+          side={THREE.DoubleSide}
+          transparent
+          opacity={unlocked ? 0.9 : 0.6}
+        />
+      </mesh>
+
+      {/* Floating pillar of light */}
+      <mesh position={[0, 1.5, 0]}>
+        <cylinderGeometry args={[0.15, 0.15, 3, 8]} />
+        <meshBasicMaterial
+          color={unlocked ? "#22C55E" : "#FBBF24"}
+          transparent
+          opacity={unlocked ? 0.35 : 0.2}
+        />
+      </mesh>
+    </RigidBody>
+  );
+}
+
+// ============================================================
+// Finish sensor — listens for player entry
+// ============================================================
+function FinishSensor({
+  position,
+  size,
+  canFinish,
+  onFinish,
+}: {
+  position: [number, number, number];
+  size: [number, number, number];
+  canFinish: boolean;
+  onFinish: () => void;
+}) {
+  return (
+    <RigidBody
+      type="fixed"
+      position={position}
+      colliders={false}
+      sensor
+    >
+      <CuboidCollider
+        args={[size[0] / 2, size[1] / 2 + 1.5, size[2] / 2]}
+        sensor
+        onIntersectionEnter={(payload) => {
+          const otherName = payload.other?.rigidBodyObject?.name;
+          if (otherName === PLAYER_RB_NAME) {
+            if (canFinish) {
+              onFinish();
+            }
+          }
+        }}
+      />
+    </RigidBody>
+  );
+}
+
+// ============================================================
+// Scene — everything inside the physics world
+// ============================================================
 function Scene({
   config,
-  world,
   spawnPosition,
   onFall,
   inputDisabled,
@@ -153,7 +248,6 @@ function Scene({
   currentCheckpoint,
 }: {
   config: AvatarConfig;
-  world: World;
   spawnPosition: [number, number, number];
   onFall: () => void;
   inputDisabled: boolean;
@@ -162,17 +256,7 @@ function Scene({
   onCheckpoint: (id: number) => void;
   currentCheckpoint: number;
 }) {
-  const finishRef = useRef<any>(null);
-  const checkpointRefs = useRef<(any | null)[]>([]);
-
-  // Check if player is inside a trigger volume by comparing positions
-  useEffect(() => {
-    const interval = setInterval(() => {
-      // Checkpoint detection happens in player's onPositionUpdate
-      // (Simpler: see parent's position broadcast)
-    }, 100);
-    return () => clearInterval(interval);
-  }, []);
+  const canFinish = currentCheckpoint >= OBBY_CHECKPOINTS.length - 1;
 
   return (
     <>
@@ -194,7 +278,7 @@ function Scene({
       {/* Static platforms */}
       {OBBY_PLATFORMS.map((p, i) => (
         <RigidBody
-          key={i}
+          key={`plat-${i}`}
           type="fixed"
           position={p.position}
           colliders="cuboid"
@@ -207,7 +291,7 @@ function Scene({
         </RigidBody>
       ))}
 
-      {/* Finish pad base */}
+      {/* Finish pad (solid base) */}
       <RigidBody type="fixed" position={OBBY_FINISH_BASE.position} colliders="cuboid">
         <mesh castShadow receiveShadow>
           <boxGeometry args={OBBY_FINISH_BASE.size} />
@@ -215,35 +299,23 @@ function Scene({
         </mesh>
       </RigidBody>
 
-      {/* Finish trigger (invisible) */}
-      <RigidBody
-        ref={finishRef}
-        type="fixed"
-        position={OBBY_FINISH.position}
-        colliders="cuboid"
-        sensor
-        onIntersectionEnter={({ other }) => {
-          if (other.rigidBodyObject?.name === "obby-player") {
-            onFinish();
-          }
-        }}
-      >
-        <mesh visible={false}>
-          <boxGeometry args={OBBY_FINISH.size} />
-        </mesh>
-      </RigidBody>
+      {/* Finish sensor (invisible trigger) */}
+      <FinishSensor
+        position={[OBBY_FINISH.position[0], OBBY_FINISH.position[1], OBBY_FINISH.position[2]]}
+        size={OBBY_FINISH.size}
+        canFinish={canFinish}
+        onFinish={onFinish}
+      />
 
-      {/* Checkpoint markers */}
+      {/* Checkpoint sensors */}
       {OBBY_CHECKPOINTS.map((cp, i) => (
-        <mesh key={i} position={[cp.position[0], cp.position[1] + 1.5, cp.position[2]]}>
-          <ringGeometry args={[0.5, 0.7, 32]} />
-          <meshBasicMaterial
-            color={currentCheckpoint >= i ? "#22C55E" : "#FBBF24"}
-            side={THREE.DoubleSide}
-            transparent
-            opacity={currentCheckpoint >= i ? 0.9 : 0.5}
-          />
-        </mesh>
+        <CheckpointSensor
+          key={`cp-${i}`}
+          index={i}
+          position={[cp.position[0], cp.position[1] + 1.5, cp.position[2]]}
+          unlocked={currentCheckpoint >= i}
+          onTrigger={onCheckpoint}
+        />
       ))}
 
       {/* Moving platforms */}
@@ -259,7 +331,15 @@ function Scene({
       ))}
 
       {/* Spinning blades */}
-      {OBBY_SPINNERS_PLACEHOLDER()}
+      {OBBY_SPINNERS.map((s) => (
+        <SpinningBlade
+          key={s.id}
+          position={s.position}
+          length={s.length}
+          speed={s.speed}
+          color={s.color}
+        />
+      ))}
 
       {/* Player */}
       <ObbyPlayer
@@ -270,45 +350,6 @@ function Scene({
         isTouchDevice={isTouchDevice}
         touchState={touchState}
       />
-
-      {/* Checkpoint triggers */}
-      {OBBY_CHECKPOINTS.map((cp, i) => (
-        <RigidBody
-          key={`cp-trigger-${i}`}
-          type="fixed"
-          position={[cp.position[0], cp.position[1] + 1, cp.position[2]]}
-          colliders="ball"
-          sensor
-          args={[1.5]}
-          onIntersectionEnter={({ other }) => {
-            if (other.rigidBodyObject?.name === "obby-player") {
-              onCheckpoint(i);
-            }
-          }}
-        >
-          <mesh visible={false}>
-            <sphereGeometry args={[1.5, 8, 8]} />
-          </mesh>
-        </RigidBody>
-      ))}
-    </>
-  );
-}
-
-// Import spinner data lazily to avoid circular dependency
-import { OBBY_SPINNERS } from "../../../lib/obbyLevel";
-function OBBY_SPINNERS_PLACEHOLDER() {
-  return (
-    <>
-      {OBBY_SPINNERS.map((s) => (
-        <SpinningBlade
-          key={s.id}
-          position={s.position}
-          length={s.length}
-          speed={s.speed}
-          color={s.color}
-        />
-      ))}
     </>
   );
 }
@@ -316,7 +357,6 @@ function OBBY_SPINNERS_PLACEHOLDER() {
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
-
 export default function ObbyGame({
   config,
   userId,
@@ -351,27 +391,26 @@ export default function ObbyGame({
   }, [startTime, finished]);
 
   const handleFall = useCallback(() => {
-    // Respawn at last checkpoint (or start)
     if (checkpointIndex >= 0) {
       const cp = OBBY_CHECKPOINTS[checkpointIndex];
       setSpawn([...cp.spawn]);
     } else {
       setSpawn([...OBBY_START_SPAWN]);
     }
-    // Force reset key so player teleports properly
     setResetKey((k) => k + 1);
   }, [checkpointIndex]);
 
-  const handleCheckpoint = useCallback((id: number) => {
-    if (id > checkpointIndex) {
-      setCheckpointIndex(id);
-      // Checkpoint sound placeholder
-    }
-  }, [checkpointIndex]);
+  const handleCheckpoint = useCallback(
+    (id: number) => {
+      if (id > checkpointIndex) {
+        setCheckpointIndex(id);
+      }
+    },
+    [checkpointIndex]
+  );
 
   const handleFinish = useCallback(() => {
     if (finished) return;
-    // Must hit all checkpoints
     if (checkpointIndex < OBBY_CHECKPOINTS.length - 1) {
       return;
     }
@@ -405,7 +444,6 @@ export default function ObbyGame({
               <Scene
                 key={resetKey}
                 config={config}
-                world={world}
                 spawnPosition={spawn}
                 onFall={handleFall}
                 inputDisabled={inputDisabled}
@@ -431,16 +469,13 @@ export default function ObbyGame({
         setSubmitted={setSubmitted}
       />
 
-      {/* Touch controls */}
-      {isTouchDevice && !inputDisabled && (
-        <ObbyTouchControls />
-      )}
+      {isTouchDevice && !inputDisabled && <ObbyTouchControls />}
     </div>
   );
 }
 
 // ============================================================
-// TOUCH CONTROLS (mobile)
+// Touch controls
 // ============================================================
 function ObbyTouchControls() {
   const baseRef = useRef<HTMLDivElement>(null);
