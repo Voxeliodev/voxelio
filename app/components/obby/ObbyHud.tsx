@@ -42,7 +42,7 @@ export default function ObbyHud({
   const [newBest, setNewBest] = useState(false);
 
   useEffect(() => {
-    fetchTopTimes(worldId, 20).then(setLeaderboard);
+    fetchTopTimes(worldId, 50).then(setLeaderboard);
     fetchPersonalBest(worldId).then((pb) => {
       if (pb) setPersonalBest(pb.timeMs);
     });
@@ -57,7 +57,7 @@ export default function ObbyHud({
         setSubmitError(result.error || "Failed to submit");
       } else {
         setNewBest(Boolean(result.newBest));
-        fetchTopTimes(worldId, 20).then(setLeaderboard);
+        fetchTopTimes(worldId, 50).then(setLeaderboard);
         fetchPersonalBest(worldId).then((pb) => {
           if (pb) setPersonalBest(pb.timeMs);
         });
@@ -129,77 +129,68 @@ export default function ObbyHud({
             </div>
 
             {/* ===== LEADERBOARD — 2 visible, scrollable ===== */}
-            <div className="bg-black/50 rounded-lg p-4 mb-6 border border-white/10">
-              <div className="flex items-center justify-between mb-3">
+            <div className="bg-black/50 rounded-lg p-4 mb-6 border border-white/10 text-left">
+              <div className="flex items-center justify-between mb-2">
                 <div className="text-[10px] text-white/60 uppercase font-bold tracking-wide">
                   Top Times
                 </div>
-                <div className="text-[10px] text-white/40">
-                  {leaderboard.length > 2 ? "Scroll for more ↕" : ""}
-                </div>
+                {leaderboard.length > 2 && (
+                  <div className="text-[10px] text-[#8B5FFF] font-bold">
+                    Scroll for more ↓
+                  </div>
+                )}
               </div>
 
               {leaderboard.length === 0 ? (
-                <p className="text-white/40 text-xs italic py-4">
+                <p className="text-white/40 text-xs italic py-4 text-center">
                   No times recorded yet
                 </p>
               ) : (
-                <ol
-                  className="space-y-1.5 text-sm overflow-y-auto pr-2 obby-scroll"
+                <div
+                  className="obby-scroll"
                   style={{
-                    maxHeight: "88px", // 2 rows * 44px each
+                    height: "88px",            // exactly 2 rows
+                    overflowY: "auto",
+                    overflowX: "hidden",
+                    touchAction: "pan-y",
+                    WebkitOverflowScrolling: "touch",
+                    borderRadius: "6px",
+                    background: "rgba(0,0,0,0.35)",
                   }}
+                  onWheel={(e) => e.stopPropagation()}
                 >
-                  {leaderboard.map((entry, i) => {
-                    const rank = i + 1;
-                    const medal =
-                      i === 0 ? "🥇" :
-                      i === 1 ? "🥈" :
-                      i === 2 ? "🥉" :
-                      null;
+                  <ol className="text-sm">
+                    {leaderboard.map((entry, i) => {
+                      const rank = i + 1;
+                      const medal =
+                        i === 0 ? "🥇" :
+                        i === 1 ? "🥈" :
+                        i === 2 ? "🥉" :
+                        null;
 
-                    return (
-                      <li
-                        key={entry.id}
-                        className="flex items-center justify-between text-white/90 py-1 px-2 rounded"
-                        style={{
-                          minHeight: "36px",
-                          background: "rgba(255,255,255,0.03)",
-                        }}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-white/50 font-mono text-xs w-10 text-right shrink-0">
-                            {medal ? `${medal} ${rank}.` : `${rank}.`}
+                      return (
+                        <li
+                          key={entry.id}
+                          className="flex items-center justify-between text-white/90 px-2"
+                          style={{ height: "44px" }}  // 44 * 2 = 88px
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-white/50 font-mono text-xs w-12 text-right shrink-0">
+                              {medal ? `${medal} ${rank}.` : `${rank}.`}
+                            </span>
+                            <span className="truncate font-bold">
+                              {entry.username}
+                            </span>
+                          </div>
+                          <span className="text-[#FFD700] font-bold tabular-nums shrink-0 ml-3">
+                            {formatShortTime(entry.timeMs)}
                           </span>
-                          <span className="truncate font-bold">
-                            {entry.username}
-                          </span>
-                        </div>
-                        <span className="text-[#FFD700] font-bold tabular-nums shrink-0 ml-3">
-                          {formatShortTime(entry.timeMs)}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ol>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </div>
               )}
-
-              <style jsx>{`
-                .obby-scroll::-webkit-scrollbar {
-                  width: 6px;
-                }
-                .obby-scroll::-webkit-scrollbar-track {
-                  background: rgba(255, 255, 255, 0.05);
-                  border-radius: 3px;
-                }
-                .obby-scroll::-webkit-scrollbar-thumb {
-                  background: rgba(108, 60, 224, 0.7);
-                  border-radius: 3px;
-                }
-                .obby-scroll::-webkit-scrollbar-thumb:hover {
-                  background: rgba(139, 95, 255, 0.9);
-                }
-              `}</style>
             </div>
 
             <button
@@ -211,6 +202,29 @@ export default function ObbyHud({
           </div>
         </div>
       )}
+
+      {/* ===== Global scrollbar styling for the obby leaderboard ===== */}
+      <style jsx global>{`
+        .obby-scroll::-webkit-scrollbar {
+          width: 8px;
+        }
+        .obby-scroll::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 4px;
+        }
+        .obby-scroll::-webkit-scrollbar-thumb {
+          background: rgba(108, 60, 224, 0.85);
+          border-radius: 4px;
+        }
+        .obby-scroll::-webkit-scrollbar-thumb:hover {
+          background: rgba(139, 95, 255, 1);
+        }
+        /* Firefox */
+        .obby-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(108, 60, 224, 0.85) rgba(255, 255, 255, 0.05);
+        }
+      `}</style>
     </>
   );
 }
