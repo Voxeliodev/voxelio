@@ -34,15 +34,14 @@ const CAPSULE_RADIUS = 0.35;
 const CAPSULE_TOTAL = CAPSULE_HALF_HEIGHT * 2 + CAPSULE_RADIUS * 2; // 1.7
 
 // ============================================================
+// SPAWN_YAW — the direction the player faces when spawning
+// Math.PI = 180° (facing backwards / opposite of default)
+// ============================================================
+const SPAWN_YAW = Math.PI;
+
+// ============================================================
 // VISUAL_OFFSET_Y — the ONE number that controls where the
 // visual character sits relative to the physics capsule.
-// Tuning history:
-//   -0.25 → deeply buried
-//    0.05 → feet + lower legs buried
-//    0.35 → still buried
-//    0.65 → PROBABLY PERFECT (current)
-//    0.95 → floating
-// Adjust in 0.05 steps if needed.
 // ============================================================
 const VISUAL_OFFSET_Y = 0.65;
 
@@ -74,7 +73,8 @@ export default function ObbyPlayer({
   const [walking, setWalking] = useState(false);
   const walkingRef = useRef(false);
 
-  const cameraYawRef = useRef(0);
+  // Camera starts facing the same direction as the player (backwards)
+  const cameraYawRef = useRef(SPAWN_YAW);
   const cameraPitchRef = useRef(0.35);
   const lastBroadcastRef = useRef(0);
 
@@ -153,6 +153,7 @@ export default function ObbyPlayer({
     return hit !== null;
   }
 
+  // ===== Spawn / respawn reset =====
   useEffect(() => {
     if (!bodyRef.current) return;
 
@@ -162,10 +163,17 @@ export default function ObbyPlayer({
     );
     bodyRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
     bodyRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
-    bodyRef.current.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
 
+    // Rotate the physics body to face SPAWN_YAW
+    const halfYaw = SPAWN_YAW / 2;
+    bodyRef.current.setRotation(
+      { x: 0, y: Math.sin(halfYaw), z: 0, w: Math.cos(halfYaw) },
+      true
+    );
+
+    // Rotate the visual model to face SPAWN_YAW
     if (visualRef.current) {
-      visualRef.current.rotation.set(0, 0, 0);
+      visualRef.current.rotation.set(0, SPAWN_YAW, 0);
     }
 
     velocityXZRef.current.set(0, 0);
@@ -173,12 +181,13 @@ export default function ObbyPlayer({
     coyoteTimerRef.current = 0;
     jumpRequestedRef.current = false;
 
-    cameraYawRef.current = 0;
+    // Camera starts behind the player facing the same direction
+    cameraYawRef.current = SPAWN_YAW;
     cameraPitchRef.current = 0.35;
   }, [spawnPosition]);
 
   useEffect(() => {
-    forcedFacingRef.current = 0;
+    forcedFacingRef.current = SPAWN_YAW;
     const timer = setTimeout(() => {
       forcedFacingRef.current = null;
     }, 100);
