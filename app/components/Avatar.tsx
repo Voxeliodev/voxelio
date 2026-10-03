@@ -144,6 +144,7 @@ export function Character({
   rightHandRef,
   rightHandContent,
   resolvedShirt = null,
+  chopSwingRef,
 }: {
   config: AvatarConfig;
   hideAccessory?: boolean;
@@ -151,6 +152,7 @@ export function Character({
   rightHandRef?: React.MutableRefObject<THREE.Group | null>;
   rightHandContent?: React.ReactNode;
   resolvedShirt?: Item | null;
+  chopSwingRef?: React.MutableRefObject<number>;
 }) {
   const skin = config.skinTone;
   const pants = config.pantsColor;
@@ -206,8 +208,22 @@ export function Character({
 
     const swing = Math.sin(walkPhaseRef.current) * 0.75 * walkAmountRef.current;
 
+    // LEFT ARM — always uses walking animation
     if (leftArmRef.current) leftArmRef.current.rotation.x = leftArmBaseX + swing;
-    if (rightArmRef.current) rightArmRef.current.rotation.x = rightArmBaseX - swing;
+
+    // RIGHT ARM — chop swing overrides walking when active
+    const chopProgress = chopSwingRef?.current ?? 0;
+    if (rightArmRef.current) {
+      if (chopProgress > 0) {
+        // Curve: wind-up (raise) then strike (swing down forward)
+        const raise = Math.sin(Math.min(1, (1 - chopProgress) * 2) * Math.PI) * 1.1;
+        const strike = Math.sin(Math.max(0, 1 - chopProgress * 2) * Math.PI) * 1.5;
+        rightArmRef.current.rotation.x = -raise + strike;
+      } else {
+        rightArmRef.current.rotation.x = rightArmBaseX - swing;
+      }
+    }
+
     if (leftLegRef.current) leftLegRef.current.rotation.x = -swing;
     if (rightLegRef.current) rightLegRef.current.rotation.x = swing;
   });
@@ -298,7 +314,6 @@ export function Character({
             >
               <meshStandardMaterial color={rightHandColor} roughness={0.6} />
             </RoundedBox>
-            {/* External content (e.g., axe in Lumberyard) renders inside the hand */}
             {rightHandContent}
           </group>
 

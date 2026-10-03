@@ -47,42 +47,13 @@ type Props = {
 };
 
 // ============================================================
-// Axe mesh — rendered INSIDE the hand group via rightHandContent
+// Axe mesh — rendered inside the hand group
 // ============================================================
-function AxeMesh({
-  axeId,
-  swingRef,
-}: {
-  axeId: AxeId;
-  swingRef: React.MutableRefObject<number>;
-}) {
-  const axeGroupRef = useRef<THREE.Group>(null);
-  const lastSwingRef = useRef(0);
-  const swingProgressRef = useRef(0);
-
-  useFrame((_, delta) => {
-    if (!axeGroupRef.current) return;
-
-    // Detect a swing trigger change (game increments this on chop)
-    if (swingRef.current !== lastSwingRef.current) {
-      lastSwingRef.current = swingRef.current;
-      swingProgressRef.current = 1;
-    }
-
-    // Animate the swing
-    if (swingProgressRef.current > 0) {
-      swingProgressRef.current = Math.max(0, swingProgressRef.current - delta * 2.8);
-      const curve = Math.sin((1 - swingProgressRef.current) * Math.PI);
-      axeGroupRef.current.rotation.x = 0.2 - curve * 1.6;
-    } else {
-      axeGroupRef.current.rotation.x = 0.2;
-    }
-  });
-
+function AxeMesh({ axeId }: { axeId: AxeId }) {
   const axe = getAxe(axeId);
 
   return (
-    <group ref={axeGroupRef} position={[0, 0.15, 0.2]} rotation={[0.2, 0, 0]}>
+    <group position={[0, 0.15, 0.2]} rotation={[0.2, 0, 0]}>
       {/* Handle */}
       <mesh castShadow position={[0, 0.4, 0]}>
         <boxGeometry args={[0.08, 1, 0.08]} />
@@ -141,6 +112,7 @@ export default function LumberyardPlayer({
   const forcedFacingRef = useRef<number | null>(null);
 
   const lastSwingTriggerRef = useRef(0);
+  const chopSwingRef = useRef(0);
 
   useEffect(() => {
     if (isTouchDevice) return;
@@ -232,6 +204,19 @@ export default function LumberyardPlayer({
     return () => clearTimeout(timer);
   }, [spawnPosition]);
 
+  // ===== Chop swing decay =====
+  useFrame((_, delta) => {
+    if (swingTriggerRef.current !== lastSwingTriggerRef.current) {
+      lastSwingTriggerRef.current = swingTriggerRef.current;
+      chopSwingRef.current = 1;
+      if (onChopSwing) onChopSwing();
+    }
+    if (chopSwingRef.current > 0) {
+      chopSwingRef.current = Math.max(0, chopSwingRef.current - delta * 2.5);
+    }
+  });
+
+  // ===== Movement loop =====
   useFrame((_, delta) => {
     if (!bodyRef.current) return;
     const keys = getKeys();
@@ -244,7 +229,6 @@ export default function LumberyardPlayer({
       coyoteTimerRef.current = Math.max(0, coyoteTimerRef.current - dt);
     }
 
-    // Input
     let localX = 0;
     let localZ = 0;
     if (!inputDisabled) {
@@ -289,7 +273,6 @@ export default function LumberyardPlayer({
       coyoteTimerRef.current = 0;
     }
 
-    // Facing
     const pos = bodyRef.current.translation();
     const speed = Math.hypot(velocityXZRef.current.x, velocityXZRef.current.y);
     const isMoving = speed > 0.8;
@@ -308,13 +291,6 @@ export default function LumberyardPlayer({
       visualRef.current.rotation.y += diff * Math.min(1, ROT_LERP * dt);
     }
 
-    // On-chop hook
-    if (swingTriggerRef.current !== lastSwingTriggerRef.current) {
-      lastSwingTriggerRef.current = swingTriggerRef.current;
-      if (onChopSwing) onChopSwing();
-    }
-
-    // Camera
     if (visualRef.current) {
       const camYaw = cameraYawRef.current;
       const camPitch = cameraPitchRef.current;
@@ -360,9 +336,8 @@ export default function LumberyardPlayer({
           config={config}
           hideAccessory
           walking={walking}
-          rightHandContent={
-            <AxeMesh axeId={currentAxeId} swingRef={swingTriggerRef} />
-          }
+          chopSwingRef={chopSwingRef}
+          rightHandContent={<AxeMesh axeId={currentAxeId} />}
         />
       </group>
     </RigidBody>
