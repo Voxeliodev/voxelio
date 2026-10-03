@@ -8,7 +8,7 @@ import * as THREE from "three";
 import type { AvatarConfig } from "../../../lib/auth";
 import type { World } from "../../../lib/worlds";
 import { supabase } from "../../../lib/supabase";
-import LumberyardPlayer, { LUMBERYARD_PLAYER_NAME } from "./LumberyardPlayer";
+import LumberyardPlayer from "./LumberyardPlayer";
 import RemoteLumberPlayer, { type RemoteLumberData } from "./RemoteLumberPlayer";
 import LumberHud from "./LumberHud";
 import Shop from "./Shop";
@@ -55,8 +55,8 @@ const KEY_MAP = [
   { name: "jump", keys: [" ", "Space"] },
 ];
 
-const STALE_TIMEOUT = 3000;         // remove remote players after 3s silence
-const BROADCAST_INTERVAL = 66;      // ~15 broadcasts per second
+const STALE_TIMEOUT = 3000;
+const BROADCAST_INTERVAL = 66;
 
 type TreeState = {
   spawnId: string;
@@ -117,7 +117,6 @@ export default function LumberyardGame({
   const [others, setOthers] = useState<RemoteLumberData[]>([]);
   const [onlineCount, setOnlineCount] = useState(1);
   const channelRef = useRef<any>(null);
-  const lastBroadcastRef = useRef(0);
 
   // Load progress
   useEffect(() => {
@@ -169,7 +168,7 @@ export default function LumberyardGame({
     return () => clearInterval(interval);
   }, []);
 
-  // ===== Multiplayer setup =====
+  // ===== Multiplayer: single chained subscribe =====
   useEffect(() => {
     if (!world?.id) return;
 
@@ -180,68 +179,66 @@ export default function LumberyardGame({
       },
     });
 
-    // Receive other players' position updates
-    channel.on("broadcast", { event: "lumber-move" }, ({ payload }) => {
-      if (!payload || payload.id === userId) return;
-      setOthers((prev) => {
-        const existing = prev.findIndex((p) => p.id === payload.id);
-        const next: RemoteLumberData = {
-          id: payload.id,
-          username: payload.username,
-          displayId: payload.displayId ?? null,
-          avatarConfig: payload.avatarConfig,
-          currentAxeId: payload.currentAxeId,
-          targetPos: payload.pos,
-          targetRotY: payload.rotY,
-          lastSeen: Date.now(),
-        };
-        if (existing >= 0) {
-          const copy = [...prev];
-          copy[existing] = next;
-          return copy;
-        }
-        return [...prev, next];
-      });
-    });
-
-    // When someone joins, they'll announce themselves. When we see them, we
-    // ask everyone to re-broadcast our position (so the new player sees us).
-    channel.on("presence", { event: "sync" }, () => {
-      const state = channel.presenceState();
-      setOnlineCount(Object.keys(state).length);
-
-      // Re-broadcast our position so newcomers see us
-      channel.send({
-        type: "broadcast",
-        event: "lumber-move",
-        payload: {
-          id: userId,
-          username,
-          displayId: null,
-          avatarConfig: config,
-          currentAxeId: progress.currentAxe,
-          pos: playerPosRef.current,
-          rotY: playerRotYRef.current,
-        },
-      });
-    });
-
-    // When someone leaves, the presence sync fires and we'll re-check
-    channel.on("presence", { event: "leave" }, () => {
-      const state = channel.presenceState();
-      setOnlineCount(Math.max(1, Object.keys(state).length));
-    });
-
-    channel.subscribe((status: string) => {
-      if (status === "SUBSCRIBED") {
-        channel.track({
-          id: userId,
-          username,
-          worldId: world.id,
-          joinedAt: Date.now(),
+    // Chain ALL listeners before calling .subscribe()
+    channel
+      .on("broadcast", { event: "lumber-move" }, ({ payload }) => {
+        if (!payload || payload.id === userId) return;
+        setOthers((prev) => {
+          const existing = prev.findIndex((p) => p.id === payload.id);
+          const next: RemoteLumberData = {
+            id: payload.id,
+            username: payload.username,
+            displayId: payload.displayId ?? null,
+            avatarConfig: payload.avatarConfig,
+            currentAxeId: payload.currentAxeId,
+            targetPos: payload.pos,
+            targetRotY: payload.rotY,
+            lastSeen: Date.now(),
+          };
+          if (existing >= 0) {
+            const copy = [...prev];
+            copy[existing] = next;
+            return copy;
+          }
+          return [...prev, next];
         });
-      }
-    });
+      })
+      .on("broadcast", { event: "lumber-chop" }, () => {
+        // placeholder — no sound for other players' chops yet
+      })
+      .on("presence", { event: "sync" }, () => {
+        const state = channel.presenceState();
+        setOnlineCount(Math.max(1, Object.keys(state).length));
+
+        // Re-broadcast our position so newcomers see us immediately
+        channel.send({
+          type: "broadcast",
+          event: "lumber-move",
+          payload: {
+            id: userId,
+            username,
+            displayId: null,
+            avatarConfig: config,
+            currentAxeId: progress.currentAxe,
+            pos: playerPosRef.current,
+            rotY: playerRotYRef.current,
+          },
+        });
+      })
+      .on("presence", { event: "leave" }, () => {
+        const state = channel.presenceState();
+        setOnlineCount(Math.max(1, Object.keys(state).length));
+      })
+      .subscribe((status: string) => {
+        if (status === "SUBSCRIBED") {
+          channel.track({
+            id: userId,
+            username,
+            worldId: world.id,
+            joinedAt: Date.now(),
+          });
+        }
+      });
 
     channelRef.current = channel;
 
@@ -304,7 +301,7 @@ export default function LumberyardGame({
       swingTriggerRef.current += 1;
       playChop();
 
-      // Broadcast the chop so others can hear it
+      // Broadcast the chop so others hear it (optional for now)
       const channel = channelRef.current;
       if (channel) {
         channel.send({
@@ -446,7 +443,6 @@ export default function LumberyardGame({
     [showMessage]
   );
 
-  // Position update from player — updates the shared ref
   const handlePositionUpdate = useCallback(
     (pos: [number, number, number], rotY: number) => {
       playerPosRef.current = pos;
