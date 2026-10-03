@@ -87,6 +87,17 @@ const OBBY: Layout = {
   ],
 };
 
+// ---------- Lumberyard — forest with sawmill ----------
+const LUMBERYARD: Layout = {
+  groundColor: "#65A30D",
+  blocks: [
+    // Sawmill base structure
+    { position: [0, 0.1, 30], size: [8, 0.2, 8], color: "#4B5563" },
+    // Sawmill roof
+    { position: [0, 3, 30], size: [6, 0.3, 6], color: "#7C2D12" },
+  ],
+};
+
 // ---------- Tycoon — long factory / conveyor ----------
 const TYCOON: Layout = {
   groundColor: "#78716C",
@@ -286,6 +297,7 @@ export const LAYOUTS: Record<string, Layout> = {
   plaza: PLAZA,
   sky: SKY,
   obby: OBBY,
+  lumberyard: LUMBERYARD,
   tycoon: TYCOON,
   horror: HORROR,
   pvp: PVP,
@@ -313,6 +325,7 @@ export const LAYOUT_OPTIONS: {
   { id: "plaza", name: "Plaza", emoji: "🏙️", description: "Town square with a fountain and benches", accent: "#7B2FF7" },
   { id: "sky", name: "Sky Islands", emoji: "🏝️", description: "Floating platforms to jump between", accent: "#22C55E" },
   { id: "obby", name: "Obby Course", emoji: "🏃", description: "Linear obstacle course rising upward", accent: "#EF4444" },
+  { id: "lumberyard", name: "Lumberyard", emoji: "🪓", description: "Chop trees, sell logs, upgrade your axe", accent: "#65A30D" },
   { id: "tycoon", name: "Tycoon", emoji: "💰", description: "Factory floor with machinery", accent: "#FFD700" },
   { id: "horror", name: "Horror", emoji: "👻", description: "Dark enclosed manor with rooms", accent: "#4B5563" },
   { id: "pvp", name: "PvP Arena", emoji: "⚔️", description: "Walled arena with cover blocks", accent: "#DC2626" },
