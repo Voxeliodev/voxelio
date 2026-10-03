@@ -44,6 +44,12 @@ import {
 } from "../../../lib/sounds";
 
 // ============================================================
+// Module-level cache — survives React StrictMode remounts
+// so we don't try to subscribe to the same channel twice.
+// ============================================================
+const activeChannels = new Map<string, any>();
+
+// ============================================================
 // LUMBERYARD INC — main game (multiplayer presence)
 // ============================================================
 
@@ -117,11 +123,8 @@ export default function LumberyardGame({
   const [onlineCount, setOnlineCount] = useState(1);
   const channelRef = useRef<any>(null);
 
-  // Stable unique client ID for this mount — survives the effect but not a remount
-  const clientIdRef = useRef<string>("");
-
+  // Load progress on mount
   useEffect(() => {
-    // Load progress
     (async () => {
       const p = await loadProgress();
       setProgress(p);
@@ -129,6 +132,7 @@ export default function LumberyardGame({
     })();
   }, []);
 
+  // Ambient music — start on first user interaction
   useEffect(() => {
     const handleFirstInteraction = () => {
       if (musicOn) startAmbientMusic();
@@ -151,14 +155,19 @@ export default function LumberyardGame({
     messageTimeoutRef.current = setTimeout(() => setMessage(null), durationMs);
   }, []);
 
+  // Tree regrowth loop
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
       setTrees((prev) =>
         prev.map((t) => {
-          if (t.deadAt && now - t.deadAt >= getTreeType(
-            TREE_SPAWNS.find((s) => s.id === t.spawnId)?.type || "small"
-          ).regrowMs) {
+          if (
+            t.deadAt &&
+            now - t.deadAt >=
+              getTreeType(
+                TREE_SPAWNS.find((s) => s.id === t.spawnId)?.type || "small"
+              ).regrowMs
+          ) {
             return { ...t, damage: 0, deadAt: null };
           }
           return t;
@@ -169,90 +178,91 @@ export default function LumberyardGame({
   }, []);
 
   // ============================================================
-  // MULTIPLAYER — one channel per mount, unique name, all listeners
-  // chained before subscribe
+  // MULTIPLAYER — shared channel with module-level cache so
+  // React StrictMode's double-mount doesn't crash.
   // ============================================================
   useEffect(() => {
     if (!world?.id || !userId) return;
 
-    // Generate a unique channel name per mount so Supabase never
-    // hands back a cached, already-subscribed channel.
-    if (!clientIdRef.current) {
-      clientIdRef.current =
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `client-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    }
+    const channelName = `world-${world.id}`;
 
-    const channelName = `world-${world.id}-${clientIdRef.current}`;
+    // If this channel is already active (StrictMode double-mount), reuse it.
+    let channel = activeChannels.get(channelName);
 
-    const channel = supabase.channel(channelName, {
-      config: {
-        broadcast: { self: false },
-        presence: { key: userId },
-      },
-    });
-
-    channel
-      .on("broadcast", { event: "lumber-move" }, ({ payload }) => {
-        if (!payload || payload.id === userId) return;
-        setOthers((prev) => {
-          const existing = prev.findIndex((p) => p.id === payload.id);
-          const next: RemoteLumberData = {
-            id: payload.id,
-            username: payload.username,
-            displayId: payload.displayId ?? null,
-            avatarConfig: payload.avatarConfig,
-            currentAxeId: payload.currentAxeId,
-            targetPos: payload.pos,
-            targetRotY: payload.rotY,
-            lastSeen: Date.now(),
-          };
-          if (existing >= 0) {
-            const copy = [...prev];
-            copy[existing] = next;
-            return copy;
-          }
-          return [...prev, next];
-        });
-      })
-      .on("broadcast", { event: "lumber-chop" }, () => {
-        // placeholder
-      })
-      .on("presence", { event: "sync" }, () => {
-        const state = channel.presenceState();
-        setOnlineCount(Math.max(1, Object.keys(state).length));
-        channel.send({
-          type: "broadcast",
-          event: "lumber-move",
-          payload: {
-            id: userId,
-            username,
-            displayId: null,
-            avatarConfig: config,
-            currentAxeId: progress.currentAxe,
-            pos: playerPosRef.current,
-            rotY: playerRotYRef.current,
-          },
-        });
-      })
-      .on("presence", { event: "leave" }, () => {
-        const state = channel.presenceState();
-        setOnlineCount(Math.max(1, Object.keys(state).length));
-      })
-      .subscribe((status: string) => {
-        if (status === "SUBSCRIBED") {
-          channel.track({
-            id: userId,
-            username,
-            worldId: world.id,
-            joinedAt: Date.now(),
-          });
-        }
+    if (!channel) {
+      channel = supabase.channel(channelName, {
+        config: {
+          broadcast: { self: false },
+          presence: { key: userId },
+        },
       });
+
+      channel
+        .on("broadcast", { event: "lumber-move" }, ({ payload }: any) => {
+          if (!payload || payload.id === userId) return;
+          setOthers((prev) => {
+            const existing = prev.findIndex((p) => p.id === payload.id);
+            const next: RemoteLumberData = {
+              id: payload.id,
+              username: payload.username,
+              displayId: payload.displayId ?? null,
+              avatarConfig: payload.avatarConfig,
+              currentAxeId: payload.currentAxeId,
+              targetPos: payload.pos,
+              targetRotY: payload.rotY,
+              lastSeen: Date.now(),
+            };
+            if (existing >= 0) {
+              const copy = [...prev];
+              copy[existing] = next;
+              return copy;
+            }
+            return [...prev, next];
+          });
+        })
+        .on("broadcast", { event: "lumber-chop" }, () => {
+          // placeholder — no sound for others' chops yet
+        })
+        .on("presence", { event: "sync" }, () => {
+          const state = channel.presenceState();
+          setOnlineCount(Math.max(1, Object.keys(state).length));
+
+          // Re-broadcast our position so newcomers see us immediately
+          channel.send({
+            type: "broadcast",
+            event: "lumber-move",
+            payload: {
+              id: userId,
+              username,
+              displayId: null,
+              avatarConfig: config,
+              currentAxeId: progress.currentAxe,
+              pos: playerPosRef.current,
+              rotY: playerRotYRef.current,
+            },
+          });
+        })
+        .on("presence", { event: "leave" }, () => {
+          const state = channel.presenceState();
+          setOnlineCount(Math.max(1, Object.keys(state).length));
+        })
+        .subscribe((status: string) => {
+          if (status === "SUBSCRIBED") {
+            channel.track({
+              id: userId,
+              username,
+              worldId: world.id,
+              joinedAt: Date.now(),
+            });
+          }
+        });
+
+      activeChannels.set(channelName, channel);
+    }
 
     channelRef.current = channel;
 
+    // Stale player cleanup
     const staleTimer = setInterval(() => {
       const now = Date.now();
       setOthers((prev) => prev.filter((p) => now - p.lastSeen < STALE_TIMEOUT));
@@ -260,15 +270,27 @@ export default function LumberyardGame({
 
     return () => {
       clearInterval(staleTimer);
-      try {
-        channel.untrack();
-      } catch {}
-      supabase.removeChannel(channel);
-      channelRef.current = null;
+      // Do NOT remove the channel — StrictMode may remount and reuse it.
     };
   }, [world?.id, userId, username, config, progress.currentAxe]);
 
-  // ===== Broadcast our position every ~66ms =====
+  // ============================================================
+  // Real unmount — untrack presence so others see us leave.
+  // ============================================================
+  useEffect(() => {
+    return () => {
+      const channel = channelRef.current;
+      if (channel) {
+        try {
+          channel.untrack();
+        } catch {}
+      }
+    };
+  }, []);
+
+  // ============================================================
+  // Broadcast our position every ~66ms
+  // ============================================================
   useEffect(() => {
     const interval = setInterval(() => {
       const channel = channelRef.current;
@@ -300,8 +322,12 @@ export default function LumberyardGame({
       if (!tree || tree.deadAt) return;
 
       const type = getTreeType(spawn.type);
-      const axeIndex = ["rusty", "iron", "steel", "gold", "diamond"].indexOf(progress.currentAxe);
-      const minIndex = ["rusty", "iron", "steel", "gold", "diamond"].indexOf(type.minAxe);
+      const axeIndex = ["rusty", "iron", "steel", "gold", "diamond"].indexOf(
+        progress.currentAxe
+      );
+      const minIndex = ["rusty", "iron", "steel", "gold", "diamond"].indexOf(
+        type.minAxe
+      );
 
       if (axeIndex < minIndex) {
         showMessage(`🔒 Need a ${getAxe(type.minAxe).name} to chop ${type.name}!`);
@@ -344,10 +370,18 @@ export default function LumberyardGame({
 
         setLogs((prev) => [
           ...prev,
-          { id: logId, position: logPos, value: type.logValue, treeType: type.name },
+          {
+            id: logId,
+            position: logPos,
+            value: type.logValue,
+            treeType: type.name,
+          },
         ]);
 
-        const newProgress = { ...progress, treesChopped: progress.treesChopped + 1 };
+        const newProgress = {
+          ...progress,
+          treesChopped: progress.treesChopped + 1,
+        };
         setProgress(newProgress);
         saveProgress(newProgress);
 
@@ -424,7 +458,11 @@ export default function LumberyardGame({
     const onKeyDown = (e: KeyboardEvent) => {
       if (inputDisabled) return;
       const active = document.activeElement;
-      if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) return;
+      if (
+        active &&
+        (active.tagName === "INPUT" || active.tagName === "TEXTAREA")
+      )
+        return;
 
       if (e.key === "e" || e.key === "E") {
         e.preventDefault();
@@ -464,8 +502,12 @@ export default function LumberyardGame({
   const canDamageTree = useCallback(
     (typeId: string) => {
       const type = getTreeType(typeId);
-      const axeIndex = ["rusty", "iron", "steel", "gold", "diamond"].indexOf(progress.currentAxe);
-      const minIndex = ["rusty", "iron", "steel", "gold", "diamond"].indexOf(type.minAxe);
+      const axeIndex = ["rusty", "iron", "steel", "gold", "diamond"].indexOf(
+        progress.currentAxe
+      );
+      const minIndex = ["rusty", "iron", "steel", "gold", "diamond"].indexOf(
+        type.minAxe
+      );
       return axeIndex >= minIndex;
     },
     [progress.currentAxe]
@@ -515,13 +557,17 @@ export default function LumberyardGame({
               />
               <hemisphereLight args={["#ffffff", "#88aa88", 0.4]} />
 
+              {/* Ground */}
               <RigidBody type="fixed" colliders="cuboid">
                 <mesh position={[0, -0.5, 0]} receiveShadow>
-                  <boxGeometry args={[WORLD_BOUNDS * 2, 1, WORLD_BOUNDS * 2]} />
+                  <boxGeometry
+                    args={[WORLD_BOUNDS * 2, 1, WORLD_BOUNDS * 2]}
+                  />
                   <meshStandardMaterial color="#65A30D" roughness={0.95} />
                 </mesh>
               </RigidBody>
 
+              {/* Trees */}
               {TREE_SPAWNS.map((spawn) => {
                 const state = trees.find((t) => t.spawnId === spawn.id);
                 if (!state || state.deadAt) return null;
@@ -536,9 +582,13 @@ export default function LumberyardGame({
                 );
               })}
 
+              {/* Logs on the ground */}
               {logs.map((log) => {
                 const [px, , pz] = playerPosRef.current;
-                const d = Math.hypot(log.position[0] - px, log.position[2] - pz);
+                const d = Math.hypot(
+                  log.position[0] - px,
+                  log.position[2] - pz
+                );
                 return (
                   <Log
                     key={log.id}
@@ -549,8 +599,10 @@ export default function LumberyardGame({
                 );
               })}
 
+              {/* Sawmill */}
               <Sawmill />
 
+              {/* Local player */}
               <LumberyardPlayer
                 config={config}
                 spawnPosition={LUMBERYARD_SPAWN}
@@ -561,6 +613,7 @@ export default function LumberyardGame({
                 swingTriggerRef={swingTriggerRef}
               />
 
+              {/* Remote players */}
               {others.map((p) => (
                 <RemoteLumberPlayer key={p.id} data={p} />
               ))}
@@ -577,6 +630,7 @@ export default function LumberyardGame({
         message={message}
       />
 
+      {/* Online counter + player list */}
       <div className="absolute top-3 right-3 z-30 flex flex-col gap-2 items-end">
         <div className="bg-black/70 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs flex items-center gap-2">
           <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
@@ -587,7 +641,9 @@ export default function LumberyardGame({
           <div className="bg-black/70 backdrop-blur rounded border border-white/20 px-3 py-2 text-white/80 text-[11px] max-w-[180px] space-y-1">
             <p className="font-bold text-white/60 mb-1">In this world</p>
             {others.slice(0, 6).map((p) => (
-              <p key={p.id} className="truncate">• {p.username}</p>
+              <p key={p.id} className="truncate">
+                • {p.username}
+              </p>
             ))}
             {others.length > 6 && (
               <p className="text-white/40">+{others.length - 6} more</p>
@@ -596,6 +652,7 @@ export default function LumberyardGame({
         )}
       </div>
 
+      {/* Music toggle */}
       <button
         onClick={toggleMusic}
         className="fixed bottom-6 right-6 md:bottom-6 md:right-6 z-40 w-12 h-12 rounded-full bg-black/70 border-2 border-white/30 backdrop-blur flex items-center justify-center text-xl hover:bg-black/90 transition"
@@ -612,6 +669,7 @@ export default function LumberyardGame({
         onBuy={handleBuy}
       />
 
+      {/* Mobile E button */}
       {isTouchDevice && (
         <button
           onClick={() => {
