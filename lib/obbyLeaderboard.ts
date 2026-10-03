@@ -17,7 +17,6 @@ export type PersonalBest = {
   completedAt: string;
 } | null;
 
-// Fetch the top N times for a given world
 export async function fetchTopTimes(
   worldId: string,
   limit: number = 10
@@ -27,11 +26,10 @@ export async function fetchTopTimes(
     .select("id, user_id, username, time_ms, completed_at")
     .eq("world_id", worldId)
     .order("time_ms", { ascending: true })
-    .limit(limit);
+    .limit(limit * 3);
 
   if (error || !data) return [];
 
-  // Deduplicate by user — keep their best (lowest) time only
   const seenUsers = new Set<string>();
   const deduped: LeaderboardEntry[] = [];
 
@@ -45,12 +43,12 @@ export async function fetchTopTimes(
       timeMs: row.time_ms,
       completedAt: row.completed_at,
     });
+    if (deduped.length >= limit) break;
   }
 
   return deduped;
 }
 
-// Fetch the current user's personal best for a world
 export async function fetchPersonalBest(
   worldId: string
 ): Promise<PersonalBest> {
@@ -74,7 +72,7 @@ export async function fetchPersonalBest(
   };
 }
 
-// Submit a completion time. Server-side validation happens in the API route.
+// Submit a completion time
 export async function submitTime(
   worldId: string,
   timeMs: number
@@ -84,13 +82,18 @@ export async function submitTime(
     return { success: false, error: "Not signed in" };
   }
 
+  // Send the Supabase access token with the request so the
+  // API route can identify the user.
   const res = await fetch("/api/obby/submit", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
     body: JSON.stringify({ worldId, timeMs }),
   });
 
-  const json = await res.json();
+  const json = await res.json().catch(() => ({}));
 
   if (!res.ok) {
     return { success: false, error: json.error || "Submission failed" };
@@ -99,19 +102,29 @@ export async function submitTime(
   return { success: true, newBest: json.newBest };
 }
 
-// Format milliseconds as "M:SS.mmm"
-export function formatTime(ms: number): string {
-  const totalSeconds = Math.floor(ms / 1000);
+// ============================================================
+// Time formatting
+// ============================================================
+// All formatters use Math.round on milliseconds first, then floor
+// on seconds, to prevent floating-point artifacts.
+// ============================================================
+
+export function formatShortTime(ms: number): string {
+  const totalMs = Math.max(0, Math.round(ms));
+
+  if (totalMs < 60_000) {
+    const seconds = totalMs / 1000;
+    return `${seconds.toFixed(2)}s`;
+  }
+
+  const totalSeconds = Math.floor(totalMs / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
-  const millis = ms % 1000;
-  return `${minutes}:${String(seconds).padStart(2, "0")}.${String(millis).padStart(3, "0")}`;
+  const centis = Math.floor((totalMs % 1000) / 10);
+
+  return `${minutes}:${String(seconds).padStart(2, "0")}.${String(centis).padStart(2, "0")}`;
 }
 
-// Format milliseconds as a short string like "42.31s" or "1:23.45"
-export function formatShortTime(ms: number): string {
-  if (ms < 60_000) {
-    return `${(ms / 1000).toFixed(2)}s`;
-  }
-  return formatTime(ms);
+export function formatTime(ms: number): string {
+  return formatShortTime(ms);
 }

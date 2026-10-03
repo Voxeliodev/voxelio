@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 // ============================================================
 // POST /api/obby/submit
 // Body: { worldId: string, timeMs: number }
-// Saves a leaderboard entry for the signed-in user.
+// Header: Authorization: Bearer <supabase_access_token>
 // ============================================================
 
 export async function POST(req: NextRequest) {
@@ -13,7 +13,6 @@ export async function POST(req: NextRequest) {
     const worldId: unknown = body?.worldId;
     const timeMs: unknown = body?.timeMs;
 
-    // ===== Validate input =====
     if (typeof worldId !== "string" || !worldId) {
       return NextResponse.json({ error: "Missing worldId" }, { status: 400 });
     }
@@ -21,10 +20,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid timeMs" }, { status: 400 });
     }
 
-    // ===== Anti-cheat: reject impossible times =====
-    // Fastest realistic completion is ~15 seconds
+    // Anti-cheat
     const MIN_TIME_MS = 15_000;
-    const MAX_TIME_MS = 600_000; // 10 minutes
+    const MAX_TIME_MS = 600_000;
 
     if (timeMs < MIN_TIME_MS) {
       return NextResponse.json(
@@ -39,14 +37,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ===== Get the auth token from the request =====
+    // Get access token from the Authorization header
     const authHeader = req.headers.get("authorization");
-    const accessToken =
-      authHeader?.replace("Bearer ", "") ||
-      req.cookies.get("sb-access-token")?.value;
+    const accessToken = authHeader?.replace(/^Bearer\s+/i, "") || null;
 
-    // ===== Create an authenticated Supabase client =====
-    // We use the service role key from env so we can verify the user
+    if (!accessToken) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -57,29 +55,38 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Create a Supabase client with the user's token
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: {
-        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
       },
     });
 
-    // ===== Get the signed-in user =====
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    // Verify the user
+    const { data: { user }, error: userError } = await supabase.auth.getUser(
+      accessToken
+    );
 
     if (userError || !user) {
+      console.error("Auth error:", userError);
       return NextResponse.json({ error: "Not signed in" }, { status: 401 });
     }
 
-    // ===== Get their username from profiles =====
+    // Get username from profiles
     const { data: profile } = await supabase
       .from("profiles")
       .select("username")
       .eq("id", user.id)
       .maybeSingle();
 
-    const username = profile?.username || user.email?.split("@")[0] || "Unknown";
+    const username =
+      profile?.username || user.email?.split("@")[0] || "Unknown";
 
-    // ===== Check their current best =====
+    // Check personal best
     const { data: currentBest } = await supabase
       .from("obby_leaderboard")
       .select("time_ms")
@@ -91,7 +98,7 @@ export async function POST(req: NextRequest) {
 
     const isNewBest = !currentBest || timeMs < currentBest.time_ms;
 
-    // ===== Insert the new entry =====
+    // Insert
     const { error: insertError } = await supabase
       .from("obby_leaderboard")
       .insert({

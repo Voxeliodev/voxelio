@@ -65,9 +65,8 @@ export default function ObbyHud({
     })();
   }, [finished, submitted, finalTime, worldId, setSubmitted]);
 
-  // Timer display: clamp to 0 decimals
-  const currentDisplay = finished ? finalTime : elapsed;
-  const currentSeconds = currentDisplay / 1000;
+  // Use the same formatter for both live and final — no more glitch
+  const displayTime = finished ? finalTime : elapsed;
 
   return (
     <>
@@ -77,11 +76,7 @@ export default function ObbyHud({
           Time
         </div>
         <div className="text-2xl font-black text-[#FFD700] tabular-nums">
-          {currentSeconds < 60
-            ? `${currentSeconds.toFixed(2)}s`
-            : `${Math.floor(currentSeconds / 60)}:${(currentSeconds % 60)
-                .toFixed(2)
-                .padStart(5, "0")}`}
+          {formatShortTime(displayTime)}
         </div>
       </div>
 
