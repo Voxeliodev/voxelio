@@ -319,7 +319,8 @@ export default function LumberyardGame({
   useEffect(() => {
     if (!world?.id || !userId) return;
 
-    const channelName = `world-${world.id}`;
+    // FIXED: Unique channel name to avoid conflict with page.tsx
+    const channelName = `lumberyard-${world.id}`;
     console.log("[useEffect] attaching to channel:", channelName, "as user:", userId);
 
     const state = ensureChannel(
