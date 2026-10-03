@@ -636,6 +636,9 @@ export default function WorldPage() {
   const recentMessagesRef = useRef<string[]>([]);
   const muteUntilRef = useRef(0);
 
+  // Chat send queue — messages waiting for the channel to be ready
+  const pendingChatRef = useRef<Array<{ id: string; userId: string; username: string; text: string }>>([]);
+
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
   const [liking, setLiking] = useState(false);
@@ -643,6 +646,10 @@ export default function WorldPage() {
   const channelRef = useRef<any>(null);
   const lobbyRef = useRef<any>(null);
   const localPosRef = useRef<{ pos: [number, number, number]; rotY: number }>({ pos: [0, CHARACTER_Y_OFFSET, 0], rotY: 0 });
+
+  // Stable refs for user data so channel doesn't get torn down
+  const userRef = useRef<User | null>(null);
+  useEffect(() => { userRef.current = user; }, [user]);
 
   useEffect(() => {
     const touch = typeof window !== "undefined" && ("ontouchstart" in window || navigator.maxTouchPoints > 0);
@@ -770,6 +777,27 @@ export default function WorldPage() {
     return () => clearTimeout(t);
   }, [systemMessage]);
 
+  // ===== Flush pending chat messages when the channel becomes ready =====
+  useEffect(() => {
+    if (!user || !worldId) return;
+    const interval = setInterval(() => {
+      const channel = channelRef.current;
+      if (!channel) return;
+      const queue = pendingChatRef.current;
+      if (queue.length === 0) return;
+      pendingChatRef.current = [];
+      for (const msg of queue) {
+        try {
+          channel.send({ type: "broadcast", event: "chat", payload: msg });
+          console.log("[chat] flushed queued message:", msg.text);
+        } catch (err) {
+          console.warn("[chat] failed to flush queued message:", err);
+        }
+      }
+    }, 200);
+    return () => clearInterval(interval);
+  }, [user, worldId]);
+
   const sendChat = useCallback(() => {
     const me = user;
     const text = draft.trim();
@@ -807,18 +835,33 @@ export default function WorldPage() {
       return;
     }
 
-    // ===== Send the message (no rate limit — type as fast as you want) =====
+    // ===== Build the message =====
     lastChatSentRef.current = now;
     const filtered = filterMessage(text.slice(0, CHAT_MAX_LENGTH));
     const id = typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
       : `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const msg: ChatMessage = { id, userId: me.id, username: me.username, text: filtered, expiresAt: Date.now() + CHAT_LIFETIME_MS };
+    const payload = { id: msg.id, userId: msg.userId, username: msg.username, text: msg.text };
+
+    // Add to own chat log immediately (so you see it instantly)
     setChatMessages((prev) => [...prev, msg]);
+
+    // ===== Send, or queue if channel isn't ready yet =====
     const channel = channelRef.current;
     if (channel) {
-      channel.send({ type: "broadcast", event: "chat", payload: { id: msg.id, userId: msg.userId, username: msg.username, text: msg.text } });
+      try {
+        channel.send({ type: "broadcast", event: "chat", payload });
+        console.log("[chat] sent immediately:", text);
+      } catch (err) {
+        console.warn("[chat] send failed, queuing:", err);
+        pendingChatRef.current.push(payload);
+      }
+    } else {
+      console.warn("[chat] channel not ready, queuing message:", text);
+      pendingChatRef.current.push(payload);
     }
+
     setDraft(""); setChatOpen(false);
   }, [draft, user]);
 
@@ -839,10 +882,10 @@ export default function WorldPage() {
   const handleMove = useCallback((pos: [number, number, number], rotY: number) => {
     localPosRef.current = { pos, rotY };
     const channel = channelRef.current;
-    const me = user;
+    const me = userRef.current;
     if (!channel || !me) return;
     channel.send({ type: "broadcast", event: "move", payload: { id: me.id, username: me.username, displayId: me.displayId ?? null, avatarConfig: me.avatarConfig, pos, rotY } });
-  }, [user]);
+  }, []);
 
   useEffect(() => {
     if (!user || !worldId) return;
@@ -869,7 +912,10 @@ export default function WorldPage() {
         const state = channel.presenceState();
         setOnlineCount(Object.keys(state).length);
         const me = localPosRef.current;
-        channel.send({ type: "broadcast", event: "move", payload: { id: user.id, username: user.username, displayId: user.displayId ?? null, avatarConfig: user.avatarConfig, pos: me.pos, rotY: me.rotY } });
+        const u = userRef.current;
+        if (u) {
+          channel.send({ type: "broadcast", event: "move", payload: { id: u.id, username: u.username, displayId: u.displayId ?? null, avatarConfig: u.avatarConfig, pos: me.pos, rotY: me.rotY } });
+        }
       })
       .subscribe((status: string) => {
         if (status === "SUBSCRIBED") {
@@ -890,7 +936,7 @@ export default function WorldPage() {
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [user, worldId, handleMove]);
+  }, [user?.id, worldId]);
 
   const touchLook = useCallback((dx: number, dy: number) => {
     touchLookState.yawDelta -= dx * 0.005;
