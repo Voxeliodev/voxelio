@@ -12,6 +12,7 @@ export type World = {
   description: string;
   thumbnailEmoji: string;
   thumbnailColor: string;
+  imageUrl?: string;
   category: string;
   layout: string;
   creator: string;
@@ -30,6 +31,7 @@ function rowToWorld(row: any): World {
     description: row.description || "",
     thumbnailEmoji: row.thumbnail_emoji || "🌍",
     thumbnailColor: row.thumbnail_color || "#7B2FF7",
+    imageUrl: row.image_url || undefined,
     category: row.category || "adventure",
     layout: row.layout || "plaza",
     creator: row.creator || "Voxelio",

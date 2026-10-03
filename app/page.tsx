@@ -415,13 +415,22 @@ export default function Home() {
                         background: `linear-gradient(135deg, ${world.thumbnailColor} 0%, ${shade(world.thumbnailColor, -30)} 100%)`,
                       }}
                     >
-                      <span className="text-5xl md:text-6xl select-none drop-shadow-lg group-hover:scale-110 transition-transform duration-300">
-                        {world.thumbnailEmoji}
-                      </span>
-                      <span className="absolute top-1.5 left-1.5 bg-[#FFD700] text-[#1A1A2E] text-[9px] font-black px-1.5 py-0.5 rounded">
+                      {world.imageUrl ? (
+                        <img
+                          src={world.imageUrl}
+                          alt={world.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          draggable={false}
+                        />
+                      ) : (
+                        <span className="text-5xl md:text-6xl select-none drop-shadow-lg group-hover:scale-110 transition-transform duration-300">
+                          {world.thumbnailEmoji}
+                        </span>
+                      )}
+                      <span className="absolute top-1.5 left-1.5 bg-[#FFD700] text-[#1A1A2E] text-[9px] font-black px-1.5 py-0.5 rounded z-10">
                         ⭐ FEATURED
                       </span>
-                      <span className="absolute top-1.5 right-1.5 bg-black/50 backdrop-blur text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
+                      <span className="absolute top-1.5 right-1.5 bg-black/50 backdrop-blur text-white text-[9px] font-bold px-1.5 py-0.5 rounded z-10">
                         {world.category}
                       </span>
                     </div>

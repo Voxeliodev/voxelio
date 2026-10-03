@@ -13,7 +13,7 @@ import {
 import { isOwnerAccount } from "../../lib/badges";
 import AccountBadge from "../components/AccountBadge";
 import NavLink from "../components/NavLink";
-import VoxelioLogo from "../components/VoxelioLogo"; // 👈 NEW IMPORT
+import VoxelioLogo from "../components/VoxelioLogo";
 import { supabase } from "../../lib/supabase";
 import { fetchWorlds, type World } from "../../lib/worlds";
 
@@ -84,7 +84,7 @@ export default function GamesPage() {
     };
   }, [sort, category, search, tick]);
 
-  // ===== Silent refresh every 30s so visits stay current =====
+  // ===== Silent refresh every 30s =====
   useEffect(() => {
     const interval = setInterval(() => setTick((t) => t + 1), 30000);
     return () => clearInterval(interval);
@@ -150,7 +150,6 @@ export default function GamesPage() {
   ];
 
   return (
-    // 👇 Added theme-container so Halloween dark mode applies to this page
     <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans theme-container">
 
       {/* TOP BAR */}
@@ -191,7 +190,6 @@ export default function GamesPage() {
       {/* HEADER */}
       <header className="bg-gradient-to-b from-[#6C3CE0] to-[#5A2FC7] border-b-4 border-[#4A1FA8]">
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
-          {/* 👇 New logo component swaps on Halloween mode */}
           <VoxelioLogo />
           <div className="hidden md:flex items-center gap-2 bg-white/10 rounded px-3 py-1.5 border border-white/20">
             <input
@@ -254,7 +252,7 @@ export default function GamesPage() {
             </p>
             <div className="flex gap-2 flex-wrap">
               <Link
-                href={`/games/${featured[0]?.id || "voxelio-plaza"}`}
+                href={`/games/${featured[0]?.id || "impossible-obby"}`}
                 className="bg-gradient-to-b from-[#22C55E] to-[#16A34A] text-white font-bold text-sm px-5 py-2.5 rounded border-2 border-[#15803D] hover:from-[#4ADE80] hover:to-[#22C55E] transition shadow-md inline-block"
               >
                 🎮 Quick Play
@@ -424,24 +422,33 @@ function WorldCard({
           background: `linear-gradient(135deg, ${world.thumbnailColor} 0%, ${shade(world.thumbnailColor, -30)} 100%)`,
         }}
       >
-        <span className="text-6xl md:text-7xl select-none drop-shadow-lg group-hover:scale-110 transition-transform duration-300">
-          {world.thumbnailEmoji}
-        </span>
+        {world.imageUrl ? (
+          <img
+            src={world.imageUrl}
+            alt={world.name}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            draggable={false}
+          />
+        ) : (
+          <span className="text-6xl md:text-7xl select-none drop-shadow-lg group-hover:scale-110 transition-transform duration-300">
+            {world.thumbnailEmoji}
+          </span>
+        )}
 
         {world.featured && (
-          <span className="absolute top-1.5 left-1.5 bg-[#FFD700] text-[#1A1A2E] text-[9px] font-black px-1.5 py-0.5 rounded">
+          <span className="absolute top-1.5 left-1.5 bg-[#FFD700] text-[#1A1A2E] text-[9px] font-black px-1.5 py-0.5 rounded z-10">
             ⭐ FEATURED
           </span>
         )}
 
         {playerCount > 0 ? (
-          <span className="absolute bottom-1.5 left-1.5 flex items-center gap-1 bg-black/60 backdrop-blur text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+          <span className="absolute bottom-1.5 left-1.5 flex items-center gap-1 bg-black/60 backdrop-blur text-white text-[10px] font-bold px-2 py-0.5 rounded-full z-10">
             <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
             {playerCount} playing
           </span>
         ) : null}
 
-        <span className="absolute top-1.5 right-1.5 bg-black/50 backdrop-blur text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
+        <span className="absolute top-1.5 right-1.5 bg-black/50 backdrop-blur text-white text-[9px] font-bold px-1.5 py-0.5 rounded z-10">
           {world.category}
         </span>
       </div>
