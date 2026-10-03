@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState, useMemo } from "react";
+import { useRef, useEffect, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useKeyboardControls } from "@react-three/drei";
 import {
@@ -33,9 +33,10 @@ const CAPSULE_HALF_HEIGHT = 0.5;
 const CAPSULE_RADIUS = 0.35;
 const CAPSULE_TOTAL = CAPSULE_HALF_HEIGHT * 2 + CAPSULE_RADIUS * 2; // 1.7
 
-// Empirically-derived visual offset (see screenshot testing).
-// The Character's internal group is offset by -0.6, so we compensate.
-const VISUAL_OFFSET_Y = -0.25;
+// Visual offset — the character is drawn with feet at y=0 in its own
+// space, but the capsule's center is at the RigidBody origin, so we
+// need to shift the visual to sit on top of the block.
+const VISUAL_OFFSET_Y = 0.05;
 
 type Props = {
   config: AvatarConfig;
@@ -76,11 +77,7 @@ export default function ObbyPlayer({
   const coyoteTimerRef = useRef(0);
   const jumpRequestedRef = useRef(false);
 
-  // ============================================================
-  // Force-facing reference: whenever we respawn, we reset BOTH
-  // the visual rotation AND the RigidBody rotation, so the
-  // character is guaranteed to face forward.
-  // ============================================================
+  // Locking reference to force facing after respawn
   const forcedFacingRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -129,7 +126,7 @@ export default function ObbyPlayer({
     };
   }, [isTouchDevice]);
 
-  // Ground check — cast from just below the capsule's bottom
+  // Ground check — cast ray from below the capsule's bottom
   function checkGrounded(): boolean {
     if (!bodyRef.current) return false;
     const pos = bodyRef.current.translation();
@@ -156,7 +153,6 @@ export default function ObbyPlayer({
   useEffect(() => {
     if (!bodyRef.current) return;
 
-    // Position + velocity
     bodyRef.current.setTranslation(
       { x: spawnPosition[0], y: spawnPosition[1], z: spawnPosition[2] },
       true
@@ -164,32 +160,28 @@ export default function ObbyPlayer({
     bodyRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
     bodyRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
 
-    // Explicitly set the RigidBody rotation to face -Z.
-    // Quaternion for facing -Z (default forward) is identity.
+    // Reset physics rotation to face -Z
     bodyRef.current.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
 
-    // Reset visual rotation
     if (visualRef.current) {
       visualRef.current.rotation.set(0, 0, 0);
     }
 
-    // Reset internal state
     velocityXZRef.current.set(0, 0);
     groundedRef.current = false;
     coyoteTimerRef.current = 0;
     jumpRequestedRef.current = false;
 
-    // Reset camera
     cameraYawRef.current = 0;
     cameraPitchRef.current = 0.35;
   }, [spawnPosition]);
 
-  // Force facing for one frame after respawn
+  // Force facing for a brief period after respawn
   useEffect(() => {
-    forcedFacingRef.current = 0; // face -Z
+    forcedFacingRef.current = 0;
     const timer = setTimeout(() => {
       forcedFacingRef.current = null;
-    }, 100); // release after 100ms
+    }, 100);
     return () => clearTimeout(timer);
   }, [spawnPosition]);
 
@@ -284,7 +276,6 @@ export default function ObbyPlayer({
       setWalking(isMoving);
     }
 
-    // If we're forcing facing (right after respawn), keep the visual at 0
     if (forcedFacingRef.current !== null && visualRef.current) {
       visualRef.current.rotation.y = forcedFacingRef.current;
     } else if (isMoving && visualRef.current) {
