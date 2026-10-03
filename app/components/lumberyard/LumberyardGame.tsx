@@ -3,11 +3,11 @@
 import { Suspense, useState, useRef, useCallback, useEffect } from "react";
 import { Canvas } from "@react-three/fiber";
 import { KeyboardControls, Sky } from "@react-three/drei";
-import { Physics } from "@react-three/rapier";
+import { Physics, RigidBody } from "@react-three/rapier";
 import * as THREE from "three";
 import type { AvatarConfig } from "../../../lib/auth";
 import type { World } from "../../../lib/worlds";
-import LumberyardPlayer, { LUMBERYARD_PLAYER_NAME } from "./LumberyardPlayer";
+import LumberyardPlayer from "./LumberyardPlayer";
 import LumberHud from "./LumberHud";
 import Shop from "./Shop";
 import Tree from "./Tree";
@@ -329,11 +329,15 @@ export default function LumberyardGame({
               />
               <hemisphereLight args={["#ffffff", "#88aa88", 0.4]} />
 
-              <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-                <planeGeometry args={[WORLD_BOUNDS * 2, WORLD_BOUNDS * 2]} />
-                <meshStandardMaterial color="#65A30D" roughness={0.95} />
-              </mesh>
+              {/* ===== GROUND — physics-enabled, thick box so we don't fall through ===== */}
+              <RigidBody type="fixed" colliders="cuboid">
+                <mesh position={[0, -0.5, 0]} receiveShadow>
+                  <boxGeometry args={[WORLD_BOUNDS * 2, 1, WORLD_BOUNDS * 2]} />
+                  <meshStandardMaterial color="#65A30D" roughness={0.95} />
+                </mesh>
+              </RigidBody>
 
+              {/* ===== Trees ===== */}
               {TREE_SPAWNS.map((spawn) => {
                 const state = trees.find((t) => t.spawnId === spawn.id);
                 if (!state || state.deadAt) return null;
@@ -348,6 +352,7 @@ export default function LumberyardGame({
                 );
               })}
 
+              {/* ===== Logs on the ground ===== */}
               {logs.map((log) => {
                 const [px, , pz] = playerPosRef.current;
                 const d = Math.hypot(log.position[0] - px, log.position[2] - pz);
@@ -361,8 +366,10 @@ export default function LumberyardGame({
                 );
               })}
 
+              {/* ===== Sawmill ===== */}
               <Sawmill />
 
+              {/* ===== Player ===== */}
               <LumberyardPlayer
                 config={config}
                 spawnPosition={LUMBERYARD_SPAWN}
