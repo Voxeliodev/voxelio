@@ -1,6 +1,7 @@
 "use client";
 
-import { AXES, getAxe, formatCoins, type AxeId } from "../../../lib/lumberyard";
+import { AXES, getAxe, type AxeId } from "../../../lib/lumberyard";
+import { formatCoins } from "../../../lib/lumberyardProgress";
 
 // ============================================================
 // AXE SHOP — modal with all axes

@@ -47,7 +47,7 @@ const KEY_MAP = [
 type TreeState = {
   spawnId: string;
   damage: number;
-  deadAt: number | null; // timestamp when it fell
+  deadAt: number | null;
 };
 
 type Props = {
@@ -67,7 +67,6 @@ export default function LumberyardGame({
   inputDisabled,
   isTouchDevice,
 }: Props) {
-  // ===== Progress =====
   const [progress, setProgress] = useState<LumberyardProgress>({
     lumbercoins: 0,
     currentAxe: "rusty",
@@ -76,35 +75,28 @@ export default function LumberyardGame({
   });
   const [loaded, setLoaded] = useState(false);
 
-  // ===== Trees =====
   const [trees, setTrees] = useState<TreeState[]>(
     TREE_SPAWNS.map((s) => ({ spawnId: s.id, damage: 0, deadAt: null }))
   );
 
-  // ===== Logs on the ground =====
   const [logs, setLogs] = useState<LogData[]>([]);
 
-  // ===== Equipped log (carried by player) =====
   const [equippedLog, setEquippedLog] = useState<{
     id: string;
     value: number;
     treeType: string;
   } | null>(null);
 
-  // ===== Player position (mirrored from player component) =====
   const playerPosRef = useRef<[number, number, number]>(LUMBERYARD_SPAWN);
 
-  // ===== UI state =====
   const [shopOpen, setShopOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const messageTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ===== Swing trigger for player animation =====
   const swingTriggerRef = useRef(0);
 
   const currentAxe = getAxe(progress.currentAxe);
 
-  // ===== Load progress on mount =====
   useEffect(() => {
     (async () => {
       const p = await loadProgress();
@@ -113,14 +105,12 @@ export default function LumberyardGame({
     })();
   }, []);
 
-  // ===== Show a toast =====
   const showMessage = useCallback((text: string, durationMs = 1800) => {
     setMessage(text);
     if (messageTimeoutRef.current) clearTimeout(messageTimeoutRef.current);
     messageTimeoutRef.current = setTimeout(() => setMessage(null), durationMs);
   }, []);
 
-  // ===== Tree regrowth timer =====
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
@@ -138,7 +128,6 @@ export default function LumberyardGame({
     return () => clearInterval(interval);
   }, []);
 
-  // ===== Click on a tree → chop it =====
   const handleChop = useCallback(
     (spawnId: string) => {
       const spawn = TREE_SPAWNS.find((s) => s.id === spawnId);
@@ -156,10 +145,8 @@ export default function LumberyardGame({
         return;
       }
 
-      // Trigger the swing animation
       swingTriggerRef.current += 1;
 
-      // Apply damage
       const newDamage = tree.damage + currentAxe.damage;
       const isDead = newDamage >= type.hp;
 
@@ -172,7 +159,6 @@ export default function LumberyardGame({
       );
 
       if (isDead) {
-        // Tree fell — spawn a log nearby
         const logId = `log-${spawnId}-${Date.now()}`;
         const logPos: [number, number, number] = [
           spawn.position[0] + (Math.random() - 0.5) * 2,
@@ -185,7 +171,6 @@ export default function LumberyardGame({
           { id: logId, position: logPos, value: type.logValue, treeType: type.name },
         ]);
 
-        // Save progress
         const newProgress = { ...progress, treesChopped: progress.treesChopped + 1 };
         setProgress(newProgress);
         saveProgress(newProgress);
@@ -196,7 +181,6 @@ export default function LumberyardGame({
     [trees, progress, currentAxe, showMessage]
   );
 
-  // ===== Pick up a log (E key) =====
   const tryPickupLog = useCallback(() => {
     if (equippedLog) {
       showMessage("🪵 Already carrying a log — sell it first!");
@@ -205,7 +189,6 @@ export default function LumberyardGame({
 
     const [px, , pz] = playerPosRef.current;
 
-    // Find nearest log within pickup radius
     let nearest: LogData | null = null;
     let nearestDist = LOG_PICKUP_RADIUS;
     for (const log of logs) {
@@ -232,7 +215,6 @@ export default function LumberyardGame({
     showMessage(`🪵 Picked up ${nearest.treeType} log`);
   }, [equippedLog, logs, showMessage]);
 
-  // ===== Sell equipped log at sawmill =====
   const trySellLog = useCallback(() => {
     if (!equippedLog) {
       showMessage("🪵 You're not carrying a log");
@@ -260,7 +242,6 @@ export default function LumberyardGame({
     setEquippedLog(null);
   }, [equippedLog, progress, showMessage]);
 
-  // ===== Handle E key =====
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (inputDisabled) return;
@@ -269,7 +250,6 @@ export default function LumberyardGame({
 
       if (e.key === "e" || e.key === "E") {
         e.preventDefault();
-        // If carrying → try to sell. Otherwise → try to pick up.
         if (equippedLog) {
           trySellLog();
         } else {
@@ -284,7 +264,6 @@ export default function LumberyardGame({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [inputDisabled, equippedLog, tryPickupLog, trySellLog]);
 
-  // ===== Handle buy =====
   const handleBuy = useCallback(
     async (axeId: AxeId, price: number) => {
       const result = await buyAxe(axeId, price);
@@ -299,7 +278,6 @@ export default function LumberyardGame({
     [showMessage]
   );
 
-  // ===== Wire up player position updates =====
   const handlePositionUpdate = useCallback(
     (pos: [number, number, number]) => {
       playerPosRef.current = pos;
@@ -307,7 +285,6 @@ export default function LumberyardGame({
     []
   );
 
-  // ===== Player can damage a given tree? =====
   const canDamageTree = useCallback(
     (typeId: string) => {
       const type = getTreeType(typeId);
@@ -318,7 +295,6 @@ export default function LumberyardGame({
     [progress.currentAxe]
   );
 
-  // ===== Render =====
   if (!loaded) {
     return (
       <div className="absolute inset-0 bg-black flex items-center justify-center text-white">
@@ -353,13 +329,11 @@ export default function LumberyardGame({
               />
               <hemisphereLight args={["#ffffff", "#88aa88", 0.4]} />
 
-              {/* Ground */}
               <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
                 <planeGeometry args={[WORLD_BOUNDS * 2, WORLD_BOUNDS * 2]} />
                 <meshStandardMaterial color="#65A30D" roughness={0.95} />
               </mesh>
 
-              {/* Trees */}
               {TREE_SPAWNS.map((spawn) => {
                 const state = trees.find((t) => t.spawnId === spawn.id);
                 if (!state || state.deadAt) return null;
@@ -374,7 +348,6 @@ export default function LumberyardGame({
                 );
               })}
 
-              {/* Logs on the ground */}
               {logs.map((log) => {
                 const [px, , pz] = playerPosRef.current;
                 const d = Math.hypot(log.position[0] - px, log.position[2] - pz);
@@ -388,10 +361,8 @@ export default function LumberyardGame({
                 );
               })}
 
-              {/* Sawmill */}
               <Sawmill />
 
-              {/* Player */}
               <LumberyardPlayer
                 config={config}
                 spawnPosition={LUMBERYARD_SPAWN}
@@ -422,7 +393,6 @@ export default function LumberyardGame({
         onBuy={handleBuy}
       />
 
-      {/* Mobile E button */}
       {isTouchDevice && (
         <button
           onClick={() => {

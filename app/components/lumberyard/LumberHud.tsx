@@ -1,6 +1,7 @@
 "use client";
 
-import { getAxe, formatCoins, type AxeId } from "../../../lib/lumberyard";
+import { getAxe, type AxeId } from "../../../lib/lumberyard";
+import { formatCoins } from "../../../lib/lumberyardProgress";
 
 // ============================================================
 // LUMBER HUD — top bar with coins, current axe, equipped log
