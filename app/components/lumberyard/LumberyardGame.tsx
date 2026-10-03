@@ -31,6 +31,15 @@ import {
   formatCoins,
   type LumberyardProgress,
 } from "../../../lib/lumberyardProgress";
+import {
+  playChop,
+  playTreeFall,
+  playCoin,
+  playPickup,
+  playError,
+  startAmbientMusic,
+  stopAmbientMusic,
+} from "../../../lib/sounds";
 
 // ============================================================
 // LUMBERYARD INC — main game
@@ -74,6 +83,7 @@ export default function LumberyardGame({
     logsSold: 0,
   });
   const [loaded, setLoaded] = useState(false);
+  const [musicOn, setMusicOn] = useState(true);
 
   const [trees, setTrees] = useState<TreeState[]>(
     TREE_SPAWNS.map((s) => ({ spawnId: s.id, damage: 0, deadAt: null }))
@@ -105,12 +115,32 @@ export default function LumberyardGame({
     })();
   }, []);
 
+  // ===== Ambient music — start on first click =====
+  useEffect(() => {
+    const handleFirstInteraction = () => {
+      if (musicOn) {
+        startAmbientMusic();
+      }
+      window.removeEventListener("click", handleFirstInteraction);
+      window.removeEventListener("keydown", handleFirstInteraction);
+    };
+    window.addEventListener("click", handleFirstInteraction);
+    window.addEventListener("keydown", handleFirstInteraction);
+
+    return () => {
+      window.removeEventListener("click", handleFirstInteraction);
+      window.removeEventListener("keydown", handleFirstInteraction);
+      stopAmbientMusic();
+    };
+  }, [musicOn]);
+
   const showMessage = useCallback((text: string, durationMs = 1800) => {
     setMessage(text);
     if (messageTimeoutRef.current) clearTimeout(messageTimeoutRef.current);
     messageTimeoutRef.current = setTimeout(() => setMessage(null), durationMs);
   }, []);
 
+  // ===== Tree regrowth =====
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
@@ -142,10 +172,12 @@ export default function LumberyardGame({
 
       if (axeIndex < minIndex) {
         showMessage(`🔒 Need a ${getAxe(type.minAxe).name} to chop ${type.name}!`);
+        playError();
         return;
       }
 
       swingTriggerRef.current += 1;
+      playChop();
 
       const newDamage = tree.damage + currentAxe.damage;
       const isDead = newDamage >= type.hp;
@@ -159,6 +191,8 @@ export default function LumberyardGame({
       );
 
       if (isDead) {
+        setTimeout(() => playTreeFall(), 150);
+
         const logId = `log-${spawnId}-${Date.now()}`;
         const logPos: [number, number, number] = [
           spawn.position[0] + (Math.random() - 0.5) * 2,
@@ -213,6 +247,7 @@ export default function LumberyardGame({
     });
     setLogs((prev) => prev.filter((l) => l.id !== nearest!.id));
     showMessage(`🪵 Picked up ${nearest.treeType} log`);
+    playPickup();
   }, [equippedLog, logs, showMessage]);
 
   const trySellLog = useCallback(() => {
@@ -239,6 +274,7 @@ export default function LumberyardGame({
     setProgress(newProgress);
     saveProgress(newProgress);
     showMessage(`💰 Sold ${equippedLog.treeType} for ${formatCoins(earned)} 🪙`);
+    playCoin();
     setEquippedLog(null);
   }, [equippedLog, progress, showMessage]);
 
@@ -250,11 +286,8 @@ export default function LumberyardGame({
 
       if (e.key === "e" || e.key === "E") {
         e.preventDefault();
-        if (equippedLog) {
-          trySellLog();
-        } else {
-          tryPickupLog();
-        }
+        if (equippedLog) trySellLog();
+        else tryPickupLog();
       }
       if (e.key === "Escape") {
         setShopOpen(false);
@@ -270,9 +303,11 @@ export default function LumberyardGame({
       if (result.success && result.progress) {
         setProgress(result.progress);
         showMessage(`✅ Bought ${getAxe(axeId).name}!`);
+        playCoin();
         setShopOpen(false);
       } else {
         showMessage(`❌ ${result.error}`);
+        playError();
       }
     },
     [showMessage]
@@ -294,6 +329,17 @@ export default function LumberyardGame({
     },
     [progress.currentAxe]
   );
+
+  // ===== Toggle music =====
+  const toggleMusic = () => {
+    if (musicOn) {
+      stopAmbientMusic();
+      setMusicOn(false);
+    } else {
+      startAmbientMusic();
+      setMusicOn(true);
+    }
+  };
 
   if (!loaded) {
     return (
@@ -329,7 +375,7 @@ export default function LumberyardGame({
               />
               <hemisphereLight args={["#ffffff", "#88aa88", 0.4]} />
 
-              {/* ===== GROUND — physics-enabled, thick box so we don't fall through ===== */}
+              {/* Ground — physics-enabled */}
               <RigidBody type="fixed" colliders="cuboid">
                 <mesh position={[0, -0.5, 0]} receiveShadow>
                   <boxGeometry args={[WORLD_BOUNDS * 2, 1, WORLD_BOUNDS * 2]} />
@@ -337,7 +383,6 @@ export default function LumberyardGame({
                 </mesh>
               </RigidBody>
 
-              {/* ===== Trees ===== */}
               {TREE_SPAWNS.map((spawn) => {
                 const state = trees.find((t) => t.spawnId === spawn.id);
                 if (!state || state.deadAt) return null;
@@ -352,7 +397,6 @@ export default function LumberyardGame({
                 );
               })}
 
-              {/* ===== Logs on the ground ===== */}
               {logs.map((log) => {
                 const [px, , pz] = playerPosRef.current;
                 const d = Math.hypot(log.position[0] - px, log.position[2] - pz);
@@ -366,10 +410,8 @@ export default function LumberyardGame({
                 );
               })}
 
-              {/* ===== Sawmill ===== */}
               <Sawmill />
 
-              {/* ===== Player ===== */}
               <LumberyardPlayer
                 config={config}
                 spawnPosition={LUMBERYARD_SPAWN}
@@ -392,6 +434,15 @@ export default function LumberyardGame({
         message={message}
       />
 
+      {/* Music toggle */}
+      <button
+        onClick={toggleMusic}
+        className="fixed bottom-6 right-6 md:bottom-6 md:right-6 z-40 w-12 h-12 rounded-full bg-black/70 border-2 border-white/30 backdrop-blur flex items-center justify-center text-xl hover:bg-black/90 transition"
+        title={musicOn ? "Mute music" : "Unmute music"}
+      >
+        {musicOn ? "🔊" : "🔇"}
+      </button>
+
       <Shop
         open={shopOpen}
         onClose={() => setShopOpen(false)}
@@ -406,7 +457,7 @@ export default function LumberyardGame({
             if (equippedLog) trySellLog();
             else tryPickupLog();
           }}
-          className="fixed bottom-6 right-6 z-40 w-20 h-20 rounded-full bg-gradient-to-b from-[#FBBF24] to-[#E08A1C] border-4 border-[#A8680C] text-[#1A1A2E] text-3xl font-black active:scale-95 shadow-2xl"
+          className="fixed bottom-24 right-6 z-40 w-20 h-20 rounded-full bg-gradient-to-b from-[#FBBF24] to-[#E08A1C] border-4 border-[#A8680C] text-[#1A1A2E] text-3xl font-black active:scale-95 shadow-2xl"
         >
           E
         </button>

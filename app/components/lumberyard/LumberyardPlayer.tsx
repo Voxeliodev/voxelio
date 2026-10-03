@@ -15,7 +15,7 @@ import type { AvatarConfig } from "../../../lib/auth";
 import { getAxe, type AxeId } from "../../../lib/lumberyard";
 
 // ============================================================
-// LUMBERYARD PLAYER — same controls as obby, holds an axe
+// LUMBERYARD PLAYER — physics-based, holds an axe
 // ============================================================
 
 const MOVE_SPEED = 8;
@@ -43,7 +43,7 @@ type Props = {
   currentAxeId: AxeId;
   onPositionUpdate?: (pos: [number, number, number], rotY: number) => void;
   onChopSwing?: () => void;
-  swingTriggerRef: React.MutableRefObject<number>; // increments when player clicks
+  swingTriggerRef: React.MutableRefObject<number>;
 };
 
 export default function LumberyardPlayer({
@@ -58,7 +58,8 @@ export default function LumberyardPlayer({
 }: Props) {
   const bodyRef = useRef<RapierRigidBody>(null);
   const visualRef = useRef<THREE.Group>(null);
-  const axeRef = useRef<THREE.Group>(null);
+  const rightHandRef = useRef<THREE.Group>(null);
+  const axeAnchorRef = useRef<THREE.Group>(null);
   const [, getKeys] = useKeyboardControls();
   const { camera } = useThree();
   const { rapier, world } = useRapier();
@@ -73,11 +74,9 @@ export default function LumberyardPlayer({
   const velocityXZRef = useRef(new THREE.Vector2(0, 0));
   const jumpCooldownRef = useRef(0);
   const coyoteTimerRef = useRef(0);
-  const jumpRequestedRef = useRef(false);
   const forcedFacingRef = useRef<number | null>(null);
 
-  // Axe swing animation
-  const swingAnimRef = useRef(0); // 0 = idle, 1 = max swing
+  const swingAnimRef = useRef(0);
   const lastSwingTriggerRef = useRef(0);
 
   const axe = getAxe(currentAxeId);
@@ -148,7 +147,6 @@ export default function LumberyardPlayer({
     return hit !== null;
   }
 
-  // Respawn reset
   useEffect(() => {
     if (!bodyRef.current) return;
     bodyRef.current.setTranslation(
@@ -161,7 +159,6 @@ export default function LumberyardPlayer({
     if (visualRef.current) visualRef.current.rotation.set(0, 0, 0);
     velocityXZRef.current.set(0, 0);
     coyoteTimerRef.current = 0;
-    jumpRequestedRef.current = false;
     cameraYawRef.current = 0;
     cameraPitchRef.current = 0.35;
   }, [spawnPosition]);
@@ -179,7 +176,6 @@ export default function LumberyardPlayer({
     const keys = getKeys();
     const dt = Math.min(delta, 0.05);
 
-    // Grounded with coyote time
     const grounded = checkGrounded();
     if (grounded) {
       coyoteTimerRef.current = COYOTE_TIME;
@@ -187,7 +183,7 @@ export default function LumberyardPlayer({
       coyoteTimerRef.current = Math.max(0, coyoteTimerRef.current - dt);
     }
 
-    // Input direction
+    // Input
     let localX = 0;
     let localZ = 0;
     if (!inputDisabled) {
@@ -209,7 +205,6 @@ export default function LumberyardPlayer({
     const worldX = localX * cosY + localZ * sinY;
     const worldZ = -localX * sinY + localZ * cosY;
 
-    // Velocity smoothing
     const rate = grounded ? 14 : 14 * AIR_CONTROL;
     velocityXZRef.current.x += (worldX * MOVE_SPEED - velocityXZRef.current.x) * Math.min(1, rate * dt);
     velocityXZRef.current.y += (worldZ * MOVE_SPEED - velocityXZRef.current.y) * Math.min(1, rate * dt);
@@ -224,7 +219,6 @@ export default function LumberyardPlayer({
       true
     );
 
-    // Jump
     jumpCooldownRef.current -= dt;
     const wantsJump = !inputDisabled && keys.jump;
     const canJump = grounded || coyoteTimerRef.current > 0;
@@ -253,21 +247,30 @@ export default function LumberyardPlayer({
       visualRef.current.rotation.y += diff * Math.min(1, ROT_LERP * dt);
     }
 
-    // Axe swing animation
+    // Swing animation
     if (swingTriggerRef.current !== lastSwingTriggerRef.current) {
       lastSwingTriggerRef.current = swingTriggerRef.current;
       swingAnimRef.current = 1;
       if (onChopSwing) onChopSwing();
     }
     if (swingAnimRef.current > 0) {
-      swingAnimRef.current = Math.max(0, swingAnimRef.current - dt * 3);
+      swingAnimRef.current = Math.max(0, swingAnimRef.current - dt * 2.5);
     }
 
-    if (axeRef.current) {
-      // Swing rotation: base angle + swing curve
-      const baseAngle = 0.3;
+    // Attach the axe to the hand — copy the hand's world transform to the axe anchor
+    if (rightHandRef.current && axeAnchorRef.current) {
+      // Get hand's world position, rotation, scale
+      rightHandRef.current.updateWorldMatrix(true, false);
+      const handWorld = new THREE.Matrix4();
+      rightHandRef.current.matrixWorld.decompose(
+        axeAnchorRef.current.position,
+        axeAnchorRef.current.quaternion,
+        axeAnchorRef.current.scale
+      );
+
+      // Apply the swing rotation offset on top of the hand position
       const swingCurve = Math.sin((1 - swingAnimRef.current) * Math.PI);
-      axeRef.current.rotation.x = baseAngle - swingCurve * 1.6;
+      axeAnchorRef.current.rotateX(-swingCurve * 1.4);
     }
 
     // Camera
@@ -290,7 +293,6 @@ export default function LumberyardPlayer({
       camera.lookAt(lookX, lookY, lookZ);
     }
 
-    // Broadcast
     const now = performance.now();
     if (onPositionUpdate && now - lastBroadcastRef.current > 66) {
       lastBroadcastRef.current = now;
@@ -313,22 +315,23 @@ export default function LumberyardPlayer({
       <CapsuleCollider args={[CAPSULE_HALF_HEIGHT, CAPSULE_RADIUS]} />
 
       <group ref={visualRef} position={[0, VISUAL_OFFSET_Y, 0]}>
-        <Character config={config} hideAccessory walking={walking} />
+        <Character
+          config={config}
+          hideAccessory
+          walking={walking}
+          rightHandRef={rightHandRef}
+        />
 
-        {/* Axe attached to the right hand area */}
-        <group
-          ref={axeRef}
-          position={[0.65, 0.9, 0.4]}
-          rotation={[0.3, 0, 0]}
-        >
+        {/* Axe anchor — positioned at the right hand each frame via useFrame */}
+        <group ref={axeAnchorRef}>
           {/* Handle */}
-          <mesh castShadow>
-            <boxGeometry args={[0.08, 0.9, 0.08]} />
+          <mesh castShadow position={[0, 0.3, 0]}>
+            <boxGeometry args={[0.08, 1, 0.08]} />
             <meshStandardMaterial color={axe.color} roughness={0.9} />
           </mesh>
           {/* Blade */}
-          <mesh position={[0.18, 0.4, 0]} castShadow>
-            <boxGeometry args={[0.35, 0.25, 0.06]} />
+          <mesh castShadow position={[0.25, 0.75, 0]}>
+            <boxGeometry args={[0.45, 0.3, 0.08]} />
             <meshStandardMaterial
               color={axe.bladeColor}
               metalness={0.7}
@@ -336,12 +339,12 @@ export default function LumberyardPlayer({
             />
           </mesh>
           {/* Blade edge highlight */}
-          <mesh position={[0.36, 0.4, 0]} castShadow>
-            <boxGeometry args={[0.04, 0.25, 0.06]} />
+          <mesh castShadow position={[0.47, 0.75, 0]}>
+            <boxGeometry args={[0.05, 0.3, 0.08]} />
             <meshStandardMaterial
               color="#FFFFFF"
               emissive={new THREE.Color(axe.bladeColor)}
-              emissiveIntensity={0.4}
+              emissiveIntensity={0.5}
               metalness={0.9}
               roughness={0.1}
             />
