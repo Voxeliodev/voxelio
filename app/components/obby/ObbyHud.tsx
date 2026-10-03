@@ -304,7 +304,7 @@ export default function ObbyHud({
                 </div>
                 {leaderboard.length > 2 && (
                   <div style={{ color: "#8B5FFF", fontSize: "10px", fontWeight: 700, display: "flex", alignItems: "center", gap: "4px" }}>
-                    <span>Scroll</span>
+                    <span>Scroll for more</span>
                     <span style={{ fontSize: "14px" }}>↓</span>
                   </div>
                 )}
@@ -318,7 +318,9 @@ export default function ObbyHud({
                 <div
                   className="obby-scroll"
                   style={{
-                    height: "100px",
+                    // 150px shows 2.5 rows of 60px each, peeking the 3rd row
+                    // to make it obvious there's more to scroll.
+                    height: "150px",
                     overflowY: "auto",
                     overflowX: "hidden",
                     touchAction: "pan-y",
@@ -343,7 +345,7 @@ export default function ObbyHud({
                             alignItems: "center",
                             justifyContent: "space-between",
                             padding: "0 12px",
-                            height: "50px",
+                            height: "60px",
                             borderBottom: "1px solid rgba(255,255,255,0.04)",
                             background: isTop3 ? "linear-gradient(90deg, rgba(255,215,0,0.08), transparent 70%)" : "transparent",
                           }}
