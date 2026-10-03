@@ -13,7 +13,7 @@ import RemoteLumberPlayer, { type RemoteLumberData } from "./RemoteLumberPlayer"
 import LumberHud from "./LumberHud";
 import Shop from "./Shop";
 import Tree from "./Tree";
-import Log, { type LogData } from "./Log";
+import Log, { type LogData } from "@/app/components/lumberyard/Log";
 import Sawmill from "./Sawmill";
 import {
   TREE_SPAWNS,
