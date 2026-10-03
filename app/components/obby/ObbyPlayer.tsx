@@ -34,15 +34,14 @@ const CAPSULE_RADIUS = 0.35;
 const CAPSULE_TOTAL = CAPSULE_HALF_HEIGHT * 2 + CAPSULE_RADIUS * 2; // 1.7
 
 // ============================================================
-// SPAWN_YAW — the direction the player faces when spawning
-// Math.PI = 180° (facing backwards / opposite of default)
+// SPAWN_YAW — the direction the player faces on spawn
+//   0            = facing -Z (north) — the obby path direction
+//   Math.PI / 2  = facing +X (east)
+//   Math.PI      = facing +Z (south)
+//   -Math.PI / 2 = facing -X (west)
 // ============================================================
-const SPAWN_YAW = Math.PI;
+const SPAWN_YAW = 0;
 
-// ============================================================
-// VISUAL_OFFSET_Y — the ONE number that controls where the
-// visual character sits relative to the physics capsule.
-// ============================================================
 const VISUAL_OFFSET_Y = 0.65;
 
 type Props = {
@@ -73,7 +72,6 @@ export default function ObbyPlayer({
   const [walking, setWalking] = useState(false);
   const walkingRef = useRef(false);
 
-  // Camera starts facing the same direction as the player (backwards)
   const cameraYawRef = useRef(SPAWN_YAW);
   const cameraPitchRef = useRef(0.35);
   const lastBroadcastRef = useRef(0);
@@ -164,14 +162,14 @@ export default function ObbyPlayer({
     bodyRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
     bodyRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
 
-    // Rotate the physics body to face SPAWN_YAW
+    // Rotate physics body to match SPAWN_YAW
     const halfYaw = SPAWN_YAW / 2;
     bodyRef.current.setRotation(
       { x: 0, y: Math.sin(halfYaw), z: 0, w: Math.cos(halfYaw) },
       true
     );
 
-    // Rotate the visual model to face SPAWN_YAW
+    // Rotate visual model to match SPAWN_YAW
     if (visualRef.current) {
       visualRef.current.rotation.set(0, SPAWN_YAW, 0);
     }
@@ -181,11 +179,12 @@ export default function ObbyPlayer({
     coyoteTimerRef.current = 0;
     jumpRequestedRef.current = false;
 
-    // Camera starts behind the player facing the same direction
     cameraYawRef.current = SPAWN_YAW;
     cameraPitchRef.current = 0.35;
   }, [spawnPosition]);
 
+  // Force the character to face SPAWN_YAW for the first 100ms after spawn,
+  // so the walk-animation doesn't override it before the player moves.
   useEffect(() => {
     forcedFacingRef.current = SPAWN_YAW;
     const timer = setTimeout(() => {
