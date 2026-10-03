@@ -10,6 +10,7 @@ import { Character } from "../../components/Avatar";
 import AccountBadge from "../../components/AccountBadge";
 import ObbyGame from "../../components/obby/ObbyGame";
 import LumberyardGame from "../../components/lumberyard/LumberyardGameMain";
+import ChaosColiseumGameMain from "../../components/chaos-coliseum/ChaosColiseumGameMain";
 import Shop from "@/app/components/lumberyard/Shop";
 import Tree from "@/app/components/lumberyard/Tree";
 import Log, { type LogData } from "@/app/components/lumberyard/Log";
@@ -636,7 +637,6 @@ export default function WorldPage() {
   const recentMessagesRef = useRef<string[]>([]);
   const muteUntilRef = useRef(0);
 
-  // Chat send queue — messages waiting for the channel to be ready
   const pendingChatRef = useRef<Array<{ id: string; userId: string; username: string; text: string }>>([]);
 
   const [liked, setLiked] = useState(false);
@@ -646,8 +646,6 @@ export default function WorldPage() {
   const channelRef = useRef<any>(null);
   const lobbyRef = useRef<any>(null);
   const localPosRef = useRef<{ pos: [number, number, number]; rotY: number }>({ pos: [0, CHARACTER_Y_OFFSET, 0], rotY: 0 });
-
-  // Stable refs for user data so channel doesn't get torn down
   const userRef = useRef<User | null>(null);
   useEffect(() => { userRef.current = user; }, [user]);
 
@@ -690,7 +688,6 @@ export default function WorldPage() {
     };
   }, [user, worldId]);
 
-  // ===== Award "Played with the Owner" =====
   useEffect(() => {
     if (!ENABLE_OWNER_BADGE_DETECTION) return;
     if (!user || !worldId) return;
@@ -770,14 +767,12 @@ export default function WorldPage() {
     return () => clearInterval(timer);
   }, []);
 
-  // Auto-clear system message
   useEffect(() => {
     if (!systemMessage) return;
     const t = setTimeout(() => setSystemMessage(null), 3000);
     return () => clearTimeout(t);
   }, [systemMessage]);
 
-  // ===== Flush pending chat messages when the channel becomes ready =====
   useEffect(() => {
     if (!user || !worldId) return;
     const interval = setInterval(() => {
@@ -789,10 +784,7 @@ export default function WorldPage() {
       for (const msg of queue) {
         try {
           channel.send({ type: "broadcast", event: "chat", payload: msg });
-          console.log("[chat] flushed queued message:", msg.text);
-        } catch (err) {
-          console.warn("[chat] failed to flush queued message:", err);
-        }
+        } catch {}
       }
     }, 200);
     return () => clearInterval(interval);
@@ -805,7 +797,6 @@ export default function WorldPage() {
 
     const now = Date.now();
 
-    // ===== Check if muted =====
     if (now < muteUntilRef.current) {
       const remaining = Math.ceil((muteUntilRef.current - now) / 1000);
       setSystemMessage(`🚫 You are muted for spamming. ${remaining}s remaining.`);
@@ -815,12 +806,10 @@ export default function WorldPage() {
       return;
     }
 
-    // ===== Track recent messages for spam detection =====
     const recent = recentMessagesRef.current;
     recent.push(text);
     while (recent.length > CHAT_SPAM_THRESHOLD) recent.shift();
 
-    // ===== Check for spam (same message sent CHAT_SPAM_THRESHOLD times in a row) =====
     const isSpam =
       recent.length >= CHAT_SPAM_THRESHOLD &&
       recent.every((m) => m === recent[0]);
@@ -835,7 +824,6 @@ export default function WorldPage() {
       return;
     }
 
-    // ===== Build the message =====
     lastChatSentRef.current = now;
     const filtered = filterMessage(text.slice(0, CHAT_MAX_LENGTH));
     const id = typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -844,21 +832,16 @@ export default function WorldPage() {
     const msg: ChatMessage = { id, userId: me.id, username: me.username, text: filtered, expiresAt: Date.now() + CHAT_LIFETIME_MS };
     const payload = { id: msg.id, userId: msg.userId, username: msg.username, text: msg.text };
 
-    // Add to own chat log immediately (so you see it instantly)
     setChatMessages((prev) => [...prev, msg]);
 
-    // ===== Send, or queue if channel isn't ready yet =====
     const channel = channelRef.current;
     if (channel) {
       try {
         channel.send({ type: "broadcast", event: "chat", payload });
-        console.log("[chat] sent immediately:", text);
-      } catch (err) {
-        console.warn("[chat] send failed, queuing:", err);
+      } catch {
         pendingChatRef.current.push(payload);
       }
     } else {
-      console.warn("[chat] channel not ready, queuing message:", text);
       pendingChatRef.current.push(payload);
     }
 
@@ -992,6 +975,15 @@ export default function WorldPage() {
           inputDisabled={chatOpen}
           isTouchDevice={isTouchDevice}
         />
+      ) : world.layout === "chaos-coliseum" ? (
+        <ChaosColiseumGameMain
+          config={user.avatarConfig}
+          userId={user.id}
+          username={user.username}
+          world={world}
+          inputDisabled={chatOpen}
+          isTouchDevice={isTouchDevice}
+        />
       ) : (
         <KeyboardControls map={KEY_MAP}>
           <Canvas shadows camera={{ position: [0, 5, 9], fov: 55 }} dpr={[1, 2]} style={{ background: "#87CEEB" }}>
@@ -1000,7 +992,7 @@ export default function WorldPage() {
         </KeyboardControls>
       )}
 
-      {isTouchDevice && !chatOpen && world.layout !== "obby" && world.layout !== "lumberyard" && (<><TouchLookArea onLook={touchLook} /><Joystick /><JumpButton /></>)}
+      {isTouchDevice && !chatOpen && world.layout !== "obby" && world.layout !== "lumberyard" && world.layout !== "chaos-coliseum" && (<><TouchLookArea onLook={touchLook} /><Joystick /><JumpButton /></>)}
 
       <div className="absolute top-3 left-3 flex items-center gap-2 z-30">
         <Link href="/games" className="bg-black/60 hover:bg-black/80 backdrop-blur text-white text-xs font-bold px-3 py-2 rounded border border-white/20">← Exit</Link>
@@ -1027,7 +1019,7 @@ export default function WorldPage() {
         </div>
       </div>
 
-      {world.layout !== "obby" && world.layout !== "lumberyard" && (
+      {world.layout !== "obby" && world.layout !== "lumberyard" && world.layout !== "chaos-coliseum" && (
         <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1 hidden md:block z-30">
           <p className="font-bold mb-1">🎮 Controls</p>
           <p><kbd className="bg-white/10 px-1 rounded">W</kbd> <kbd className="bg-white/10 px-1 rounded">A</kbd> <kbd className="bg-white/10 px-1 rounded">S</kbd> <kbd className="bg-white/10 px-1 rounded">D</kbd> — Move</p>
@@ -1047,7 +1039,6 @@ export default function WorldPage() {
         </div>
       )}
 
-      {/* ===== System messages (mute warning, etc.) ===== */}
       {systemMessage && (
         <div className="absolute bottom-44 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
           <div className="bg-red-600/90 backdrop-blur px-4 py-2 rounded-lg text-white text-sm font-bold shadow-2xl border border-red-300">
