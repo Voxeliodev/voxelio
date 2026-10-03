@@ -148,8 +148,9 @@ export function playError() {
 }
 
 // ============================================================
-// AMBIENT MUSIC LOOP
+// RELAXING AMBIENT MUSIC LOOP
 // ============================================================
+
 let musicNodes: { stop: () => void } | null = null;
 let musicEnabled = false;
 
@@ -159,36 +160,83 @@ export function startAmbientMusic() {
   if (!ctx) return;
 
   musicEnabled = true;
+
+  // ---- Master gain (quiet, gentle background) ----
   const masterGain = ctx.createGain();
-  masterGain.gain.value = 0.08;
+  masterGain.gain.value = 0.04;
   masterGain.connect(ctx.destination);
 
+  // ---- Reverb (long, dreamy tail) ----
+  const reverb = ctx.createConvolver();
+  const reverbLength = ctx.sampleRate * 3.5;
+  const reverbBuffer = ctx.createBuffer(2, reverbLength, ctx.sampleRate);
+  for (let channel = 0; channel < 2; channel++) {
+    const data = reverbBuffer.getChannelData(channel);
+    for (let i = 0; i < reverbLength; i++) {
+      // Exponential decay tail for a smooth, ambient reverb
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / reverbLength, 2.5);
+    }
+  }
+  reverb.buffer = reverbBuffer;
+
+  const reverbGain = ctx.createGain();
+  reverbGain.gain.value = 0.55;
+  reverbGain.connect(reverb);
+  reverb.connect(masterGain);
+
+  // Dry signal (also goes direct, but quieter)
+  const dryGain = ctx.createGain();
+  dryGain.gain.value = 0.3;
+  dryGain.connect(masterGain);
+
+  // ---- Lush major-7th chords (slow, warm, meditative) ----
+  // Fmaj7 -> Cmaj7 -> Am7 -> Gmaj7 (looped)
   const chords: number[][] = [
-    [220, 261.63, 329.63],
-    [174.61, 220, 261.63],
-    [261.63, 329.63, 392],
-    [196, 246.94, 293.66],
+    [174.61, 220.0, 261.63, 329.63],   // Fmaj7
+    [130.81, 164.81, 196.0, 246.94],   // Cmaj7
+    [110.0, 164.81, 220.0, 261.63],    // Am7
+    [98.0, 146.83, 196.0, 246.94],     // Gmaj7
   ];
 
-  let chordIndex = 0;
-  const chordDuration = 6;
+  const NUM_VOICES = 4;
+  const CHORD_DURATION = 10; // seconds per chord — slow and calm
 
   const oscillators: OscillatorNode[] = [];
   const gains: GainNode[] = [];
 
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < NUM_VOICES; i++) {
     const osc = ctx.createOscillator();
-    osc.type = "sine";
-    osc.frequency.value = 220;
+    // Triangle is warmer than sine for chords
+    osc.type = "triangle";
+    osc.frequency.value = chords[0][i];
+    osc.detune.value = (i - NUM_VOICES / 2) * 4; // slight detune for width
 
     const gain = ctx.createGain();
-    gain.gain.value = 0.5;
+    gain.gain.value = 0.25 / NUM_VOICES;
 
-    osc.connect(gain).connect(masterGain);
+    osc.connect(gain);
+    gain.connect(reverbGain);
+    gain.connect(dryGain);
+
     osc.start();
     oscillators.push(osc);
     gains.push(gain);
   }
+
+  // ---- Bass pad (warm low note) ----
+  const bassOsc = ctx.createOscillator();
+  bassOsc.type = "sine";
+  bassOsc.frequency.value = 65.41; // C2
+
+  const bassGain = ctx.createGain();
+  bassGain.gain.value = 0.35;
+  bassOsc.connect(bassGain);
+  bassGain.connect(reverbGain);
+  bassGain.connect(dryGain);
+  bassOsc.start();
+
+  // ---- Chord progression ----
+  let chordIndex = 0;
 
   const advanceChord = () => {
     if (!musicEnabled) return;
@@ -197,28 +245,27 @@ export function startAmbientMusic() {
 
     oscillators.forEach((osc, i) => {
       const target = chord[i % chord.length];
+      osc.frequency.cancelScheduledValues(now);
       osc.frequency.setValueAtTime(osc.frequency.value, now);
-      osc.frequency.linearRampToValueAtTime(target, now + 1.5);
+      // Slow 3.5s glide — feels like the chord is breathing
+      osc.frequency.linearRampToValueAtTime(target, now + 3.5);
     });
 
     chordIndex = (chordIndex + 1) % chords.length;
   };
 
   advanceChord();
-  const interval = setInterval(advanceChord, chordDuration * 1000);
+  const interval = setInterval(advanceChord, CHORD_DURATION * 1000);
 
   musicNodes = {
     stop: () => {
       musicEnabled = false;
       clearInterval(interval);
       oscillators.forEach((osc) => {
-        try {
-          osc.stop();
-        } catch {}
+        try { osc.stop(); } catch {}
       });
-      try {
-        masterGain.disconnect();
-      } catch {}
+      try { bassOsc.stop(); } catch {}
+      try { masterGain.disconnect(); } catch {}
     },
   };
 }
