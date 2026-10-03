@@ -34,15 +34,16 @@ const CAPSULE_RADIUS = 0.35;
 const CAPSULE_TOTAL = CAPSULE_HALF_HEIGHT * 2 + CAPSULE_RADIUS * 2; // 1.7
 
 // ============================================================
-// VISUAL_OFFSET_Y — the ONE number you tune
+// VISUAL_OFFSET_Y — this is the ONE number you tune
 // ============================================================
 // -0.25 → sinks deeply
 //  0.05 → feet + lower legs buried
-//  0.35 → probably correct (current value)
-//  0.55 → probably floating
+//  0.35 → still buried (previous screenshot)
+//  0.95 → probably correct (current value)
+//  1.15 → probably floating
 //  Adjust in steps of 0.1 until feet rest cleanly on block tops.
 // ============================================================
-const VISUAL_OFFSET_Y = 0.35;
+const VISUAL_OFFSET_Y = 0.95;
 
 type Props = {
   config: AvatarConfig;
@@ -83,7 +84,6 @@ export default function ObbyPlayer({
   const coyoteTimerRef = useRef(0);
   const jumpRequestedRef = useRef(false);
 
-  // Locking reference to force facing after respawn
   const forcedFacingRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -132,7 +132,6 @@ export default function ObbyPlayer({
     };
   }, [isTouchDevice]);
 
-  // Ground check — cast ray from below the capsule's bottom
   function checkGrounded(): boolean {
     if (!bodyRef.current) return false;
     const pos = bodyRef.current.translation();
@@ -153,9 +152,6 @@ export default function ObbyPlayer({
     return hit !== null;
   }
 
-  // ============================================================
-  // RESPAWN — reset position, velocity, rotation, camera
-  // ============================================================
   useEffect(() => {
     if (!bodyRef.current) return;
 
@@ -165,8 +161,6 @@ export default function ObbyPlayer({
     );
     bodyRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
     bodyRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
-
-    // Reset physics rotation to face -Z
     bodyRef.current.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
 
     if (visualRef.current) {
@@ -182,7 +176,6 @@ export default function ObbyPlayer({
     cameraPitchRef.current = 0.35;
   }, [spawnPosition]);
 
-  // Force facing for a brief period after respawn
   useEffect(() => {
     forcedFacingRef.current = 0;
     const timer = setTimeout(() => {
@@ -204,7 +197,6 @@ export default function ObbyPlayer({
     }
     groundedRef.current = grounded;
 
-    // Directional input
     let localX = 0;
     let localZ = 0;
     if (!inputDisabled) {
@@ -246,7 +238,6 @@ export default function ObbyPlayer({
       true
     );
 
-    // Jump
     jumpCooldownRef.current -= dt;
 
     const wantsJump =
@@ -273,7 +264,6 @@ export default function ObbyPlayer({
       jumpRequestedRef.current = false;
     }
 
-    // Facing direction
     const pos = bodyRef.current.translation();
     const speed = Math.hypot(velocityXZRef.current.x, velocityXZRef.current.y);
     const isMoving = speed > 0.8;
@@ -292,12 +282,10 @@ export default function ObbyPlayer({
       visualRef.current.rotation.y += diff * Math.min(1, ROT_LERP * dt);
     }
 
-    // Fall detection
     if (pos.y < OBBY_KILL_Y) {
       onFall();
     }
 
-    // Camera follow
     if (visualRef.current) {
       const camYaw = cameraYawRef.current;
       const camPitch = cameraPitchRef.current;
@@ -317,7 +305,6 @@ export default function ObbyPlayer({
       camera.lookAt(lookX, lookY, lookZ);
     }
 
-    // Broadcast
     const now = performance.now();
     if (onPositionUpdate && now - lastBroadcastRef.current > 66) {
       lastBroadcastRef.current = now;
