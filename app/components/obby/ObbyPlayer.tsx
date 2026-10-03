@@ -28,16 +28,21 @@ const ROT_LERP = 14;
 const AIR_CONTROL = 0.55;
 const COYOTE_TIME = 0.12;
 
+// Capsule collider — total height 1.7, radius 0.35
 const CAPSULE_HALF_HEIGHT = 0.5;
 const CAPSULE_RADIUS = 0.35;
 const CAPSULE_TOTAL = CAPSULE_HALF_HEIGHT * 2 + CAPSULE_RADIUS * 2; // 1.7
 
 // ============================================================
-// SPAWN_YAW — flips the character 180° from the default
-// Math.PI = 180° — the character faces the opposite direction
-// and the camera follows behind them.
+// SPAWN_YAW — direction the CAMERA is positioned behind
+//   0            = camera behind player looking at -Z
+//   Math.PI      = camera behind player looking at +Z
 // ============================================================
 const SPAWN_YAW = Math.PI;
+
+// The visual model is flipped 180° from the camera direction so it
+// faces AWAY from the camera (we see its back, not its face).
+const VISUAL_FACING_OFFSET = Math.PI;
 
 const VISUAL_OFFSET_Y = 0.65;
 
@@ -159,16 +164,16 @@ export default function ObbyPlayer({
     bodyRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
     bodyRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
 
-    // Rotate physics body to face SPAWN_YAW
+    // Rotate physics body to face SPAWN_YAW (walking direction)
     const halfYaw = SPAWN_YAW / 2;
     bodyRef.current.setRotation(
       { x: 0, y: Math.sin(halfYaw), z: 0, w: Math.cos(halfYaw) },
       true
     );
 
-    // Rotate the visual model to face SPAWN_YAW
+    // Rotate the VISUAL model 180° from the camera so it faces AWAY
     if (visualRef.current) {
-      visualRef.current.rotation.set(0, SPAWN_YAW, 0);
+      visualRef.current.rotation.set(0, SPAWN_YAW + VISUAL_FACING_OFFSET, 0);
     }
 
     velocityXZRef.current.set(0, 0);
@@ -176,12 +181,11 @@ export default function ObbyPlayer({
     coyoteTimerRef.current = 0;
     jumpRequestedRef.current = false;
 
-    // Flip the camera behind the new facing direction
+    // Camera behind the walk direction
     cameraYawRef.current = SPAWN_YAW;
     cameraPitchRef.current = 0.35;
 
-    // IMPORTANT: Snap the camera to its new position immediately so you don't
-    // see it "fly" around the player on spawn.
+    // Snap the camera instantly so we don't see it fly on spawn
     const horizDist = CAMERA_DIST * Math.cos(cameraPitchRef.current);
     const vertDist = CAMERA_DIST * Math.sin(cameraPitchRef.current);
     const lookX = spawnPosition[0];
@@ -196,7 +200,7 @@ export default function ObbyPlayer({
   }, [spawnPosition, camera]);
 
   useEffect(() => {
-    forcedFacingRef.current = SPAWN_YAW;
+    forcedFacingRef.current = SPAWN_YAW + VISUAL_FACING_OFFSET;
     const timer = setTimeout(() => {
       forcedFacingRef.current = null;
     }, 100);
@@ -294,8 +298,11 @@ export default function ObbyPlayer({
     if (forcedFacingRef.current !== null && visualRef.current) {
       visualRef.current.rotation.y = forcedFacingRef.current;
     } else if (isMoving && visualRef.current) {
+      // Walk direction in world space
       const targetAngle = Math.atan2(velocityXZRef.current.x, velocityXZRef.current.y);
-      let diff = targetAngle - visualRef.current.rotation.y;
+      // Flip 180° so the character faces away from the camera direction
+      const facingTarget = targetAngle + VISUAL_FACING_OFFSET;
+      let diff = facingTarget - visualRef.current.rotation.y;
       while (diff > Math.PI) diff -= Math.PI * 2;
       while (diff < -Math.PI) diff += Math.PI * 2;
       visualRef.current.rotation.y += diff * Math.min(1, ROT_LERP * dt);
