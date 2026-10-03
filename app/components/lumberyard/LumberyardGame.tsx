@@ -7,7 +7,9 @@ import { Physics, RigidBody } from "@react-three/rapier";
 import * as THREE from "three";
 import type { AvatarConfig } from "../../../lib/auth";
 import type { World } from "../../../lib/worlds";
-import LumberyardPlayer from "./LumberyardPlayer";
+import { supabase } from "../../../lib/supabase";
+import LumberyardPlayer, { LUMBERYARD_PLAYER_NAME } from "./LumberyardPlayer";
+import RemoteLumberPlayer, { type RemoteLumberData } from "./RemoteLumberPlayer";
 import LumberHud from "./LumberHud";
 import Shop from "./Shop";
 import Tree from "./Tree";
@@ -42,7 +44,7 @@ import {
 } from "../../../lib/sounds";
 
 // ============================================================
-// LUMBERYARD INC — main game
+// LUMBERYARD INC — main game (with multiplayer presence)
 // ============================================================
 
 const KEY_MAP = [
@@ -52,6 +54,9 @@ const KEY_MAP = [
   { name: "right", keys: ["d", "D", "ArrowRight"] },
   { name: "jump", keys: [" ", "Space"] },
 ];
+
+const STALE_TIMEOUT = 3000;         // remove remote players after 3s silence
+const BROADCAST_INTERVAL = 66;      // ~15 broadcasts per second
 
 type TreeState = {
   spawnId: string;
@@ -98,6 +103,7 @@ export default function LumberyardGame({
   } | null>(null);
 
   const playerPosRef = useRef<[number, number, number]>(LUMBERYARD_SPAWN);
+  const playerRotYRef = useRef(0);
 
   const [shopOpen, setShopOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -107,6 +113,13 @@ export default function LumberyardGame({
 
   const currentAxe = getAxe(progress.currentAxe);
 
+  // ===== Multiplayer state =====
+  const [others, setOthers] = useState<RemoteLumberData[]>([]);
+  const [onlineCount, setOnlineCount] = useState(1);
+  const channelRef = useRef<any>(null);
+  const lastBroadcastRef = useRef(0);
+
+  // Load progress
   useEffect(() => {
     (async () => {
       const p = await loadProgress();
@@ -115,12 +128,10 @@ export default function LumberyardGame({
     })();
   }, []);
 
-  // ===== Ambient music — start on first click =====
+  // Ambient music — starts on first interaction
   useEffect(() => {
     const handleFirstInteraction = () => {
-      if (musicOn) {
-        startAmbientMusic();
-      }
+      if (musicOn) startAmbientMusic();
       window.removeEventListener("click", handleFirstInteraction);
       window.removeEventListener("keydown", handleFirstInteraction);
     };
@@ -140,7 +151,7 @@ export default function LumberyardGame({
     messageTimeoutRef.current = setTimeout(() => setMessage(null), durationMs);
   }, []);
 
-  // ===== Tree regrowth =====
+  // Tree regrowth
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
@@ -158,6 +169,120 @@ export default function LumberyardGame({
     return () => clearInterval(interval);
   }, []);
 
+  // ===== Multiplayer setup =====
+  useEffect(() => {
+    if (!world?.id) return;
+
+    const channel = supabase.channel(`world-${world.id}`, {
+      config: {
+        broadcast: { self: false },
+        presence: { key: userId },
+      },
+    });
+
+    // Receive other players' position updates
+    channel.on("broadcast", { event: "lumber-move" }, ({ payload }) => {
+      if (!payload || payload.id === userId) return;
+      setOthers((prev) => {
+        const existing = prev.findIndex((p) => p.id === payload.id);
+        const next: RemoteLumberData = {
+          id: payload.id,
+          username: payload.username,
+          displayId: payload.displayId ?? null,
+          avatarConfig: payload.avatarConfig,
+          currentAxeId: payload.currentAxeId,
+          targetPos: payload.pos,
+          targetRotY: payload.rotY,
+          lastSeen: Date.now(),
+        };
+        if (existing >= 0) {
+          const copy = [...prev];
+          copy[existing] = next;
+          return copy;
+        }
+        return [...prev, next];
+      });
+    });
+
+    // When someone joins, they'll announce themselves. When we see them, we
+    // ask everyone to re-broadcast our position (so the new player sees us).
+    channel.on("presence", { event: "sync" }, () => {
+      const state = channel.presenceState();
+      setOnlineCount(Object.keys(state).length);
+
+      // Re-broadcast our position so newcomers see us
+      channel.send({
+        type: "broadcast",
+        event: "lumber-move",
+        payload: {
+          id: userId,
+          username,
+          displayId: null,
+          avatarConfig: config,
+          currentAxeId: progress.currentAxe,
+          pos: playerPosRef.current,
+          rotY: playerRotYRef.current,
+        },
+      });
+    });
+
+    // When someone leaves, the presence sync fires and we'll re-check
+    channel.on("presence", { event: "leave" }, () => {
+      const state = channel.presenceState();
+      setOnlineCount(Math.max(1, Object.keys(state).length));
+    });
+
+    channel.subscribe((status: string) => {
+      if (status === "SUBSCRIBED") {
+        channel.track({
+          id: userId,
+          username,
+          worldId: world.id,
+          joinedAt: Date.now(),
+        });
+      }
+    });
+
+    channelRef.current = channel;
+
+    // Stale player cleanup
+    const staleTimer = setInterval(() => {
+      const now = Date.now();
+      setOthers((prev) => prev.filter((p) => now - p.lastSeen < STALE_TIMEOUT));
+    }, 1500);
+
+    return () => {
+      clearInterval(staleTimer);
+      channel.untrack();
+      supabase.removeChannel(channel);
+      channelRef.current = null;
+    };
+  }, [world?.id, userId, username, config, progress.currentAxe]);
+
+  // ===== Broadcast our position every ~66ms =====
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const channel = channelRef.current;
+      if (!channel) return;
+      channel.send({
+        type: "broadcast",
+        event: "lumber-move",
+        payload: {
+          id: userId,
+          username,
+          displayId: null,
+          avatarConfig: config,
+          currentAxeId: progress.currentAxe,
+          pos: playerPosRef.current,
+          rotY: playerRotYRef.current,
+        },
+      });
+    }, BROADCAST_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, [userId, username, config, progress.currentAxe]);
+
+  // ===== Chop handling =====
   const handleChop = useCallback(
     (spawnId: string) => {
       const spawn = TREE_SPAWNS.find((s) => s.id === spawnId);
@@ -178,6 +303,16 @@ export default function LumberyardGame({
 
       swingTriggerRef.current += 1;
       playChop();
+
+      // Broadcast the chop so others can hear it
+      const channel = channelRef.current;
+      if (channel) {
+        channel.send({
+          type: "broadcast",
+          event: "lumber-chop",
+          payload: { id: userId },
+        });
+      }
 
       const newDamage = tree.damage + currentAxe.damage;
       const isDead = newDamage >= type.hp;
@@ -212,7 +347,7 @@ export default function LumberyardGame({
         showMessage(`🌲 ${type.name} chopped! +1 log`);
       }
     },
-    [trees, progress, currentAxe, showMessage]
+    [trees, progress, currentAxe, showMessage, userId]
   );
 
   const tryPickupLog = useCallback(() => {
@@ -289,9 +424,7 @@ export default function LumberyardGame({
         if (equippedLog) trySellLog();
         else tryPickupLog();
       }
-      if (e.key === "Escape") {
-        setShopOpen(false);
-      }
+      if (e.key === "Escape") setShopOpen(false);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -313,9 +446,11 @@ export default function LumberyardGame({
     [showMessage]
   );
 
+  // Position update from player — updates the shared ref
   const handlePositionUpdate = useCallback(
-    (pos: [number, number, number]) => {
+    (pos: [number, number, number], rotY: number) => {
       playerPosRef.current = pos;
+      playerRotYRef.current = rotY;
     },
     []
   );
@@ -330,7 +465,6 @@ export default function LumberyardGame({
     [progress.currentAxe]
   );
 
-  // ===== Toggle music =====
   const toggleMusic = () => {
     if (musicOn) {
       stopAmbientMusic();
@@ -375,7 +509,7 @@ export default function LumberyardGame({
               />
               <hemisphereLight args={["#ffffff", "#88aa88", 0.4]} />
 
-              {/* Ground — physics-enabled */}
+              {/* Ground */}
               <RigidBody type="fixed" colliders="cuboid">
                 <mesh position={[0, -0.5, 0]} receiveShadow>
                   <boxGeometry args={[WORLD_BOUNDS * 2, 1, WORLD_BOUNDS * 2]} />
@@ -383,6 +517,7 @@ export default function LumberyardGame({
                 </mesh>
               </RigidBody>
 
+              {/* Trees */}
               {TREE_SPAWNS.map((spawn) => {
                 const state = trees.find((t) => t.spawnId === spawn.id);
                 if (!state || state.deadAt) return null;
@@ -397,6 +532,7 @@ export default function LumberyardGame({
                 );
               })}
 
+              {/* Logs */}
               {logs.map((log) => {
                 const [px, , pz] = playerPosRef.current;
                 const d = Math.hypot(log.position[0] - px, log.position[2] - pz);
@@ -410,8 +546,10 @@ export default function LumberyardGame({
                 );
               })}
 
+              {/* Sawmill */}
               <Sawmill />
 
+              {/* Local player */}
               <LumberyardPlayer
                 config={config}
                 spawnPosition={LUMBERYARD_SPAWN}
@@ -421,6 +559,11 @@ export default function LumberyardGame({
                 onPositionUpdate={handlePositionUpdate}
                 swingTriggerRef={swingTriggerRef}
               />
+
+              {/* Remote players */}
+              {others.map((p) => (
+                <RemoteLumberPlayer key={p.id} data={p} />
+              ))}
             </Suspense>
           </Physics>
         </Canvas>
@@ -434,7 +577,26 @@ export default function LumberyardGame({
         message={message}
       />
 
-      {/* Music toggle */}
+      {/* Online counter + player list */}
+      <div className="absolute top-3 right-3 z-30 flex flex-col gap-2 items-end">
+        <div className="bg-black/70 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-xs flex items-center gap-2">
+          <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+          <strong>{onlineCount}</strong>
+          <span className="text-white/60">online</span>
+        </div>
+        {others.length > 0 && (
+          <div className="bg-black/70 backdrop-blur rounded border border-white/20 px-3 py-2 text-white/80 text-[11px] max-w-[180px] space-y-1">
+            <p className="font-bold text-white/60 mb-1">In this world</p>
+            {others.slice(0, 6).map((p) => (
+              <p key={p.id} className="truncate">• {p.username}</p>
+            ))}
+            {others.length > 6 && (
+              <p className="text-white/40">+{others.length - 6} more</p>
+            )}
+          </div>
+        )}
+      </div>
+
       <button
         onClick={toggleMusic}
         className="fixed bottom-6 right-6 md:bottom-6 md:right-6 z-40 w-12 h-12 rounded-full bg-black/70 border-2 border-white/30 backdrop-blur flex items-center justify-center text-xl hover:bg-black/90 transition"
