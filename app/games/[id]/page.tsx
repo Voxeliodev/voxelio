@@ -8,6 +8,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { KeyboardControls, useKeyboardControls, Sky, Html } from "@react-three/drei";
 import { Character } from "../../components/Avatar";
 import AccountBadge from "../../components/AccountBadge";
+import ObbyGame from "../../components/obby/ObbyGame";
 import { getCurrentUser, formatVoxbux, awardPlayedWithOwner, type User, type AvatarConfig } from "../../../lib/auth";
 import { supabase } from "../../../lib/supabase";
 import {
@@ -878,13 +879,26 @@ export default function WorldPage() {
 
   return (
     <div className="fixed inset-0 bg-black overflow-hidden">
-      <KeyboardControls map={KEY_MAP}>
-        <Canvas shadows camera={{ position: [0, 5, 9], fov: 55 }} dpr={[1, 2]} style={{ background: "#87CEEB" }}>
-          <WorldScene config={user.avatarConfig} userId={user.id} username={user.username} world={world} others={others} chatMessages={chatMessages} onMove={handleMove} inputDisabled={chatOpen} isTouchDevice={isTouchDevice} />
-        </Canvas>
-      </KeyboardControls>
+      {world.layout === "obby" ? (
+        /* ===== PHYSICS OBBY MODE ===== */
+        <ObbyGame
+          config={user.avatarConfig}
+          userId={user.id}
+          username={user.username}
+          world={world}
+          inputDisabled={chatOpen}
+          isTouchDevice={isTouchDevice}
+        />
+      ) : (
+        /* ===== STANDARD WALK-AROUND MODE ===== */
+        <KeyboardControls map={KEY_MAP}>
+          <Canvas shadows camera={{ position: [0, 5, 9], fov: 55 }} dpr={[1, 2]} style={{ background: "#87CEEB" }}>
+            <WorldScene config={user.avatarConfig} userId={user.id} username={user.username} world={world} others={others} chatMessages={chatMessages} onMove={handleMove} inputDisabled={chatOpen} isTouchDevice={isTouchDevice} />
+          </Canvas>
+        </KeyboardControls>
+      )}
 
-      {isTouchDevice && !chatOpen && (<><TouchLookArea onLook={touchLook} /><Joystick /><JumpButton /></>)}
+      {isTouchDevice && !chatOpen && world.layout !== "obby" && (<><TouchLookArea onLook={touchLook} /><Joystick /><JumpButton /></>)}
 
       <div className="absolute top-3 left-3 flex items-center gap-2 z-30">
         <Link href="/games" className="bg-black/60 hover:bg-black/80 backdrop-blur text-white text-xs font-bold px-3 py-2 rounded border border-white/20">← Exit</Link>
@@ -911,13 +925,15 @@ export default function WorldPage() {
         </div>
       </div>
 
-      <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1 hidden md:block z-30">
-        <p className="font-bold mb-1">🎮 Controls</p>
-        <p><kbd className="bg-white/10 px-1 rounded">W</kbd> <kbd className="bg-white/10 px-1 rounded">A</kbd> <kbd className="bg-white/10 px-1 rounded">S</kbd> <kbd className="bg-white/10 px-1 rounded">D</kbd> — Move</p>
-        <p><kbd className="bg-white/10 px-1 rounded">Space</kbd> — Jump</p>
-        <p className="text-white/70">🖱️ <strong>Drag</strong> to look around · <strong>Scroll</strong> to zoom</p>
-        <p><kbd className="bg-white/10 px-1 rounded">T</kbd> — Chat</p>
-      </div>
+      {world.layout !== "obby" && (
+        <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1 hidden md:block z-30">
+          <p className="font-bold mb-1">🎮 Controls</p>
+          <p><kbd className="bg-white/10 px-1 rounded">W</kbd> <kbd className="bg-white/10 px-1 rounded">A</kbd> <kbd className="bg-white/10 px-1 rounded">S</kbd> <kbd className="bg-white/10 px-1 rounded">D</kbd> — Move</p>
+          <p><kbd className="bg-white/10 px-1 rounded">Space</kbd> — Jump</p>
+          <p className="text-white/70">🖱️ <strong>Drag</strong> to look around · <strong>Scroll</strong> to zoom</p>
+          <p><kbd className="bg-white/10 px-1 rounded">T</kbd> — Chat</p>
+        </div>
+      )}
 
       {others.length > 0 && (
         <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur px-3 py-2 rounded border border-white/20 text-white text-[11px] space-y-1 max-w-[180px] hidden md:block z-30">
