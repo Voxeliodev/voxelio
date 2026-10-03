@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useMemo } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useKeyboardControls } from "@react-three/drei";
 import {
@@ -28,19 +28,14 @@ const ROT_LERP = 14;
 const AIR_CONTROL = 0.55;
 const COYOTE_TIME = 0.12;
 
-// Capsule collider dimensions
+// Capsule collider — total height 1.7, radius 0.35
 const CAPSULE_HALF_HEIGHT = 0.5;
 const CAPSULE_RADIUS = 0.35;
-const CAPSULE_TOTAL_HEIGHT = CAPSULE_HALF_HEIGHT * 2 + CAPSULE_RADIUS * 2; // 1.7
+const CAPSULE_TOTAL = CAPSULE_HALF_HEIGHT * 2 + CAPSULE_RADIUS * 2; // 1.7
 
-// Visual character vertical offset — how high the visual sits
-// above the RigidBody origin (which is the collider's center).
-// Feet should touch the bottom of the capsule.
-// Capsule bottom = -CAPSULE_TOTAL_HEIGHT/2 = -0.85 from origin.
-// So visual must be shifted DOWN to -0.85 to touch the capsule's bottom.
-// But we've empirically found that this makes it sink — so we're
-// using a smaller offset and adjusting.
-const VISUAL_OFFSET_Y = -CAPSULE_TOTAL_HEIGHT / 2; // -0.85
+// Empirically-derived visual offset (see screenshot testing).
+// The Character's internal group is offset by -0.6, so we compensate.
+const VISUAL_OFFSET_Y = -0.25;
 
 type Props = {
   config: AvatarConfig;
@@ -81,7 +76,13 @@ export default function ObbyPlayer({
   const coyoteTimerRef = useRef(0);
   const jumpRequestedRef = useRef(false);
 
-  // Handle mouse look on desktop
+  // ============================================================
+  // Force-facing reference: whenever we respawn, we reset BOTH
+  // the visual rotation AND the RigidBody rotation, so the
+  // character is guaranteed to face forward.
+  // ============================================================
+  const forcedFacingRef = useRef<number | null>(null);
+
   useEffect(() => {
     if (isTouchDevice) return;
     const canvas = document.querySelector("canvas");
@@ -128,14 +129,11 @@ export default function ObbyPlayer({
     };
   }, [isTouchDevice]);
 
-  // Ground check — cast ray downward from below the capsule's bottom
+  // Ground check — cast from just below the capsule's bottom
   function checkGrounded(): boolean {
     if (!bodyRef.current) return false;
     const pos = bodyRef.current.translation();
-
-    // Capsule bottom is at pos.y - CAPSULE_TOTAL_HEIGHT/2 = pos.y - 0.85
-    // Cast from just below that
-    const rayOriginY = pos.y - CAPSULE_TOTAL_HEIGHT / 2 + 0.05;
+    const rayOriginY = pos.y - CAPSULE_TOTAL / 2 + 0.05;
     const ray = new rapier.Ray(
       { x: pos.x, y: rayOriginY, z: pos.z },
       { x: 0, y: -1, z: 0 }
@@ -152,27 +150,47 @@ export default function ObbyPlayer({
     return hit !== null;
   }
 
-  // Respawn when spawn changes
+  // ============================================================
+  // RESPAWN — reset position, velocity, rotation, camera
+  // ============================================================
   useEffect(() => {
     if (!bodyRef.current) return;
+
+    // Position + velocity
     bodyRef.current.setTranslation(
       { x: spawnPosition[0], y: spawnPosition[1], z: spawnPosition[2] },
       true
     );
     bodyRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
     bodyRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
+
+    // Explicitly set the RigidBody rotation to face -Z.
+    // Quaternion for facing -Z (default forward) is identity.
+    bodyRef.current.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
+
+    // Reset visual rotation
+    if (visualRef.current) {
+      visualRef.current.rotation.set(0, 0, 0);
+    }
+
+    // Reset internal state
     velocityXZRef.current.set(0, 0);
     groundedRef.current = false;
     coyoteTimerRef.current = 0;
     jumpRequestedRef.current = false;
 
-    // Reset facing — face toward -Z (direction of travel)
-    if (visualRef.current) {
-      visualRef.current.rotation.set(0, 0, 0);
-    }
-    // Reset camera yaw so the camera is behind the player
+    // Reset camera
     cameraYawRef.current = 0;
     cameraPitchRef.current = 0.35;
+  }, [spawnPosition]);
+
+  // Force facing for one frame after respawn
+  useEffect(() => {
+    forcedFacingRef.current = 0; // face -Z
+    const timer = setTimeout(() => {
+      forcedFacingRef.current = null;
+    }, 100); // release after 100ms
+    return () => clearTimeout(timer);
   }, [spawnPosition]);
 
   useFrame((_, delta) => {
@@ -266,7 +284,10 @@ export default function ObbyPlayer({
       setWalking(isMoving);
     }
 
-    if (isMoving && visualRef.current) {
+    // If we're forcing facing (right after respawn), keep the visual at 0
+    if (forcedFacingRef.current !== null && visualRef.current) {
+      visualRef.current.rotation.y = forcedFacingRef.current;
+    } else if (isMoving && visualRef.current) {
       const targetAngle = Math.atan2(velocityXZRef.current.x, velocityXZRef.current.y);
       let diff = targetAngle - visualRef.current.rotation.y;
       while (diff > Math.PI) diff -= Math.PI * 2;
@@ -320,16 +341,8 @@ export default function ObbyPlayer({
       restitution={0}
       mass={1}
     >
-      {/*
-        The CapsuleCollider is centered on the RigidBody origin.
-        Its total height is 1.7, so bottom is at -0.85, top at +0.85.
-
-        The Character component has feet at y=0 and head at y=1.8.
-
-        We want the feet to touch the capsule's bottom.
-        So the visual group must be shifted DOWN by 0.85.
-      */}
       <CapsuleCollider args={[CAPSULE_HALF_HEIGHT, CAPSULE_RADIUS]} />
+
       <group ref={visualRef} position={[0, VISUAL_OFFSET_Y, 0]}>
         <Character config={config} hideAccessory walking={walking} />
       </group>
