@@ -31,10 +31,16 @@ const COYOTE_TIME = 0.12;
 // Capsule collider dimensions
 const CAPSULE_HALF_HEIGHT = 0.5;
 const CAPSULE_RADIUS = 0.35;
-// The CapsuleCollider's origin is at its center. The Character's feet
-// are at y = 0. So we lift the collider by half of its total height
-// (0.5 + 0.35 = 0.85) to align its bottom with the feet.
-const CAPSULE_LIFT = CAPSULE_HALF_HEIGHT + CAPSULE_RADIUS; // 0.85
+const CAPSULE_TOTAL_HEIGHT = CAPSULE_HALF_HEIGHT * 2 + CAPSULE_RADIUS * 2; // 1.7
+
+// Visual character vertical offset — how high the visual sits
+// above the RigidBody origin (which is the collider's center).
+// Feet should touch the bottom of the capsule.
+// Capsule bottom = -CAPSULE_TOTAL_HEIGHT/2 = -0.85 from origin.
+// So visual must be shifted DOWN to -0.85 to touch the capsule's bottom.
+// But we've empirically found that this makes it sink — so we're
+// using a smaller offset and adjusting.
+const VISUAL_OFFSET_Y = -CAPSULE_TOTAL_HEIGHT / 2; // -0.85
 
 type Props = {
   config: AvatarConfig;
@@ -122,14 +128,16 @@ export default function ObbyPlayer({
     };
   }, [isTouchDevice]);
 
-  // Ground check — cast a short ray downward from the player's feet
+  // Ground check — cast ray downward from below the capsule's bottom
   function checkGrounded(): boolean {
     if (!bodyRef.current) return false;
     const pos = bodyRef.current.translation();
 
-    // Cast downward from the player's feet (visual feet = bodyY + 0)
+    // Capsule bottom is at pos.y - CAPSULE_TOTAL_HEIGHT/2 = pos.y - 0.85
+    // Cast from just below that
+    const rayOriginY = pos.y - CAPSULE_TOTAL_HEIGHT / 2 + 0.05;
     const ray = new rapier.Ray(
-      { x: pos.x, y: pos.y + 0.05, z: pos.z },
+      { x: pos.x, y: rayOriginY, z: pos.z },
       { x: 0, y: -1, z: 0 }
     );
     const hit = world.castRay(
@@ -144,7 +152,7 @@ export default function ObbyPlayer({
     return hit !== null;
   }
 
-  // Respawn when spawn changes — reset position, velocity, and facing
+  // Respawn when spawn changes
   useEffect(() => {
     if (!bodyRef.current) return;
     bodyRef.current.setTranslation(
@@ -152,15 +160,19 @@ export default function ObbyPlayer({
       true
     );
     bodyRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    bodyRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
     velocityXZRef.current.set(0, 0);
     groundedRef.current = false;
     coyoteTimerRef.current = 0;
     jumpRequestedRef.current = false;
 
-    // Reset facing direction — face toward -Z (direction of travel)
+    // Reset facing — face toward -Z (direction of travel)
     if (visualRef.current) {
-      visualRef.current.rotation.y = 0;
+      visualRef.current.rotation.set(0, 0, 0);
     }
+    // Reset camera yaw so the camera is behind the player
+    cameraYawRef.current = 0;
+    cameraPitchRef.current = 0.35;
   }, [spawnPosition]);
 
   useFrame((_, delta) => {
@@ -168,7 +180,6 @@ export default function ObbyPlayer({
     const keys = getKeys();
     const dt = Math.min(delta, 0.05);
 
-    // Grounded detection with coyote time
     const grounded = checkGrounded();
     if (grounded) {
       coyoteTimerRef.current = COYOTE_TIME;
@@ -197,21 +208,18 @@ export default function ObbyPlayer({
       localZ /= inputLen;
     }
 
-    // Rotate input by camera yaw
     const yaw = cameraYawRef.current;
     const cosY = Math.cos(yaw);
     const sinY = Math.sin(yaw);
     const worldX = localX * cosY + localZ * sinY;
     const worldZ = -localX * sinY + localZ * cosY;
 
-    // Smooth velocity
     const rate = grounded ? 14 : 14 * AIR_CONTROL;
     const targetVX = worldX * MOVE_SPEED;
     const targetVZ = worldZ * MOVE_SPEED;
     velocityXZRef.current.x += (targetVX - velocityXZRef.current.x) * Math.min(1, rate * dt);
     velocityXZRef.current.y += (targetVZ - velocityXZRef.current.y) * Math.min(1, rate * dt);
 
-    // Apply horizontal velocity
     const current = bodyRef.current.linvel();
     bodyRef.current.setLinvel(
       {
@@ -271,14 +279,14 @@ export default function ObbyPlayer({
       onFall();
     }
 
-    // Camera follow — look at the visual center of the character
+    // Camera follow
     if (visualRef.current) {
       const camYaw = cameraYawRef.current;
       const camPitch = cameraPitchRef.current;
       const horizDist = CAMERA_DIST * Math.cos(camPitch);
       const vertDist = CAMERA_DIST * Math.sin(camPitch);
       const lookX = pos.x;
-      const lookY = pos.y + 1.0; // mid-body
+      const lookY = pos.y + 0.3;
       const lookZ = pos.z;
       const targetCamX = lookX - Math.sin(camYaw) * horizDist;
       const targetCamY = lookY + CAMERA_HEIGHT + vertDist;
@@ -291,7 +299,7 @@ export default function ObbyPlayer({
       camera.lookAt(lookX, lookY, lookZ);
     }
 
-    // Broadcast position
+    // Broadcast
     const now = performance.now();
     if (onPositionUpdate && now - lastBroadcastRef.current > 66) {
       lastBroadcastRef.current = now;
@@ -312,14 +320,17 @@ export default function ObbyPlayer({
       restitution={0}
       mass={1}
     >
-      {/* Capsule collider lifted so its bottom aligns with the visual feet */}
-      <CapsuleCollider
-        args={[CAPSULE_HALF_HEIGHT, CAPSULE_RADIUS]}
-        position={[0, CAPSULE_LIFT, 0]}
-      />
+      {/*
+        The CapsuleCollider is centered on the RigidBody origin.
+        Its total height is 1.7, so bottom is at -0.85, top at +0.85.
 
-      {/* Visual character — feet at RigidBody origin */}
-      <group ref={visualRef} position={[0, 0, 0]}>
+        The Character component has feet at y=0 and head at y=1.8.
+
+        We want the feet to touch the capsule's bottom.
+        So the visual group must be shifted DOWN by 0.85.
+      */}
+      <CapsuleCollider args={[CAPSULE_HALF_HEIGHT, CAPSULE_RADIUS]} />
+      <group ref={visualRef} position={[0, VISUAL_OFFSET_Y, 0]}>
         <Character config={config} hideAccessory walking={walking} />
       </group>
     </RigidBody>
