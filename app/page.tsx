@@ -490,94 +490,119 @@ export default function Home() {
               </div>
             </div>
 
-            {filteredUsers.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {filteredUsers.map((user) => (
-                  <div
-                    key={user.id}
-                    className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden hover:border-[#6C3CE0] transition"
-                  >
-                    <Link
-                      href={`/profile/${user.username}/${user.id}`}
-                      className="block bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] p-3 flex justify-center hover:from-[#DDD6F0] hover:to-[#C5BCE5] transition"
-                    >
-                      <Avatar config={user.avatarConfig} size={80} />
-                    </Link>
+            {/* Only show first 6 members unless the user is searching / filtering */}
+            {(() => {
+              const isBrowsing = !search.trim() && filter === "all";
+              const displayedUsers = isBrowsing ? filteredUsers.slice(0, 6) : filteredUsers;
+              const hiddenCount = filteredUsers.length - displayedUsers.length;
 
-                    <div className="bg-gradient-to-r from-[#6C3CE0] to-[#5A2FC7] px-3 py-2 flex items-center justify-between gap-2">
-                      <Link
-                        href={`/profile/${user.username}/${user.id}`}
-                        className="font-black text-white text-sm truncate hover:underline flex items-center flex-1 min-w-0"
-                        title={user.username}
+              if (displayedUsers.length === 0) {
+                return (
+                  <div className="bg-white border-2 border-dashed border-[#C5C8D6] rounded p-10 text-center">
+                    <div className="text-5xl mb-3">👤</div>
+                    <h3 className="font-black text-lg text-[#1A1A2E] mb-2">
+                      {search ? "No Players Found" : filter === "friends" ? "No Friends Yet" : "No Players Yet"}
+                    </h3>
+                    <p className="text-sm text-[#666] max-w-md mx-auto mb-4">
+                      {search
+                        ? `Nobody with "${search}" in their username has signed up yet.`
+                        : filter === "friends"
+                        ? "You haven't added any friends yet. Click the + button on a member's card to send a request."
+                        : "Once players start joining Voxelio, they'll show up here."}
+                    </p>
+                    {search ? (
+                      <button onClick={() => setSearch("")} className="text-xs font-bold text-[#6C3CE0] hover:underline">
+                        Clear search
+                      </button>
+                    ) : (
+                      !currentUser && (
+                        <Link
+                          href="/signup"
+                          className="inline-block bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white font-bold text-xs px-6 py-2.5 rounded border border-[#4A1FA8] hover:from-[#8B5FFF] hover:to-[#6A3FD7] transition"
+                        >
+                          Be the First to Sign Up
+                        </Link>
+                      )
+                    )}
+                  </div>
+                );
+              }
+
+              return (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {displayedUsers.map((user) => (
+                      <div
+                        key={user.id}
+                        className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden hover:border-[#6C3CE0] transition"
                       >
-                        <span className="truncate">{user.username}</span>
-                        <AccountBadge username={user.username} userId={user.id} size={14} />
-                        {currentUser?.id === user.id && (
-                          <span className="ml-2 text-[10px] bg-white/20 px-1.5 py-0.5 rounded flex-shrink-0">YOU</span>
-                        )}
-                      </Link>
-                      <span
-                        className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-                          user.status === "online" ? "bg-green-400" : "bg-gray-400"
-                        }`}
-                        title={user.status === "online" ? "Online" : "Offline"}
-                      />
-                    </div>
-
-                    <div className="p-3">
-                      <p className="text-xs text-[#666] mb-2 min-h-[32px]">{user.bio}</p>
-                      <div className="flex justify-between text-[10px] text-[#666] mb-3 border-t border-[#E5E7F0] pt-2">
-                        <span>👥 {user.friends} friends</span>
-                        <span>📅 {user.joined}</span>
-                      </div>
-                      <div className="flex gap-2">
                         <Link
                           href={`/profile/${user.username}/${user.id}`}
-                          className="flex-1 text-center text-xs font-bold py-2 rounded border bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white border-[#4A1FA8] hover:from-[#8B5FFF] hover:to-[#6A3FD7] transition"
+                          className="block bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] p-3 flex justify-center hover:from-[#DDD6F0] hover:to-[#C5BCE5] transition"
                         >
-                          View Profile
+                          <Avatar config={user.avatarConfig} size={80} />
                         </Link>
-                        <Link
-                          href="/friends"
-                          className="px-3 text-xs font-bold py-2 rounded border bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE] transition"
-                          title="Add Friend"
-                        >
-                          +
-                        </Link>
+
+                        <div className="bg-gradient-to-r from-[#6C3CE0] to-[#5A2FC7] px-3 py-2 flex items-center justify-between gap-2">
+                          <Link
+                            href={`/profile/${user.username}/${user.id}`}
+                            className="font-black text-white text-sm truncate hover:underline flex items-center flex-1 min-w-0"
+                            title={user.username}
+                          >
+                            <span className="truncate">{user.username}</span>
+                            <AccountBadge username={user.username} userId={user.id} size={14} />
+                            {currentUser?.id === user.id && (
+                              <span className="ml-2 text-[10px] bg-white/20 px-1.5 py-0.5 rounded flex-shrink-0">YOU</span>
+                            )}
+                          </Link>
+                          <span
+                            className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                              user.status === "online" ? "bg-green-400" : "bg-gray-400"
+                            }`}
+                            title={user.status === "online" ? "Online" : "Offline"}
+                          />
+                        </div>
+
+                        <div className="p-3">
+                          <p className="text-xs text-[#666] mb-2 min-h-[32px]">{user.bio}</p>
+                          <div className="flex justify-between text-[10px] text-[#666] mb-3 border-t border-[#E5E7F0] pt-2">
+                            <span>👥 {user.friends} friends</span>
+                            <span>📅 {user.joined}</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <Link
+                              href={`/profile/${user.username}/${user.id}`}
+                              className="flex-1 text-center text-xs font-bold py-2 rounded border bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white border-[#4A1FA8] hover:from-[#8B5FFF] hover:to-[#6A3FD7] transition"
+                            >
+                              View Profile
+                            </Link>
+                            <Link
+                              href="/friends"
+                              className="px-3 text-xs font-bold py-2 rounded border bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE] transition"
+                              title="Add Friend"
+                            >
+                              +
+                            </Link>
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="bg-white border-2 border-dashed border-[#C5C8D6] rounded p-10 text-center">
-                <div className="text-5xl mb-3">👤</div>
-                <h3 className="font-black text-lg text-[#1A1A2E] mb-2">
-                  {search ? "No Players Found" : filter === "friends" ? "No Friends Yet" : "No Players Yet"}
-                </h3>
-                <p className="text-sm text-[#666] max-w-md mx-auto mb-4">
-                  {search
-                    ? `Nobody with "${search}" in their username has signed up yet.`
-                    : filter === "friends"
-                    ? "You haven't added any friends yet. Click the + button on a member's card to send a request."
-                    : "Once players start joining Voxelio, they'll show up here."}
-                </p>
-                {search ? (
-                  <button onClick={() => setSearch("")} className="text-xs font-bold text-[#6C3CE0] hover:underline">
-                    Clear search
-                  </button>
-                ) : (
-                  !currentUser && (
-                    <Link
-                      href="/signup"
-                      className="inline-block bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white font-bold text-xs px-6 py-2.5 rounded border border-[#4A1FA8] hover:from-[#8B5FFF] hover:to-[#6A3FD7] transition"
-                    >
-                      Be the First to Sign Up
-                    </Link>
-                  )
-                )}
-              </div>
-            )}
+
+                  {/* "Search to see more" footer when truncated */}
+                  {isBrowsing && hiddenCount > 0 && (
+                    <div className="mt-4 bg-white border-2 border-dashed border-[#C5C8D6] rounded p-4 text-center">
+                      <p className="text-xs text-[#666] font-semibold mb-1">
+                        Showing 6 of {filteredUsers.length} members
+                      </p>
+                      <p className="text-[11px] text-[#888]">
+                        Use the search bar above to find specific players.
+                      </p>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </section>
 
           <section>
