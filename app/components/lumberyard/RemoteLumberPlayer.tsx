@@ -59,14 +59,17 @@ function RemoteAxeMesh({ axeId }: { axeId: AxeId }) {
   );
 }
 
+// Matches VISUAL_OFFSET_Y in LumberyardPlayer.tsx — needed so the
+// remote player's feet align with the ground (not sunk into it).
+const VISUAL_OFFSET_Y = 0.65;
+
 export default function RemoteLumberPlayer({ data }: { data: RemoteLumberData }) {
   const groupRef = useRef<THREE.Group>(null);
   const currentPosRef = useRef(new THREE.Vector3(...data.targetPos));
   const currentRotRef = useRef(data.targetRotY);
   const walkRef = useRef(false);
-  const [chopSwing, setChopSwing] = useState(0);
 
-  // Detect rotation changes to trigger walk animation
+  // Detect movement to trigger walk animation
   useFrame((_, delta) => {
     if (!groupRef.current) return;
     const target = new THREE.Vector3(...data.targetPos);
@@ -91,7 +94,7 @@ export default function RemoteLumberPlayer({ data }: { data: RemoteLumberData })
     <group ref={groupRef} position={data.targetPos}>
       {/* Nametag */}
       <Html
-        position={[0, 2.55, 0]}
+        position={[0, 2.55 + VISUAL_OFFSET_Y, 0]}
         center
         distanceFactor={10}
         zIndexRange={[10, 0]}
@@ -121,12 +124,15 @@ export default function RemoteLumberPlayer({ data }: { data: RemoteLumberData })
         </div>
       </Html>
 
-      <Character
-        config={data.avatarConfig}
-        hideAccessory
-        walking={walkRef.current}
-        rightHandContent={<RemoteAxeMesh axeId={data.currentAxeId} />}
-      />
+      {/* FIX: Offset the visual model so its feet are on the ground */}
+      <group position={[0, VISUAL_OFFSET_Y, 0]}>
+        <Character
+          config={data.avatarConfig}
+          hideAccessory
+          walking={walkRef.current}
+          rightHandContent={<RemoteAxeMesh axeId={data.currentAxeId} />}
+        />
+      </group>
     </group>
   );
 }
