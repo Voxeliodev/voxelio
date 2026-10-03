@@ -10,6 +10,13 @@ import type { World } from "../../../lib/worlds";
 import ObbyPlayer from "./ObbyPlayer";
 import ObbyHud from "./ObbyHud";
 import {
+  playCheckpoint,
+  playFall,
+  playVictory,
+  startObbyMusic,
+  stopObbyMusic,
+} from "../../../lib/sounds";
+import {
   OBBY_PLATFORMS,
   OBBY_MOVING_PLATFORMS,
   OBBY_CHECKPOINTS,
@@ -155,13 +162,7 @@ function CheckpointSensor({
   onTrigger: (i: number) => void;
 }) {
   return (
-    <RigidBody
-      type="fixed"
-      position={position}
-      colliders={false}
-      sensor
-    >
-      {/* Sensor collider — invisible trigger zone */}
+    <RigidBody type="fixed" position={position} colliders={false} sensor>
       <CuboidCollider
         args={[1.5, 2, 1.5]}
         sensor
@@ -173,7 +174,6 @@ function CheckpointSensor({
         }}
       />
 
-      {/* Visual ring marker */}
       <mesh position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[0.6, 0.85, 32]} />
         <meshBasicMaterial
@@ -184,7 +184,6 @@ function CheckpointSensor({
         />
       </mesh>
 
-      {/* Floating pillar of light */}
       <mesh position={[0, 1.5, 0]}>
         <cylinderGeometry args={[0.15, 0.15, 3, 8]} />
         <meshBasicMaterial
@@ -212,12 +211,7 @@ function FinishSensor({
   onFinish: () => void;
 }) {
   return (
-    <RigidBody
-      type="fixed"
-      position={position}
-      colliders={false}
-      sensor
-    >
+    <RigidBody type="fixed" position={position} colliders={false} sensor>
       <CuboidCollider
         args={[size[0] / 2, size[1] / 2 + 1.5, size[2] / 2]}
         sensor
@@ -275,7 +269,6 @@ function Scene({
       />
       <hemisphereLight args={["#ffffff", "#88aa88", 0.4]} />
 
-      {/* Static platforms */}
       {OBBY_PLATFORMS.map((p, i) => (
         <RigidBody
           key={`plat-${i}`}
@@ -291,7 +284,6 @@ function Scene({
         </RigidBody>
       ))}
 
-      {/* Finish pad (solid base) */}
       <RigidBody type="fixed" position={OBBY_FINISH_BASE.position} colliders="cuboid">
         <mesh castShadow receiveShadow>
           <boxGeometry args={OBBY_FINISH_BASE.size} />
@@ -299,7 +291,6 @@ function Scene({
         </mesh>
       </RigidBody>
 
-      {/* Finish sensor (invisible trigger) */}
       <FinishSensor
         position={[OBBY_FINISH.position[0], OBBY_FINISH.position[1], OBBY_FINISH.position[2]]}
         size={OBBY_FINISH.size}
@@ -307,7 +298,6 @@ function Scene({
         onFinish={onFinish}
       />
 
-      {/* Checkpoint sensors */}
       {OBBY_CHECKPOINTS.map((cp, i) => (
         <CheckpointSensor
           key={`cp-${i}`}
@@ -318,7 +308,6 @@ function Scene({
         />
       ))}
 
-      {/* Moving platforms */}
       {OBBY_MOVING_PLATFORMS.map((mp) => (
         <MovingPlatform
           key={mp.id}
@@ -330,7 +319,6 @@ function Scene({
         />
       ))}
 
-      {/* Spinning blades */}
       {OBBY_SPINNERS.map((s) => (
         <SpinningBlade
           key={s.id}
@@ -341,7 +329,6 @@ function Scene({
         />
       ))}
 
-      {/* Player */}
       <ObbyPlayer
         config={config}
         spawnPosition={spawnPosition}
@@ -381,6 +368,27 @@ export default function ObbyGame({
   const [submitted, setSubmitted] = useState(false);
   const [resetKey, setResetKey] = useState(0);
 
+  // ===== Start obby music on mount, stop on unmount =====
+  useEffect(() => {
+    // Wait for the first user gesture before starting audio (browser policy)
+    const start = () => {
+      startObbyMusic();
+      window.removeEventListener("click", start);
+      window.removeEventListener("keydown", start);
+      window.removeEventListener("touchstart", start);
+    };
+    window.addEventListener("click", start);
+    window.addEventListener("keydown", start);
+    window.addEventListener("touchstart", start);
+
+    return () => {
+      window.removeEventListener("click", start);
+      window.removeEventListener("keydown", start);
+      window.removeEventListener("touchstart", start);
+      stopObbyMusic();
+    };
+  }, []);
+
   // Timer
   useEffect(() => {
     if (finished) return;
@@ -391,6 +399,7 @@ export default function ObbyGame({
   }, [startTime, finished]);
 
   const handleFall = useCallback(() => {
+    playFall();
     if (checkpointIndex >= 0) {
       const cp = OBBY_CHECKPOINTS[checkpointIndex];
       setSpawn([...cp.spawn]);
@@ -404,6 +413,7 @@ export default function ObbyGame({
     (id: number) => {
       if (id > checkpointIndex) {
         setCheckpointIndex(id);
+        playCheckpoint();
       }
     },
     [checkpointIndex]
@@ -417,6 +427,7 @@ export default function ObbyGame({
     const t = performance.now() - startTime;
     setFinalTime(t);
     setFinished(true);
+    playVictory();
   }, [finished, checkpointIndex, startTime]);
 
   const handleRestart = useCallback(() => {
