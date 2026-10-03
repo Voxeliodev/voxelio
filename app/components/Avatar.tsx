@@ -142,20 +142,24 @@ export function Character({
   hideAccessory = false,
   walking = false,
   rightHandRef,
+  resolvedShirt = null,
 }: {
   config: AvatarConfig;
   hideAccessory?: boolean;
   walking?: boolean;
   rightHandRef?: React.MutableRefObject<THREE.Group | null>;
+  resolvedShirt?: Item | null;
 }) {
   const skin = config.skinTone;
   const pants = config.pantsColor;
   const bodyParts = config.bodyParts;
   const partColors = config.partColors || {};
 
-  const shirtItem = config.shirt
-    ? (getItem(config.shirt) || findCommunityShirt(config.shirt))
-    : null;
+  const shirtItem =
+    resolvedShirt ||
+    (config.shirt
+      ? (getItem(config.shirt) || findCommunityShirt(config.shirt))
+      : null);
 
   const shirtOverride = shirtItem?.shirtColorOverride || null;
   const shirtImageUrl = shirtItem?.imageUrl;
@@ -282,7 +286,7 @@ export function Character({
             <meshStandardMaterial color={rightArmColor} roughness={0.7} />
           </RoundedBox>
 
-          {/* RIGHT HAND — wrapped in a group so external refs can attach things */}
+          {/* RIGHT HAND — wrapped so external components can attach things */}
           <group ref={rightHandRef} position={[0, -1.15, 0]}>
             <RoundedBox
               args={[0.3, 0.3, 0.3]}
