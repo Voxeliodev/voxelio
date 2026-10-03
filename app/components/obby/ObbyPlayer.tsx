@@ -33,10 +33,16 @@ const CAPSULE_HALF_HEIGHT = 0.5;
 const CAPSULE_RADIUS = 0.35;
 const CAPSULE_TOTAL = CAPSULE_HALF_HEIGHT * 2 + CAPSULE_RADIUS * 2; // 1.7
 
-// Visual offset — the character is drawn with feet at y=0 in its own
-// space, but the capsule's center is at the RigidBody origin, so we
-// need to shift the visual to sit on top of the block.
-const VISUAL_OFFSET_Y = 0.05;
+// ============================================================
+// VISUAL_OFFSET_Y — the ONE number you tune
+// ============================================================
+// -0.25 → sinks deeply
+//  0.05 → feet + lower legs buried
+//  0.35 → probably correct (current value)
+//  0.55 → probably floating
+//  Adjust in steps of 0.1 until feet rest cleanly on block tops.
+// ============================================================
+const VISUAL_OFFSET_Y = 0.35;
 
 type Props = {
   config: AvatarConfig;
