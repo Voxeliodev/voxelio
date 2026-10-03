@@ -148,16 +148,14 @@ export function playError() {
 }
 
 // ============================================================
-// NEW: OBBY SOUND EFFECTS
+// OBBY SOUND EFFECTS
 // ============================================================
 
-// Reaching a checkpoint — ascending 3-note chime
 export function playCheckpoint() {
   const ctx = getCtx();
   if (!ctx) return;
   const now = ctx.currentTime;
 
-  // C5 → E5 → G5, quick upward sweep
   const notes = [523.25, 659.25, 783.99];
 
   notes.forEach((freq, i) => {
@@ -176,10 +174,9 @@ export function playCheckpoint() {
     osc.stop(start + 0.5);
   });
 
-  // Add a soft high ping for sparkle
   const ping = ctx.createOscillator();
   ping.type = "sine";
-  ping.frequency.value = 1567.98; // G6
+  ping.frequency.value = 1567.98;
   const pingGain = ctx.createGain();
   pingGain.gain.setValueAtTime(0, now + 0.27);
   pingGain.gain.linearRampToValueAtTime(0.12, now + 0.29);
@@ -189,7 +186,6 @@ export function playCheckpoint() {
   ping.stop(now + 1.0);
 }
 
-// Falling / respawning — quick descending wobble
 export function playFall() {
   const ctx = getCtx();
   if (!ctx) return;
@@ -209,7 +205,6 @@ export function playFall() {
   osc.stop(now + 0.5);
 }
 
-// Jump — short upward blip
 export function playJump() {
   const ctx = getCtx();
   if (!ctx) return;
@@ -229,13 +224,11 @@ export function playJump() {
   osc.stop(now + 0.13);
 }
 
-// Finishing the obby — victory fanfare (4 ascending notes + high chord)
 export function playVictory() {
   const ctx = getCtx();
   if (!ctx) return;
   const now = ctx.currentTime;
 
-  // C5 → E5 → G5 → C6 arpeggio
   const notes = [523.25, 659.25, 783.99, 1046.5];
   notes.forEach((freq, i) => {
     const osc = ctx.createOscillator();
@@ -253,7 +246,6 @@ export function playVictory() {
     osc.stop(start + 0.55);
   });
 
-  // Final triumphant chord (C-E-G) sustained
   const chordStart = now + 0.55;
   [523.25, 659.25, 783.99].forEach((freq) => {
     const osc = ctx.createOscillator();
@@ -268,6 +260,309 @@ export function playVictory() {
     osc.connect(gain).connect(ctx.destination);
     osc.start(chordStart);
     osc.stop(chordStart + 2.0);
+  });
+}
+
+// ============================================================
+// CHAOS COLISEUM — combat sounds
+// ============================================================
+
+// Sword swing — quick "swoosh" whoosh
+export function playSwordSwing() {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+
+  // Noise-based whoosh
+  const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 0.18, ctx.sampleRate);
+  const data = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < data.length; i++) {
+    // Shape the noise envelope: quiet → loud → quiet (like air being cut)
+    const t = i / data.length;
+    const env = Math.sin(t * Math.PI); // 0 → 1 → 0
+    data[i] = (Math.random() * 2 - 1) * env;
+  }
+  const noise = ctx.createBufferSource();
+  noise.buffer = noiseBuffer;
+
+  // Bandpass filter to give it a "airy" sword swipe tone
+  const filter = ctx.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.frequency.setValueAtTime(1200, now);
+  filter.frequency.exponentialRampToValueAtTime(2800, now + 0.12);
+  filter.Q.value = 3.5;
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(0.28, now + 0.04);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+
+  noise.connect(filter).connect(gain).connect(ctx.destination);
+  noise.start(now);
+  noise.stop(now + 0.22);
+
+  // Add a subtle high-pitched metallic ring
+  const ring = ctx.createOscillator();
+  ring.type = "triangle";
+  ring.frequency.setValueAtTime(2600, now);
+  ring.frequency.exponentialRampToValueAtTime(1800, now + 0.15);
+
+  const ringGain = ctx.createGain();
+  ringGain.gain.setValueAtTime(0.06, now);
+  ringGain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+
+  ring.connect(ringGain).connect(ctx.destination);
+  ring.start(now);
+  ring.stop(now + 0.22);
+}
+
+// Sword hit — metallic "clang" + impact thud
+export function playSwordHit() {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+
+  // ---- Metallic clang (multiple detuned triangle waves) ----
+  const clangFreqs = [880, 1180, 1560, 2100];
+  clangFreqs.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.value = freq;
+    osc.detune.value = (i - 1.5) * 15;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.12 / (i + 1), now + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.4);
+  });
+
+  // ---- Low thud (impact) ----
+  const thud = ctx.createOscillator();
+  thud.type = "sine";
+  thud.frequency.setValueAtTime(160, now);
+  thud.frequency.exponentialRampToValueAtTime(45, now + 0.18);
+
+  const thudGain = ctx.createGain();
+  thudGain.gain.setValueAtTime(0.3, now);
+  thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+
+  thud.connect(thudGain).connect(ctx.destination);
+  thud.start(now);
+  thud.stop(now + 0.24);
+
+  // ---- Short noise burst for punch ----
+  const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 0.06, ctx.sampleRate);
+  const data = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < data.length; i++) {
+    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 4);
+  }
+  const noise = ctx.createBufferSource();
+  noise.buffer = noiseBuffer;
+
+  const noiseFilter = ctx.createBiquadFilter();
+  noiseFilter.type = "highpass";
+  noiseFilter.frequency.value = 800;
+
+  const noiseGain = ctx.createGain();
+  noiseGain.gain.setValueAtTime(0.15, now);
+  noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+
+  noise.connect(noiseFilter).connect(noiseGain).connect(ctx.destination);
+  noise.start(now);
+  noise.stop(now + 0.07);
+}
+
+// Player takes damage (subtle grunt-ish impact, but procedural)
+export function playPlayerHurt() {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+
+  const osc = ctx.createOscillator();
+  osc.type = "sawtooth";
+  osc.frequency.setValueAtTime(220, now);
+  osc.frequency.exponentialRampToValueAtTime(110, now + 0.15);
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.value = 800;
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.2, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+  osc.connect(filter).connect(gain).connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + 0.2);
+}
+
+// Player dies (low descending tone)
+export function playPlayerDeath() {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+
+  const notes = [440, 330, 220, 165];
+  notes.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.value = freq;
+
+    const gain = ctx.createGain();
+    const start = now + i * 0.1;
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(0.15, start + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.5);
+
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(start);
+    osc.stop(start + 0.55);
+  });
+}
+
+// You got a kill (short triumphant "ding")
+export function playKillConfirm() {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+
+  [880, 1320].forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.value = freq;
+
+    const gain = ctx.createGain();
+    const start = now + i * 0.07;
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(0.22, start + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.3);
+
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(start);
+    osc.stop(start + 0.35);
+  });
+}
+
+// Kill streak announcement (higher and higher pitch based on streak)
+export function playStreakSound(streak: number) {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+
+  // Base pitch rises with streak — cap at 4 to avoid shrillness
+  const clampedStreak = Math.min(streak, 4);
+  const baseFreq = 660 * Math.pow(1.18, clampedStreak);
+
+  [baseFreq, baseFreq * 1.5].forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = freq;
+
+    const gain = ctx.createGain();
+    const start = now + i * 0.08;
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(0.15, start + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.4);
+
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(start);
+    osc.stop(start + 0.45);
+  });
+}
+
+// Round starts (countdown beep)
+export function playCountdownBeep() {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+
+  const osc = ctx.createOscillator();
+  osc.type = "square";
+  osc.frequency.value = 660;
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(0.18, now + 0.01);
+  gain.gain.setValueAtTime(0.18, now + 0.18);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + 0.3);
+}
+
+// Round GO! (higher pitch, longer)
+export function playGoBeep() {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+
+  const osc = ctx.createOscillator();
+  osc.type = "square";
+  osc.frequency.value = 1320;
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(0.25, now + 0.01);
+  gain.gain.setValueAtTime(0.25, now + 0.35);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + 0.6);
+}
+
+// Round over — you won
+export function playRoundWin() {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+
+  // Classic victory arpeggio: C5-E5-G5-C6
+  const notes = [523.25, 659.25, 783.99, 1046.5];
+  notes.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    osc.type = "square";
+    osc.frequency.value = freq;
+
+    const gain = ctx.createGain();
+    const start = now + i * 0.14;
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(0.18, start + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.6);
+
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(start);
+    osc.stop(start + 0.65);
+  });
+}
+
+// Round over — you lost
+export function playRoundLose() {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+
+  // Sad descending two notes
+  const notes = [392, 311.13]; // G4, Eb4
+  notes.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.value = freq;
+
+    const gain = ctx.createGain();
+    const start = now + i * 0.25;
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(0.2, start + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.9);
+
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(start);
+    osc.stop(start + 0.95);
   });
 }
 
@@ -398,7 +693,7 @@ export function isMusicPlaying() {
 }
 
 // ============================================================
-// OBBY BACKGROUND MUSIC — bouncy, upbeat, Roblox-inspired
+// OBBY BACKGROUND MUSIC — bouncy, upbeat
 // ============================================================
 
 let obbyMusicNodes: { stop: () => void } | null = null;
@@ -419,14 +714,11 @@ export function startObbyMusic() {
   masterGain.gain.value = 0.06;
   masterGain.connect(ctx.destination);
 
-  // ---- Simple square-wave melody (C major, cheerful) ----
-  // Notes: C5 D5 E5 G5 A5 G5 E5 D5 (a 8-note loop)
   const NOTE_FREQ: Record<string, number> = {
     C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.0, A4: 440.0, B4: 493.88,
     C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46, G5: 783.99, A5: 880.0,
   };
 
-  // Melody as [noteName, duration in beats]
   const MELODY: Array<[string, number]> = [
     ["C5", 0.5], ["E5", 0.5], ["G5", 0.5], ["E5", 0.5],
     ["C5", 0.5], ["E5", 0.5], ["G5", 0.5], ["A5", 0.5],
@@ -434,7 +726,6 @@ export function startObbyMusic() {
     ["D5", 0.5], ["E5", 0.5], ["C5", 1.0],
   ];
 
-  // Bass: simple I-V-vi-IV progression (C - G - Am - F)
   const BASS: Array<[string, number]> = [
     ["C4", 2.0], ["C4", 1.0], ["C4", 1.0],
     ["G4", 2.0], ["G4", 1.0], ["G4", 1.0],
@@ -448,7 +739,6 @@ export function startObbyMusic() {
   const oscs: OscillatorNode[] = [];
   const gains: GainNode[] = [];
 
-  // ---- Scheduler helper ----
   const scheduleNote = (
     freq: number,
     startTime: number,
@@ -474,7 +764,6 @@ export function startObbyMusic() {
     gains.push(gain);
   };
 
-  // ---- Main loop ----
   let cancelled = false;
   let melodyIndex = 0;
   let bassIndex = 0;
@@ -486,9 +775,7 @@ export function startObbyMusic() {
     if (cancelled || !obbyMusicEnabled) return;
     const now = ctx.currentTime;
 
-    // Schedule notes a bit ahead
     while (nextNoteTime < now + 0.4) {
-      // Melody
       if (melodyRemaining <= 0.0001) {
         melodyIndex = (melodyIndex + 1) % MELODY.length;
         melodyRemaining = MELODY[melodyIndex][1];
@@ -499,13 +786,12 @@ export function startObbyMusic() {
       scheduleNote(mFreq, nextNoteTime, mDur, "square", 0.08);
       melodyRemaining -= mDur / BEAT;
 
-      // Bass
       if (bassRemaining <= 0.0001) {
         bassIndex = (bassIndex + 1) % BASS.length;
         bassRemaining = BASS[bassIndex][1];
       }
       const [bNote] = BASS[bassIndex];
-      const bFreq = NOTE_FREQ[bNote] / 2; // an octave down
+      const bFreq = NOTE_FREQ[bNote] / 2;
       const bDur = Math.min(bassRemaining, BEAT) * BEAT;
       scheduleNote(bFreq, nextNoteTime, bDur, "triangle", 0.12);
       bassRemaining -= bDur / BEAT;
@@ -539,4 +825,145 @@ export function stopObbyMusic() {
     obbyMusicNodes = null;
   }
   obbyMusicEnabled = false;
+}
+
+// ============================================================
+// CHAOS COLISEUM — tense battle music (dark, driving)
+// ============================================================
+
+let coliseumMusicNodes: { stop: () => void } | null = null;
+let coliseumMusicEnabled = false;
+
+export function startColiseumMusic() {
+  if (coliseumMusicEnabled) return;
+  const ctx = getCtx();
+  if (!ctx) return;
+
+  if (ctx.state === "suspended") {
+    ctx.resume().catch(() => {});
+  }
+
+  coliseumMusicEnabled = true;
+
+  const masterGain = ctx.createGain();
+  masterGain.gain.value = 0.05;
+  masterGain.connect(ctx.destination);
+
+  // Dark minor key progression: Am - F - C - G (or similar) for epic battle
+  const NOTE_FREQ: Record<string, number> = {
+    A2: 110.00, C3: 130.81, D3: 146.83, E3: 164.81, F3: 174.61, G3: 196.00, A3: 220.00,
+    C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.0, A4: 440.0,
+    C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46, G5: 783.99, A5: 880.0,
+  };
+
+  // Driving bass line (8th notes on root)
+  const BASS_LINE: Array<[string, number]> = [
+    ["A2", 0.5], ["A2", 0.5], ["A2", 0.5], ["A2", 0.5],
+    ["A2", 0.5], ["A2", 0.5], ["E3", 0.5], ["E3", 0.5],
+    ["F3", 0.5], ["F3", 0.5], ["F3", 0.5], ["F3", 0.5],
+    ["C4", 0.5], ["C4", 0.5], ["G3", 0.5], ["G3", 0.5],
+  ];
+
+  // Heroic melody (simple but memorable)
+  const MELODY: Array<[string, number]> = [
+    ["A4", 1.0], ["C5", 0.5], ["E5", 0.5], ["D5", 1.0], ["C5", 1.0],
+    ["A4", 1.0], ["C5", 0.5], ["E5", 0.5], ["G5", 1.0], ["E5", 1.0],
+    ["F5", 1.0], ["E5", 0.5], ["D5", 0.5], ["C5", 1.0], ["A4", 1.0],
+    ["C5", 1.0], ["D5", 0.5], ["E5", 0.5], ["A4", 2.0],
+  ];
+
+  const BPM = 120;
+  const BEAT = 60 / BPM;
+
+  const oscs: OscillatorNode[] = [];
+  const gains: GainNode[] = [];
+
+  const scheduleNote = (
+    freq: number,
+    startTime: number,
+    duration: number,
+    type: OscillatorType,
+    gainValue: number
+  ) => {
+    const osc = ctx.createOscillator();
+    osc.type = type;
+    osc.frequency.value = freq;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(gainValue, startTime + 0.02);
+    gain.gain.setValueAtTime(gainValue, startTime + duration - 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+    osc.connect(gain).connect(masterGain);
+    osc.start(startTime);
+    osc.stop(startTime + duration + 0.02);
+
+    oscs.push(osc);
+    gains.push(gain);
+  };
+
+  let cancelled = false;
+  let melodyIndex = 0;
+  let bassIndex = 0;
+  let nextNoteTime = ctx.currentTime + 0.1;
+  let melodyRemaining = MELODY[0][1];
+  let bassRemaining = BASS_LINE[0][1];
+
+  const tick = () => {
+    if (cancelled || !coliseumMusicEnabled) return;
+    const now = ctx.currentTime;
+
+    while (nextNoteTime < now + 0.4) {
+      // Melody
+      if (melodyRemaining <= 0.0001) {
+        melodyIndex = (melodyIndex + 1) % MELODY.length;
+        melodyRemaining = MELODY[melodyIndex][1];
+      }
+      const [mNote] = MELODY[melodyIndex];
+      const mFreq = NOTE_FREQ[mNote];
+      const mDur = Math.min(melodyRemaining, BEAT) * BEAT;
+      scheduleNote(mFreq, nextNoteTime, mDur, "square", 0.06);
+      melodyRemaining -= mDur / BEAT;
+
+      // Bass
+      if (bassRemaining <= 0.0001) {
+        bassIndex = (bassIndex + 1) % BASS_LINE.length;
+        bassRemaining = BASS_LINE[bassIndex][1];
+      }
+      const [bNote] = BASS_LINE[bassIndex];
+      const bFreq = NOTE_FREQ[bNote];
+      const bDur = Math.min(bassRemaining, BEAT) * BEAT;
+      scheduleNote(bFreq, nextNoteTime, bDur, "triangle", 0.14);
+      bassRemaining -= bDur / BEAT;
+
+      nextNoteTime += BEAT;
+    }
+
+    setTimeout(tick, 100);
+  };
+
+  tick();
+
+  coliseumMusicNodes = {
+    stop: () => {
+      cancelled = true;
+      coliseumMusicEnabled = false;
+      oscs.forEach((osc) => {
+        try { osc.stop(); } catch {}
+      });
+      gains.forEach((g) => {
+        try { g.disconnect(); } catch {}
+      });
+      try { masterGain.disconnect(); } catch {}
+    },
+  };
+}
+
+export function stopColiseumMusic() {
+  if (coliseumMusicNodes) {
+    coliseumMusicNodes.stop();
+    coliseumMusicNodes = null;
+  }
+  coliseumMusicEnabled = false;
 }
