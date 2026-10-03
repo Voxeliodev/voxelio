@@ -42,7 +42,7 @@ export default function ObbyHud({
   const [newBest, setNewBest] = useState(false);
 
   useEffect(() => {
-    fetchTopTimes(worldId, 10).then(setLeaderboard);
+    fetchTopTimes(worldId, 20).then(setLeaderboard);
     fetchPersonalBest(worldId).then((pb) => {
       if (pb) setPersonalBest(pb.timeMs);
     });
@@ -57,7 +57,7 @@ export default function ObbyHud({
         setSubmitError(result.error || "Failed to submit");
       } else {
         setNewBest(Boolean(result.newBest));
-        fetchTopTimes(worldId, 10).then(setLeaderboard);
+        fetchTopTimes(worldId, 20).then(setLeaderboard);
         fetchPersonalBest(worldId).then((pb) => {
           if (pb) setPersonalBest(pb.timeMs);
         });
@@ -65,7 +65,6 @@ export default function ObbyHud({
     })();
   }, [finished, submitted, finalTime, worldId, setSubmitted]);
 
-  // Use the same formatter for both live and final — no more glitch
   const displayTime = finished ? finalTime : elapsed;
 
   return (
@@ -129,32 +128,78 @@ export default function ObbyHud({
               )}
             </div>
 
-            <div className="bg-black/50 rounded-lg p-4 mb-6 border border-white/10 max-h-64 overflow-y-auto">
-              <div className="text-[10px] text-white/60 uppercase font-bold tracking-wide mb-3">
-                Top Times
+            {/* ===== LEADERBOARD — 2 visible, scrollable ===== */}
+            <div className="bg-black/50 rounded-lg p-4 mb-6 border border-white/10">
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-[10px] text-white/60 uppercase font-bold tracking-wide">
+                  Top Times
+                </div>
+                <div className="text-[10px] text-white/40">
+                  {leaderboard.length > 2 ? "Scroll for more ↕" : ""}
+                </div>
               </div>
+
               {leaderboard.length === 0 ? (
-                <p className="text-white/40 text-xs italic">No times recorded yet</p>
+                <p className="text-white/40 text-xs italic py-4">
+                  No times recorded yet
+                </p>
               ) : (
-                <ol className="space-y-1.5 text-sm">
-                  {leaderboard.map((entry, i) => (
-                    <li
-                      key={entry.id}
-                      className="flex items-center justify-between text-white/90"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-white/40 font-mono w-6 text-right shrink-0">
-                          {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`}
+                <ol
+                  className="space-y-1.5 text-sm overflow-y-auto pr-2 obby-scroll"
+                  style={{
+                    maxHeight: "88px", // 2 rows * 44px each
+                  }}
+                >
+                  {leaderboard.map((entry, i) => {
+                    const rank = i + 1;
+                    const medal =
+                      i === 0 ? "🥇" :
+                      i === 1 ? "🥈" :
+                      i === 2 ? "🥉" :
+                      null;
+
+                    return (
+                      <li
+                        key={entry.id}
+                        className="flex items-center justify-between text-white/90 py-1 px-2 rounded"
+                        style={{
+                          minHeight: "36px",
+                          background: "rgba(255,255,255,0.03)",
+                        }}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-white/50 font-mono text-xs w-10 text-right shrink-0">
+                            {medal ? `${medal} ${rank}.` : `${rank}.`}
+                          </span>
+                          <span className="truncate font-bold">
+                            {entry.username}
+                          </span>
+                        </div>
+                        <span className="text-[#FFD700] font-bold tabular-nums shrink-0 ml-3">
+                          {formatShortTime(entry.timeMs)}
                         </span>
-                        <span className="truncate font-bold">{entry.username}</span>
-                      </div>
-                      <span className="text-[#FFD700] font-bold tabular-nums shrink-0 ml-3">
-                        {formatShortTime(entry.timeMs)}
-                      </span>
-                    </li>
-                  ))}
+                      </li>
+                    );
+                  })}
                 </ol>
               )}
+
+              <style jsx>{`
+                .obby-scroll::-webkit-scrollbar {
+                  width: 6px;
+                }
+                .obby-scroll::-webkit-scrollbar-track {
+                  background: rgba(255, 255, 255, 0.05);
+                  border-radius: 3px;
+                }
+                .obby-scroll::-webkit-scrollbar-thumb {
+                  background: rgba(108, 60, 224, 0.7);
+                  border-radius: 3px;
+                }
+                .obby-scroll::-webkit-scrollbar-thumb:hover {
+                  background: rgba(139, 95, 255, 0.9);
+                }
+              `}</style>
             </div>
 
             <button
