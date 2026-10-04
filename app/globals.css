@@ -64,3 +64,28 @@ body {
 [data-theme="halloween"] header {
   box-shadow: 0 0 20px rgba(255, 140, 0, 0.3);
 }
+
+/* ============================================================ */
+/* 🚫 DISABLE TEXT SELECTION ON GAME UI                         */
+/* ============================================================ */
+/* Prevents the blue highlight when dragging the mouse over     */
+/* buttons, HUD elements, and labels. Text inputs stay          */
+/* selectable so users can still copy/paste in chat and forms.  */
+/* ============================================================ */
+
+* {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Re-enable selection for text inputs and textareas */
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
