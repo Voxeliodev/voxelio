@@ -35,15 +35,9 @@ const CAPSULE_TOTAL = CAPSULE_HALF_HEIGHT * 2 + CAPSULE_RADIUS * 2; // 1.7
 
 // ============================================================
 // SPAWN_YAW — direction the CAMERA is positioned behind
-//   0            = camera behind player looking at -Z
-//   Math.PI      = camera behind player looking at +Z
 // ============================================================
 const SPAWN_YAW = Math.PI;
-
-// The visual model is flipped 180° from the camera direction so it
-// faces AWAY from the camera (we see its back, not its face).
 const VISUAL_FACING_OFFSET = Math.PI;
-
 const VISUAL_OFFSET_Y = 0.65;
 
 type Props = {
@@ -87,6 +81,9 @@ export default function ObbyPlayer({
 
   const forcedFacingRef = useRef<number | null>(null);
 
+  // ============================================================
+  // MOUSE LOOK — RIGHT-CLICK to rotate camera
+  // ============================================================
   useEffect(() => {
     if (isTouchDevice) return;
     const canvas = document.querySelector("canvas");
@@ -97,11 +94,12 @@ export default function ObbyPlayer({
     let lastY = 0;
 
     const onMouseDown = (e: MouseEvent) => {
-      if (e.button === 0) {
+      if (e.button === 2) {                     // ← RIGHT-CLICK (2 = right)
         dragging = true;
         lastX = e.clientX;
         lastY = e.clientY;
         (canvas as HTMLElement).style.cursor = "grabbing";
+        e.preventDefault();
       }
     };
     const onMouseMove = (e: MouseEvent) => {
@@ -120,16 +118,20 @@ export default function ObbyPlayer({
       dragging = false;
       (canvas as HTMLElement).style.cursor = "grab";
     };
+    const onContextMenu = (e: MouseEvent) => e.preventDefault();
 
     (canvas as HTMLElement).style.cursor = "grab";
     canvas.addEventListener("mousedown", onMouseDown);
+    canvas.addEventListener("contextmenu", onContextMenu);
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
 
     return () => {
       canvas.removeEventListener("mousedown", onMouseDown);
+      canvas.removeEventListener("contextmenu", onContextMenu);
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
+      (canvas as HTMLElement).style.cursor = "";
     };
   }, [isTouchDevice]);
 
@@ -164,14 +166,12 @@ export default function ObbyPlayer({
     bodyRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
     bodyRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
 
-    // Rotate physics body to face SPAWN_YAW (walking direction)
     const halfYaw = SPAWN_YAW / 2;
     bodyRef.current.setRotation(
       { x: 0, y: Math.sin(halfYaw), z: 0, w: Math.cos(halfYaw) },
       true
     );
 
-    // Rotate the VISUAL model 180° from the camera so it faces AWAY
     if (visualRef.current) {
       visualRef.current.rotation.set(0, SPAWN_YAW + VISUAL_FACING_OFFSET, 0);
     }
@@ -181,11 +181,9 @@ export default function ObbyPlayer({
     coyoteTimerRef.current = 0;
     jumpRequestedRef.current = false;
 
-    // Camera behind the walk direction
     cameraYawRef.current = SPAWN_YAW;
     cameraPitchRef.current = 0.35;
 
-    // Snap the camera instantly so we don't see it fly on spawn
     const horizDist = CAMERA_DIST * Math.cos(cameraPitchRef.current);
     const vertDist = CAMERA_DIST * Math.sin(cameraPitchRef.current);
     const lookX = spawnPosition[0];
@@ -298,9 +296,7 @@ export default function ObbyPlayer({
     if (forcedFacingRef.current !== null && visualRef.current) {
       visualRef.current.rotation.y = forcedFacingRef.current;
     } else if (isMoving && visualRef.current) {
-      // Walk direction in world space
       const targetAngle = Math.atan2(velocityXZRef.current.x, velocityXZRef.current.y);
-      // Flip 180° so the character faces away from the camera direction
       const facingTarget = targetAngle + VISUAL_FACING_OFFSET;
       let diff = facingTarget - visualRef.current.rotation.y;
       while (diff > Math.PI) diff -= Math.PI * 2;

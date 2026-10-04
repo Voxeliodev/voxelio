@@ -114,6 +114,9 @@ export default function LumberyardPlayer({
   const lastSwingTriggerRef = useRef(0);
   const chopSwingRef = useRef(0);
 
+  // ============================================================
+  // MOUSE LOOK — RIGHT-CLICK to rotate camera
+  // ============================================================
   useEffect(() => {
     if (isTouchDevice) return;
     const canvas = document.querySelector("canvas");
@@ -124,11 +127,12 @@ export default function LumberyardPlayer({
     let lastY = 0;
 
     const onMouseDown = (e: MouseEvent) => {
-      if (e.button === 0) {
+      if (e.button === 2) {                     // ← RIGHT-CLICK (2 = right)
         dragging = true;
         lastX = e.clientX;
         lastY = e.clientY;
         (canvas as HTMLElement).style.cursor = "grabbing";
+        e.preventDefault();
       }
     };
     const onMouseMove = (e: MouseEvent) => {
@@ -147,16 +151,20 @@ export default function LumberyardPlayer({
       dragging = false;
       (canvas as HTMLElement).style.cursor = "grab";
     };
+    const onContextMenu = (e: MouseEvent) => e.preventDefault();
 
     (canvas as HTMLElement).style.cursor = "grab";
     canvas.addEventListener("mousedown", onMouseDown);
+    canvas.addEventListener("contextmenu", onContextMenu);
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
 
     return () => {
       canvas.removeEventListener("mousedown", onMouseDown);
+      canvas.removeEventListener("contextmenu", onContextMenu);
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
+      (canvas as HTMLElement).style.cursor = "";
     };
   }, [isTouchDevice]);
 
