@@ -82,7 +82,7 @@ export type ChaosPlayerApi = {
 // ============================================================
 function SwordMesh() {
   return (
-    <group position={[0, 0, 0.08]} rotation={[-Math.PI / 2.5, 0, 0]}>
+    <group position={[0, 0, 0.08]} rotation={[Math.PI / 2.5, 0, 0]}>
       {/* Handle / grip — passes through the palm */}
       <mesh castShadow position={[0, -0.1, 0]}>
         <boxGeometry args={[0.07, 0.3, 0.07]} />
