@@ -2,31 +2,20 @@
 // VOXELIO PLAYER — Client helper
 // ============================================================
 // Handles the handoff between the website and the Voxelio Player
-// desktop app. Responsible for:
-//   1. Requesting a one-time launcher token from the server
-//   2. Building the `voxelio://` deep link
-//   3. Triggering the app to open
-//   4. Detecting whether the app is installed
+// desktop app.
 // ============================================================
 
 import { supabase } from "./supabase";
 
-// The custom protocol the Voxelio Player app registers for.
-// Opening a URL like `voxelio://launch?token=xxx` will launch the app.
 const VOXELIO_PROTOCOL = "voxelio";
-
-// How long to wait for the app to respond before assuming it's not installed.
 const INSTALL_DETECTION_TIMEOUT_MS = 2000;
 
 // ============================================================
 // Request a launcher token from the server
 // ============================================================
-// Returns the token if successful, or null if the user isn't signed in
-// or the request failed.
 export async function requestLauncherToken(
   worldId: string
 ): Promise<{ token: string; deepLink: string } | null> {
-  // Get the user's Supabase access token
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -59,7 +48,7 @@ export async function requestLauncherToken(
       token: json.token,
       deepLink: `${VOXELIO_PROTOCOL}://launch?token=${encodeURIComponent(
         json.token
-      )}`,
+      )}&world=${encodeURIComponent(worldId)}`,
     };
   } catch (err) {
     console.error("[voxelioPlayer] fetch error:", err);
@@ -70,20 +59,12 @@ export async function requestLauncherToken(
 // ============================================================
 // Launch the Voxelio Player app with a token
 // ============================================================
-// Opens the `voxelio://` URL. The OS will either launch the app
-// (if installed) or do nothing (if not installed).
-//
-// Returns `true` if the app appears to have launched, `false` if
-// we suspect it's not installed. Uses a timing heuristic: if the
-// browser tab loses focus within INSTALL_DETECTION_TIMEOUT_MS,
-// the app probably opened.
 export async function launchVoxelioPlayer(
   deepLink: string
 ): Promise<boolean> {
   return new Promise((resolve) => {
     let resolved = false;
 
-    // If the page loses visibility, the app likely opened.
     const onVisibilityChange = () => {
       if (document.hidden && !resolved) {
         resolved = true;
@@ -92,7 +73,6 @@ export async function launchVoxelioPlayer(
       }
     };
 
-    // If we hit the timeout, assume the app isn't installed.
     const timeout = setTimeout(() => {
       if (!resolved) {
         resolved = true;
@@ -110,7 +90,6 @@ export async function launchVoxelioPlayer(
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("blur", onVisibilityChange);
 
-    // Trigger the deep link
     try {
       window.location.href = deepLink;
     } catch (err) {
@@ -127,16 +106,13 @@ export async function launchVoxelioPlayer(
 // ============================================================
 // Detect whether the Voxelio Player app is installed
 // ============================================================
-// This is a best-effort check — browsers don't let websites query
-// installed apps directly for privacy reasons. We use the same
-// visibility heuristic as `launchVoxelioPlayer`.
 export async function isVoxelioPlayerInstalled(): Promise<boolean> {
   const deepLink = `${VOXELIO_PROTOCOL}://ping`;
   return await launchVoxelioPlayer(deepLink);
 }
 
 // ============================================================
-// High-level: request a token AND launch the app in one call
+// High-level: request a token AND launch the app
 // ============================================================
 export async function playInVoxelioApp(worldId: string): Promise<{
   success: boolean;
