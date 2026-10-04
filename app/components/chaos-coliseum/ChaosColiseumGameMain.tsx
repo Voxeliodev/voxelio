@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useRef, useCallback, useEffect } from "react";
+import { Suspense, useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
 import { KeyboardControls, Sky } from "@react-three/drei";
 import { Physics, RigidBody } from "@react-three/rapier";
@@ -22,7 +22,6 @@ import {
   PLAYER_MAX_HP,
   RESPAWN_DELAY_MS,
   ROUND_DURATION_MS,
-  pickRandomSpawn,
 } from "../../../lib/chaosColiseum";
 import {
   loadColiseumProgress,
@@ -57,6 +56,7 @@ const KEY_MAP = [
 
 const STALE_TIMEOUT = 3000;
 const BROADCAST_INTERVAL = 66;
+const SCORE_SYNC_INTERVAL = 500;
 const MIN_PLAYERS_TO_START = 2;
 
 type Props = {
@@ -69,6 +69,12 @@ type Props = {
 };
 
 type RoundPhase = "waiting" | "countdown" | "playing" | "over";
+
+type ScorePayload = {
+  playerId: string;
+  kills: number;
+  deaths: number;
+};
 
 export default function ChaosColiseumGameMain({
   config,
@@ -88,15 +94,13 @@ export default function ChaosColiseumGameMain({
   const [localDeaths, setLocalDeaths] = useState(0);
   const [respawnAt, setRespawnAt] = useState(0);
 
-  // Random spawn per player
-  const [spawnPosition, setSpawnPosition] = useState<[number, number, number]>(
-    () => pickRandomSpawn()
-  );
+  // Placeholder spawn — will be assigned deterministically once we know all players
+  const [spawnPosition, setSpawnPosition] = useState<[number, number, number]>(() => [...COLISEUM_SPAWNS[0]]);
 
   // ===== Remote players =====
   const [others, setOthers] = useState<RemoteChaosData[]>([]);
 
-  // ===== Per-player kills/deaths tracking =====
+  // ===== Per-player kills/deaths =====
   const [remoteKills, setRemoteKills] = useState<Record<string, number>>({});
   const [remoteDeaths, setRemoteDeaths] = useState<Record<string, number>>({});
 
@@ -118,6 +122,8 @@ export default function ChaosColiseumGameMain({
   const localRotRef = useRef(0);
   const localHpRef = useRef(PLAYER_MAX_HP);
   const localAliveRef = useRef(true);
+  const localKillsRef = useRef(0);
+  const localDeathsRef = useRef(0);
   const othersRef = useRef<RemoteChaosData[]>([]);
   const lastSwingingRef = useRef(false);
   const lastDamagerRef = useRef<{ id: string; name: string } | null>(null);
@@ -125,8 +131,34 @@ export default function ChaosColiseumGameMain({
 
   useEffect(() => { localHpRef.current = localHp; }, [localHp]);
   useEffect(() => { localAliveRef.current = localAlive; }, [localAlive]);
+  useEffect(() => { localKillsRef.current = localKills; }, [localKills]);
+  useEffect(() => { localDeathsRef.current = localDeaths; }, [localDeaths]);
   useEffect(() => { othersRef.current = others; }, [others]);
   useEffect(() => { phaseRef.current = phase; }, [phase]);
+
+  // ============================================================
+  // DETERMINISTIC SPAWN ASSIGNMENT
+  // ============================================================
+  // Build a sorted list of ALL player IDs in the room (us + others),
+  // then assign each player a unique spawn corner based on their index.
+  // This guarantees no two players start in the same corner.
+  const allPlayerIds = useMemo(() => {
+    const ids = [userId, ...others.map((o) => o.id)];
+    return ids.sort(); // stable order across all clients
+  }, [userId, others]);
+
+  const mySpawnIndex = useMemo(() => {
+    const idx = allPlayerIds.indexOf(userId);
+    return idx >= 0 ? idx % COLISEUM_SPAWNS.length : 0;
+  }, [allPlayerIds, userId]);
+
+  // When the room composition changes, update our spawn position to match our assigned corner
+  useEffect(() => {
+    if (phase !== "waiting" && phase !== "countdown") return;
+    const newSpawn = COLISEUM_SPAWNS[mySpawnIndex];
+    setSpawnPosition([...newSpawn]);
+    localPlayerApiRef.current?.teleport([...newSpawn]);
+  }, [mySpawnIndex, phase]);
 
   // ============================================================
   // LOAD PROGRESS
@@ -161,10 +193,8 @@ export default function ChaosColiseumGameMain({
   }, []);
 
   // ============================================================
-  // WAITING-FOR-PLAYERS → COUNTDOWN
+  // WAITING → COUNTDOWN
   // ============================================================
-  // When we have at least MIN_PLAYERS_TO_START (2) players in the room
-  // (us + 1 other), transition from "waiting" to "countdown".
   useEffect(() => {
     if (phase !== "waiting") return;
     const totalPlayers = 1 + others.length;
@@ -211,14 +241,8 @@ export default function ChaosColiseumGameMain({
         setRoundOver(true);
         setPhase("over");
 
-        const allPlayers = [
-          { id: userId, username, kills: localKills },
-          ...othersRef.current.map((o) => ({
-            id: o.id, username: o.username, kills: remoteKills[o.id] || 0,
-          })),
-        ];
-        const maxKills = Math.max(...allPlayers.map((p) => p.kills));
-        const myKills = localKills;
+        const myKills = localKillsRef.current;
+        const maxKills = Math.max(myKills, ...Object.values(remoteKills));
         const won = myKills > 0 && myKills >= maxKills;
         setLocalWon(won);
         if (won) playRoundWin(); else playRoundLose();
@@ -229,7 +253,7 @@ export default function ChaosColiseumGameMain({
       }
     }, 200);
     return () => clearInterval(interval);
-  }, [phase, roundStartAt, localKills, userId, username, progress, remoteKills]);
+  }, [phase, roundStartAt, progress, remoteKills]);
 
   // ============================================================
   // RESPAWN TIMER
@@ -240,9 +264,25 @@ export default function ChaosColiseumGameMain({
 
     const interval = setInterval(() => {
       if (Date.now() >= respawnAt) {
-        const newSpawn = pickRandomSpawn();
-        setSpawnPosition(newSpawn);
-        localPlayerApiRef.current?.teleport(newSpawn);
+        // Respawn at a corner that isn't occupied
+        const occupied = new Set<string>();
+        for (const o of othersRef.current) {
+          if (!o.alive) continue;
+          const nearest = COLISEUM_SPAWNS.findIndex((s) =>
+            Math.hypot(s[0] - o.targetPos[0], s[2] - o.targetPos[2]) < 3
+          );
+          if (nearest >= 0) occupied.add(String(nearest));
+        }
+        const freeIndices = COLISEUM_SPAWNS
+          .map((_, i) => i)
+          .filter((i) => !occupied.has(String(i)));
+        const pickIdx = freeIndices.length > 0
+          ? freeIndices[Math.floor(Math.random() * freeIndices.length)]
+          : Math.floor(Math.random() * COLISEUM_SPAWNS.length);
+        const newSpawn = COLISEUM_SPAWNS[pickIdx];
+
+        setSpawnPosition([...newSpawn]);
+        localPlayerApiRef.current?.teleport([...newSpawn]);
         setLocalHp(PLAYER_MAX_HP);
         setLocalAlive(true);
       }
@@ -299,6 +339,7 @@ export default function ChaosColiseumGameMain({
       localPlayerApiRef.current?.applyDamage(SWORD_DAMAGE, fromPos);
     });
 
+    // ===== KILL =====
     channel.on("broadcast", { event: "kill" }, ({ payload }: any) => {
       if (!payload) return;
 
@@ -310,32 +351,41 @@ export default function ChaosColiseumGameMain({
       };
       setKillFeed((prev) => [...prev.slice(-4), entry]);
 
-      // Track kills per remote player
+      // Update remote kills (if not us)
       if (payload.killerId && payload.killerId !== userId) {
         setRemoteKills((prev) => ({
           ...prev,
           [payload.killerId]: (prev[payload.killerId] || 0) + 1,
         }));
       }
-
-      // Track deaths per remote player
       if (payload.victimId && payload.victimId !== userId) {
         setRemoteDeaths((prev) => ({
           ...prev,
           [payload.victimId]: (prev[payload.victimId] || 0) + 1,
         }));
       }
-
-      // If we're the killer, count the kill
       if (payload.killerId === userId) {
         setLocalKills((k) => k + 1);
         playKillConfirm();
-        const newKills = localKills + 1;
+        const newKills = localKillsRef.current + 1;
         if (newKills >= 3 && newKills % 2 === 1) {
           playStreakSound(newKills);
         }
         recordKill().then(setProgress);
       }
+    });
+
+    // ===== SCORE SYNC =====
+    // Every client periodically broadcasts its own current score.
+    // Receiving clients merge it into their remoteKills/remoteDeaths maps.
+    // This is what fixes "kills don't show on friend's screen" — even if the
+    // original kill broadcast was missed, the score sync will catch up.
+    channel.on("broadcast", { event: "score" }, ({ payload }: any) => {
+      if (!payload || !payload.playerId) return;
+      if (payload.playerId === userId) return;
+
+      setRemoteKills((prev) => ({ ...prev, [payload.playerId]: payload.kills }));
+      setRemoteDeaths((prev) => ({ ...prev, [payload.playerId]: payload.deaths }));
     });
 
     channel
@@ -368,7 +418,7 @@ export default function ChaosColiseumGameMain({
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [world?.id, userId, username, localKills]);
+  }, [world?.id, userId, username]);
 
   // ============================================================
   // PERIODIC STATE BROADCAST
@@ -399,6 +449,28 @@ export default function ChaosColiseumGameMain({
     }, BROADCAST_INTERVAL);
     return () => clearInterval(interval);
   }, [userId, username, config, phase]);
+
+  // ============================================================
+  // PERIODIC SCORE SYNC BROADCAST
+  // ============================================================
+  // Fires every 500ms — reasserts our own score so all clients converge.
+  useEffect(() => {
+    if (!userId) return;
+    const interval = setInterval(() => {
+      const channel = channelRef.current;
+      if (!channel) return;
+      channel.send({
+        type: "broadcast",
+        event: "score",
+        payload: {
+          playerId: userId,
+          kills: localKillsRef.current,
+          deaths: localDeathsRef.current,
+        },
+      });
+    }, SCORE_SYNC_INTERVAL);
+    return () => clearInterval(interval);
+  }, [userId]);
 
   // ============================================================
   // HANDLE POSITION UPDATE
@@ -459,7 +531,7 @@ export default function ChaosColiseumGameMain({
   );
 
   // ============================================================
-  // REGISTER LOCAL PLAYER API
+  // REGISTER API
   // ============================================================
   const registerApi = useCallback((api: ChaosPlayerApi) => {
     localPlayerApiRef.current = api;
@@ -506,9 +578,7 @@ export default function ChaosColiseumGameMain({
     setRoundStartAt(0);
     setCountdownLeft(3);
     setRoundTimeLeft(ROUND_DURATION_MS / 1000);
-    setSpawnPosition(pickRandomSpawn());
     setKillFeed([]);
-    setOthers([]);
     setRemoteKills({});
     setRemoteDeaths({});
     lastDamagerRef.current = null;
@@ -605,7 +675,6 @@ export default function ChaosColiseumGameMain({
                 </mesh>
               ))}
 
-              {/* Local player (renders in every phase except "over") */}
               {phase !== "over" ? (
                 <ChaosColiseumPlayer
                   config={config}
@@ -631,7 +700,6 @@ export default function ChaosColiseumGameMain({
         </Canvas>
       </KeyboardControls>
 
-      {/* ===== WAITING FOR PLAYERS overlay ===== */}
       {phase === "waiting" && (
         <div
           className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none"
@@ -641,41 +709,19 @@ export default function ChaosColiseumGameMain({
             <div style={{ fontSize: 64, marginBottom: 8, filter: "drop-shadow(0 0 20px rgba(255,215,0,0.5))" }}>
               ⚔️
             </div>
-            <div
-              style={{
-                fontSize: 28,
-                fontWeight: 900,
-                color: "#FFD700",
-                letterSpacing: "0.05em",
-                textShadow: "0 0 20px rgba(255,215,0,0.6)",
-              }}
-            >
+            <div style={{ fontSize: 28, fontWeight: 900, color: "#FFD700", letterSpacing: "0.05em", textShadow: "0 0 20px rgba(255,215,0,0.6)" }}>
               WAITING FOR PLAYERS
             </div>
-            <div
-              style={{
-                fontSize: 16,
-                color: "rgba(255,255,255,0.7)",
-                marginTop: 12,
-                fontWeight: 700,
-              }}
-            >
+            <div style={{ fontSize: 16, color: "rgba(255,255,255,0.7)", marginTop: 12, fontWeight: 700 }}>
               {totalPlayers} / {MIN_PLAYERS_TO_START} players
             </div>
-            <div
-              style={{
-                fontSize: 13,
-                color: "rgba(255,255,255,0.45)",
-                marginTop: 16,
-              }}
-            >
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginTop: 16 }}>
               The round will begin when {MIN_PLAYERS_TO_START} players are ready.
             </div>
           </div>
         </div>
       )}
 
-      {/* ===== COUNTDOWN overlay ===== */}
       {phase === "countdown" && (
         <div
           className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none"
@@ -692,8 +738,6 @@ export default function ChaosColiseumGameMain({
         </div>
       )}
 
-      {/* ===== HUD ===== */}
-      {/* Hide the full HUD during waiting so the overlay is clean. */}
       {phase !== "waiting" && (
         <ChaosColiseumHud
           localUsername={username}

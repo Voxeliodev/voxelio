@@ -12,10 +12,6 @@ import { PLAYER_MAX_HP } from "../../../lib/chaosColiseum";
 // ============================================================
 // CHAOS COLISEUM — REMOTE PLAYER
 // ============================================================
-// Renders another player in the arena. Interpolates their position
-// and rotation smoothly between network updates, shows an HP bar
-// above their head, and plays a swing animation when they attack.
-// ============================================================
 
 export type RemoteChaosData = {
   id: string;
@@ -32,11 +28,52 @@ export type RemoteChaosData = {
 
 const VISUAL_OFFSET_Y = 0.65;
 
-// ---- HP bar colors ----
 function getHpColor(hp: number): string {
-  if (hp > 66) return "#22C55E";        // green
-  if (hp > 33) return "#FBBF24";        // amber
-  return "#EF4444";                     // red
+  if (hp > 66) return "#22C55E";
+  if (hp > 33) return "#FBBF24";
+  return "#EF4444";
+}
+
+// ============================================================
+// SWORD MESH — matches the one on the local player
+// ============================================================
+function RemoteSwordMesh() {
+  return (
+    <group position={[0, 0.15, 0.2]} rotation={[0.2, 0, 0]}>
+      <mesh castShadow position={[0, 0.15, 0]}>
+        <boxGeometry args={[0.07, 0.3, 0.07]} />
+        <meshStandardMaterial color="#4A2E1A" roughness={0.9} />
+      </mesh>
+      <mesh castShadow position={[0, 0.32, 0]}>
+        <boxGeometry args={[0.32, 0.06, 0.08]} />
+        <meshStandardMaterial color="#B8860B" metalness={0.8} roughness={0.3} />
+      </mesh>
+      <mesh castShadow position={[0, 0.85, 0]}>
+        <boxGeometry args={[0.09, 1.1, 0.03]} />
+        <meshStandardMaterial
+          color="#E8E8E8"
+          metalness={0.9}
+          roughness={0.15}
+          emissive="#AAAAAA"
+          emissiveIntensity={0.1}
+        />
+      </mesh>
+      <mesh castShadow position={[0, 1.42, 0]}>
+        <boxGeometry args={[0.09, 0.14, 0.03]} />
+        <meshStandardMaterial
+          color="#FFFFFF"
+          metalness={1}
+          roughness={0.1}
+          emissive="#FFFFFF"
+          emissiveIntensity={0.3}
+        />
+      </mesh>
+      <mesh castShadow position={[0, -0.02, 0]}>
+        <sphereGeometry args={[0.06, 12, 12]} />
+        <meshStandardMaterial color="#B8860B" metalness={0.8} roughness={0.3} />
+      </mesh>
+    </group>
+  );
 }
 
 export default function RemoteChaosPlayer({ data }: { data: RemoteChaosData }) {
@@ -45,16 +82,10 @@ export default function RemoteChaosPlayer({ data }: { data: RemoteChaosData }) {
   const currentRotRef = useRef(data.targetRotY);
   const walkRef = useRef(false);
 
-  // Swing animation: increases when data.swinging flips to true
+  // Sword swing animation state
   const chopSwingRef = useRef(0);
   const lastSwingingRef = useRef(false);
 
-  // Death fade-out
-  const [fadeOpacity, setFadeOpacity] = useState(1);
-
-  // ============================================================
-  // SMOOTH MOTION
-  // ============================================================
   useFrame((_, delta) => {
     if (!groupRef.current) return;
 
@@ -64,18 +95,16 @@ export default function RemoteChaosPlayer({ data }: { data: RemoteChaosData }) {
     currentPosRef.current.lerp(target, lerp);
     groupRef.current.position.copy(currentPosRef.current);
 
-    // Smooth rotation
     let diff = data.targetRotY - currentRotRef.current;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
     currentRotRef.current += diff * Math.min(1, delta * 14);
     groupRef.current.rotation.y = currentRotRef.current;
 
-    // Walk state
     const moved = before.distanceTo(currentPosRef.current) > 0.01;
     walkRef.current = moved;
 
-    // Swing animation decay
+    // Trigger swing when flag flips to true
     if (data.swinging && !lastSwingingRef.current) {
       chopSwingRef.current = 1;
     }
@@ -83,10 +112,6 @@ export default function RemoteChaosPlayer({ data }: { data: RemoteChaosData }) {
     if (chopSwingRef.current > 0) {
       chopSwingRef.current = Math.max(0, chopSwingRef.current - delta * 2.8);
     }
-
-    // Death fade
-    const targetFade = data.alive ? 1 : 0.15;
-    setFadeOpacity((prev) => prev + (targetFade - prev) * Math.min(1, delta * 4));
   });
 
   const hpPercent = Math.max(0, Math.min(100, (data.hp / PLAYER_MAX_HP) * 100));
@@ -94,7 +119,6 @@ export default function RemoteChaosPlayer({ data }: { data: RemoteChaosData }) {
 
   return (
     <group ref={groupRef} position={data.targetPos}>
-      {/* ===== NAMETAG + HP BAR ===== */}
       <Html
         position={[0, 2.55 + VISUAL_OFFSET_Y, 0]}
         center
@@ -112,7 +136,6 @@ export default function RemoteChaosPlayer({ data }: { data: RemoteChaosData }) {
             fontFamily: "system-ui, -apple-system, sans-serif",
           }}
         >
-          {/* Nametag row */}
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <span
               style={{
@@ -129,7 +152,6 @@ export default function RemoteChaosPlayer({ data }: { data: RemoteChaosData }) {
             <AccountBadge username={data.username} userId={data.id} size={16} />
           </div>
 
-          {/* HP bar (hidden when dead) */}
           {data.alive && (
             <div
               style={{
@@ -155,7 +177,6 @@ export default function RemoteChaosPlayer({ data }: { data: RemoteChaosData }) {
             </div>
           )}
 
-          {/* Dead label */}
           {!data.alive && (
             <div
               style={{
@@ -172,22 +193,15 @@ export default function RemoteChaosPlayer({ data }: { data: RemoteChaosData }) {
         </div>
       </Html>
 
-      {/* ===== CHARACTER BODY ===== */}
-      <group
-        position={[0, VISUAL_OFFSET_Y, 0]}
-        // Fade opacity to 15% when dead
-      >
-        <group
-          // @ts-ignore — R3F accepts opacity on groups only via child materials
-          visible={fadeOpacity > 0.05}
-        >
-          <Character
-            config={data.avatarConfig}
-            hideAccessory
-            walking={walkRef.current}
-            chopSwingRef={chopSwingRef}
-          />
-        </group>
+      <group position={[0, VISUAL_OFFSET_Y, 0]}>
+        {/* Add sword to right hand so we can see other players' weapons */}
+        <Character
+          config={data.avatarConfig}
+          hideAccessory
+          walking={walkRef.current}
+          chopSwingRef={chopSwingRef}
+          rightHandContent={data.alive ? <RemoteSwordMesh /> : null}
+        />
       </group>
     </group>
   );
