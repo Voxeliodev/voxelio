@@ -626,7 +626,6 @@ function getChatChannelName(worldId: string): string {
 
 // ============================================================
 // CHAT OVERLAY — floating message list shown on top of ANY game
-// Includes the account badge next to each username.
 // ============================================================
 function ChatOverlay({ messages }: { messages: ChatMessage[] }) {
   const now = Date.now();
