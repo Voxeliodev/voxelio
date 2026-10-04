@@ -42,6 +42,13 @@ const touchState = { moveX: 0, moveZ: 0, jumpQueued: false };
 
 const PLAYER_RB_NAME = "obby-player";
 
+// Keys that count as "starting the timer"
+const MOVEMENT_KEYS = new Set([
+  "w", "W", "a", "A", "s", "S", "d", "D",
+  "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+  " ", "Space",
+]);
+
 // ============================================================
 // Moving platform
 // ============================================================
@@ -361,16 +368,21 @@ export default function ObbyGame({
 }) {
   const [spawn, setSpawn] = useState<[number, number, number]>(OBBY_START_SPAWN);
   const [checkpointIndex, setCheckpointIndex] = useState(-1);
-  const [startTime, setStartTime] = useState<number>(() => performance.now());
+  const [startTime, setStartTime] = useState<number>(0);
   const [elapsed, setElapsed] = useState(0);
   const [finished, setFinished] = useState(false);
   const [finalTime, setFinalTime] = useState(0);
   const [submitted, setSubmitted] = useState(false);
   const [resetKey, setResetKey] = useState(0);
 
+  // ===== Timer started flag =====
+  // false = timer is frozen at 0, waiting for the player's first move
+  // true  = timer is running
+  const [hasStarted, setHasStarted] = useState(false);
+  const hasStartedRef = useRef(false);
+
   // ===== Start obby music on mount, stop on unmount =====
   useEffect(() => {
-    // Wait for the first user gesture before starting audio (browser policy)
     const start = () => {
       startObbyMusic();
       window.removeEventListener("click", start);
@@ -389,14 +401,53 @@ export default function ObbyGame({
     };
   }, []);
 
-  // Timer
+  // ===== Detect first movement → start the timer =====
+  useEffect(() => {
+    if (hasStarted) return;
+
+    const trigger = () => {
+      if (hasStartedRef.current) return;
+      hasStartedRef.current = true;
+      setStartTime(performance.now());
+      setHasStarted(true);
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (MOVEMENT_KEYS.has(e.key)) {
+        trigger();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+
+    // Also poll touchState for the mobile joystick (updates live, no event)
+    const touchPoll = setInterval(() => {
+      if (
+        Math.abs(touchState.moveX) > 0.05 ||
+        Math.abs(touchState.moveZ) > 0.05 ||
+        touchState.jumpQueued
+      ) {
+        trigger();
+      }
+    }, 50);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      clearInterval(touchPoll);
+    };
+  }, [hasStarted]);
+
+  // ===== Timer runs only when hasStarted =====
   useEffect(() => {
     if (finished) return;
+    if (!hasStarted) return;
+
     const interval = setInterval(() => {
       setElapsed(performance.now() - startTime);
     }, 50);
+
     return () => clearInterval(interval);
-  }, [startTime, finished]);
+  }, [startTime, finished, hasStarted]);
 
   const handleFall = useCallback(() => {
     playFall();
@@ -433,12 +484,15 @@ export default function ObbyGame({
   const handleRestart = useCallback(() => {
     setSpawn([...OBBY_START_SPAWN]);
     setCheckpointIndex(-1);
-    setStartTime(performance.now());
+    setStartTime(0);
     setElapsed(0);
     setFinished(false);
     setFinalTime(0);
     setSubmitted(false);
     setResetKey((k) => k + 1);
+    // Reset the timer-started flag so the new run also waits for movement
+    hasStartedRef.current = false;
+    setHasStarted(false);
   }, []);
 
   return (
@@ -479,6 +533,49 @@ export default function ObbyGame({
         submitted={submitted}
         setSubmitted={setSubmitted}
       />
+
+      {/* ===== "Move to start" overlay ===== */}
+      {!hasStarted && !finished && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none">
+          <div
+            className="rounded-2xl px-8 py-5 text-center"
+            style={{
+              background:
+                "linear-gradient(160deg, rgba(20,10,40,0.9), rgba(10,5,25,0.9))",
+              border: "2px solid rgba(139, 95, 255, 0.5)",
+              boxShadow:
+                "0 20px 60px rgba(0,0,0,0.8), 0 0 40px rgba(139,95,255,0.3)",
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+            }}
+          >
+            <div style={{ fontSize: 40, marginBottom: 8 }}>🏁</div>
+            <div
+              style={{
+                fontSize: 20,
+                fontWeight: 900,
+                color: "#FFD700",
+                letterSpacing: "0.02em",
+                textShadow: "0 0 20px rgba(255,215,0,0.5)",
+                fontFamily: "system-ui, -apple-system, sans-serif",
+              }}
+            >
+              MOVE TO START
+            </div>
+            <div
+              style={{
+                fontSize: 12,
+                color: "rgba(255,255,255,0.6)",
+                marginTop: 6,
+                fontWeight: 600,
+                fontFamily: "system-ui, -apple-system, sans-serif",
+              }}
+            >
+              Timer begins the moment you move
+            </div>
+          </div>
+        </div>
+      )}
 
       {isTouchDevice && !inputDisabled && <ObbyTouchControls />}
     </div>
