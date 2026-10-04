@@ -3,7 +3,7 @@
 import { Suspense, useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
 import { KeyboardControls, Sky } from "@react-three/drei";
-import { Physics, RigidBody } from "@react-three/rapier";
+import { Physics, RigidBody, CuboidCollider } from "@react-three/rapier";
 import * as THREE from "three";
 import type { AvatarConfig } from "../../../lib/auth";
 import type { World } from "../../../lib/worlds";
@@ -32,7 +32,6 @@ import {
   PLOT_SPAWNS,
   MAX_OVENS,
   TICK_INTERVAL_MS,
-  STARTING_COINS,
 } from "../../../lib/pizzaEmpire";
 import {
   playPurchase,
@@ -81,38 +80,54 @@ type RemoteState = {
 };
 
 // ============================================================
-// ARENA FLOOR + WALLS
+// ARENA FLOOR + WALLS — with explicit colliders
 // ============================================================
 function Arena() {
-  const floorSize = ARENA_SIZE + 4; // slight padding
+  const floorSize = ARENA_SIZE + 4;
+  const FLOOR_THICKNESS = 1;
+  const FLOOR_TOP_Y = -0.5; // top surface of the arena floor
+  const FLOOR_CENTER_Y = FLOOR_TOP_Y - FLOOR_THICKNESS / 2;
 
   return (
     <>
       {/* Ground floor beneath the plots */}
-      <RigidBody type="fixed" colliders="cuboid">
-        <mesh position={[0, -0.75, 0]} receiveShadow>
-          <boxGeometry args={[floorSize, 1, floorSize]} />
+      <RigidBody type="fixed" colliders={false} friction={0.9}>
+        <CuboidCollider
+          args={[floorSize / 2, FLOOR_THICKNESS / 2, floorSize / 2]}
+          position={[0, FLOOR_CENTER_Y, 0]}
+        />
+        <mesh position={[0, FLOOR_CENTER_Y, 0]} receiveShadow>
+          <boxGeometry args={[floorSize, FLOOR_THICKNESS, floorSize]} />
           <meshStandardMaterial color="#1A1008" roughness={0.95} />
         </mesh>
       </RigidBody>
 
-      {/* Boundary walls (4 sides) */}
+      {/* Boundary walls */}
       {(
         [
-          [0, ARENA_WALL_HEIGHT / 2, -ARENA_RADIUS],
-          [0, ARENA_WALL_HEIGHT / 2, ARENA_RADIUS],
-          [-ARENA_RADIUS, ARENA_WALL_HEIGHT / 2, 0],
-          [ARENA_RADIUS, ARENA_WALL_HEIGHT / 2, 0],
-        ] as [number, number, number][]
-      ).map((pos, i) => {
-        const isHorizontalWall = i < 2;
-        const size: [number, number, number] = isHorizontalWall
+          [0, -ARENA_RADIUS, true],
+          [0, ARENA_RADIUS, true],
+          [-ARENA_RADIUS, 0, false],
+          [ARENA_RADIUS, 0, false],
+        ] as [number, number, boolean][]
+      ).map(([x, z, isHorizontal], i) => {
+        const size: [number, number, number] = isHorizontal
           ? [floorSize, ARENA_WALL_HEIGHT, 1]
           : [1, ARENA_WALL_HEIGHT, floorSize];
+        const centerY = ARENA_WALL_HEIGHT / 2;
 
         return (
-          <RigidBody key={i} type="fixed" position={pos} colliders="cuboid">
-            <mesh castShadow receiveShadow>
+          <RigidBody
+            key={i}
+            type="fixed"
+            colliders={false}
+            position={[x, 0, z]}
+          >
+            <CuboidCollider
+              args={[size[0] / 2, size[1] / 2, size[2] / 2]}
+              position={[0, centerY, 0]}
+            />
+            <mesh position={[0, centerY, 0]} castShadow receiveShadow>
               <boxGeometry args={size} />
               <meshStandardMaterial color="#3A2416" roughness={0.9} />
             </mesh>
@@ -124,12 +139,12 @@ function Arena() {
 }
 
 // ============================================================
-// DETERMINISTIC PLAYER ASSIGNMENT
+// DETERMINISTIC PLAYER → PLOT ASSIGNMENT
 // ============================================================
-// Every client sorts the same list of player IDs and assigns
-// each player a plot by their index. Guarantees no two players
-// get the same plot.
-function assignPlotIndices(userId: string, otherIds: string[]): {
+function assignPlotIndices(
+  userId: string,
+  otherIds: string[]
+): {
   myPlotIndex: number;
   plotOwnerMap: Record<string, number>;
 } {
@@ -155,29 +170,21 @@ export default function PizzaEmpireGameMain({
   inputDisabled,
   isTouchDevice,
 }: Props) {
-  // ---- Loaded flag ----
   const [loaded, setLoaded] = useState(false);
-
-  // ---- Local progress ----
   const [progress, setProgress] = useState<PizzaEmpireProgress>(() =>
     createDefaultProgress()
   );
-
-  // ---- Remote players ----
   const [others, setOthers] = useState<Record<string, RemoteState>>({});
 
-  // ---- Refs ----
   const channelRef = useRef<any>(null);
   const progressRef = useRef(progress);
   const localPosRef = useRef<[number, number, number]>([0, 1.6, 0]);
   const localRotRef = useRef(0);
 
-  // Keep a ref of progress so the broadcast interval reads fresh data
   useEffect(() => {
     progressRef.current = progress;
   }, [progress]);
 
-  // ---- Assigned plot ----
   const myPlotIndex = useMemo(() => {
     const otherIds = Object.keys(others);
     return assignPlotIndices(userId, otherIds).myPlotIndex;
@@ -185,7 +192,6 @@ export default function PizzaEmpireGameMain({
 
   const mySpawn = PLOT_SPAWNS[myPlotIndex] || PLOT_SPAWNS[0];
 
-  // ---- Derived economy values ----
   const incomePerSecond = useMemo(
     () => calculateIncomePerSecond(progress.ovens),
     [progress.ovens]
@@ -196,7 +202,7 @@ export default function PizzaEmpireGameMain({
   );
 
   // ============================================================
-  // LOAD PROGRESS ON MOUNT
+  // LOAD PROGRESS
   // ============================================================
   useEffect(() => {
     (async () => {
@@ -207,7 +213,7 @@ export default function PizzaEmpireGameMain({
   }, []);
 
   // ============================================================
-  // MUSIC — start on first user gesture, stop on unmount
+  // MUSIC
   // ============================================================
   useEffect(() => {
     const start = () => {
@@ -242,7 +248,6 @@ export default function PizzaEmpireGameMain({
       },
     });
 
-    // ---- Position + state broadcast listener ----
     channel.on("broadcast", { event: "pizza-state" }, ({ payload }: any) => {
       if (!payload || payload.id === userId) return;
       setOthers((prev) => ({
@@ -273,7 +278,6 @@ export default function PizzaEmpireGameMain({
 
     channelRef.current = channel;
 
-    // Stale cleanup
     const staleTimer = setInterval(() => {
       const now = Date.now();
       setOthers((prev) => {
@@ -298,7 +302,7 @@ export default function PizzaEmpireGameMain({
   }, [world?.id, userId, username]);
 
   // ============================================================
-  // PERIODIC STATE BROADCAST
+  // STATE BROADCAST
   // ============================================================
   useEffect(() => {
     if (!userId) return;
@@ -324,7 +328,7 @@ export default function PizzaEmpireGameMain({
   }, [userId, username, config]);
 
   // ============================================================
-  // ECONOMY TICK — ovens generate coins
+  // ECONOMY TICK
   // ============================================================
   useEffect(() => {
     if (!loaded) return;
@@ -341,7 +345,7 @@ export default function PizzaEmpireGameMain({
     return () => clearInterval(interval);
   }, [loaded]);
 
-  // ---- Autosave every 1 second ----
+  // ---- Autosave ----
   useEffect(() => {
     if (!loaded) return;
     const interval = setInterval(() => {
@@ -350,7 +354,7 @@ export default function PizzaEmpireGameMain({
     return () => clearInterval(interval);
   }, [loaded]);
 
-  // ---- Periodic oven "ding" when earning ----
+  // ---- Oven ding every 4-6s while earning ----
   useEffect(() => {
     if (ownedOvens === 0) return;
     const interval = setInterval(() => {
@@ -393,9 +397,6 @@ export default function PizzaEmpireGameMain({
     setProgress(fresh);
   }, []);
 
-  // ============================================================
-  // PLAYER POSITION UPDATES
-  // ============================================================
   const handlePositionUpdate = useCallback(
     (pos: [number, number, number], rotY: number) => {
       localPosRef.current = pos;
@@ -405,7 +406,7 @@ export default function PizzaEmpireGameMain({
   );
 
   // ============================================================
-  // DERIVED: array of plots with their owner ID
+  // PLOTS
   // ============================================================
   const plots = useMemo(() => {
     const otherIds = Object.keys(others);
@@ -448,7 +449,6 @@ export default function PizzaEmpireGameMain({
         >
           <Physics gravity={[0, -30, 0]} timeStep="vary">
             <Suspense fallback={null}>
-              {/* Sky + lights */}
               <Sky sunPosition={[100, 50, 100]} />
               <ambientLight intensity={0.55} />
               <directionalLight
@@ -464,10 +464,8 @@ export default function PizzaEmpireGameMain({
               />
               <hemisphereLight args={["#FFE4B5", "#3A2416", 0.35]} />
 
-              {/* Arena floor + walls */}
               <Arena />
 
-              {/* 4 plots */}
               {plots.map((p) => (
                 <PizzaPlot
                   key={p.plotIndex}
@@ -488,7 +486,6 @@ export default function PizzaEmpireGameMain({
                 />
               ))}
 
-              {/* Local player */}
               <PizzaEmpirePlayer
                 config={config}
                 spawnPosition={mySpawn}
@@ -498,7 +495,6 @@ export default function PizzaEmpireGameMain({
                 onPositionUpdate={handlePositionUpdate}
               />
 
-              {/* Remote players */}
               {Object.values(others).map((r) => (
                 <RemotePizzaPlayer
                   key={r.id}
@@ -521,7 +517,6 @@ export default function PizzaEmpireGameMain({
         </Canvas>
       </KeyboardControls>
 
-      {/* HUD */}
       <PizzaEmpireHud
         progress={progress}
         incomePerSecond={incomePerSecond}
@@ -530,7 +525,6 @@ export default function PizzaEmpireGameMain({
         onReset={handleReset}
       />
 
-      {/* Touch controls */}
       {isTouchDevice && !inputDisabled && <PizzaTouchControls />}
     </div>
   );

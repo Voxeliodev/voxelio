@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
+import { RigidBody, CuboidCollider } from "@react-three/rapier";
 import * as THREE from "three";
 import PizzaOven from "./PizzaOven";
 import type { OvenState } from "../../../lib/pizzaEmpireProgress";
@@ -29,7 +30,7 @@ import { getNextOvenCost } from "../../../lib/pizzaEmpireProgress";
 // ============================================================
 
 type Props = {
-  plotIndex: number;       // 0-3
+  plotIndex: number;
   position: [number, number, number];
   ovens: OvenState[];
   coins: number;
@@ -74,32 +75,40 @@ function BuyButton({
   };
 
   return (
-    <group
-      position={BUY_BUTTON_OFFSET}
-      onClick={handleClick}
-      onPointerOver={(e) => {
-        e.stopPropagation();
-        setHovered(true);
-        if (enabled && canAfford && !allOwned) {
-          document.body.style.cursor = "pointer";
-        }
-      }}
-      onPointerOut={() => {
-        setHovered(false);
-        document.body.style.cursor = "";
-      }}
-    >
-      {/* Base pad */}
+    <group position={BUY_BUTTON_OFFSET}>
+      {/* Base pad — visual only */}
       <mesh position={[0, -0.2, 0]} receiveShadow>
-        <boxGeometry args={[BUY_BUTTON_SIZE[0] + 0.4, 0.4, BUY_BUTTON_SIZE[2] + 0.4]} />
+        <boxGeometry
+          args={[BUY_BUTTON_SIZE[0] + 0.4, 0.4, BUY_BUTTON_SIZE[2] + 0.4]}
+        />
         <meshStandardMaterial color="#2A2A2A" roughness={0.9} />
       </mesh>
 
-      {/* Button top */}
+      {/* Collider for the button — thin, so player can't stand on it but bumps it */}
+      <RigidBody type="fixed" colliders={false}>
+        <CuboidCollider
+          args={[BUY_BUTTON_SIZE[0] / 2, 0.4, BUY_BUTTON_SIZE[2] / 2]}
+          position={[0, 0.2, 0]}
+        />
+      </RigidBody>
+
+      {/* Visual button top — clickable */}
       <mesh
         position={[0, pressed ? -0.2 : 0, 0]}
         castShadow
         receiveShadow
+        onClick={handleClick}
+        onPointerOver={(e) => {
+          e.stopPropagation();
+          setHovered(true);
+          if (enabled && canAfford && !allOwned) {
+            document.body.style.cursor = "pointer";
+          }
+        }}
+        onPointerOut={() => {
+          setHovered(false);
+          document.body.style.cursor = "";
+        }}
       >
         <boxGeometry args={BUY_BUTTON_SIZE} />
         <meshStandardMaterial
@@ -110,7 +119,7 @@ function BuyButton({
         />
       </mesh>
 
-      {/* Overhead label panel */}
+      {/* Overhead label */}
       <group position={[0, 1.1, 0]}>
         <mesh>
           <planeGeometry args={[3.6, 0.8]} />
@@ -122,7 +131,7 @@ function BuyButton({
         </mesh>
       </group>
 
-      {/* Sparkle particles when affordable and hovered */}
+      {/* Sparkles */}
       {active && hovered && (
         <Sparkles color="#FFD700" count={6} spread={1.5} position={[0, 1, 0]} />
       )}
@@ -198,8 +207,23 @@ function CashRegister({ hasIncome }: { hasIncome: boolean }) {
 
   return (
     <group position={CASH_REGISTER_OFFSET}>
-      {/* Register body */}
-      <mesh position={[0, CASH_REGISTER_SIZE[1] / 2, 0]} castShadow receiveShadow>
+      {/* Register body — collider so player can't walk through */}
+      <RigidBody type="fixed" colliders={false}>
+        <CuboidCollider
+          args={[
+            CASH_REGISTER_SIZE[0] / 2,
+            CASH_REGISTER_SIZE[1] / 2,
+            CASH_REGISTER_SIZE[2] / 2,
+          ]}
+          position={[0, CASH_REGISTER_SIZE[1] / 2, 0]}
+        />
+      </RigidBody>
+
+      <mesh
+        position={[0, CASH_REGISTER_SIZE[1] / 2, 0]}
+        castShadow
+        receiveShadow
+      >
         <boxGeometry args={CASH_REGISTER_SIZE} />
         <meshStandardMaterial
           color={CASH_REGISTER_COLOR}
@@ -208,7 +232,6 @@ function CashRegister({ hasIncome }: { hasIncome: boolean }) {
         />
       </mesh>
 
-      {/* Trim band */}
       <mesh position={[0, CASH_REGISTER_SIZE[1] * 0.6, 0]}>
         <boxGeometry
           args={[
@@ -224,26 +247,22 @@ function CashRegister({ hasIncome }: { hasIncome: boolean }) {
         />
       </mesh>
 
-      {/* Screen */}
       <mesh position={[0, CASH_REGISTER_SIZE[1] + 0.1, 0]}>
         <boxGeometry args={[1.4, 0.6, 1.4]} />
         <meshStandardMaterial color="#1A1A1A" roughness={0.4} />
       </mesh>
 
-      {/* Screen glow */}
       <mesh position={[0, CASH_REGISTER_SIZE[1] + 0.11, 0.71]}>
         <planeGeometry args={[1.2, 0.45]} />
         <meshBasicMaterial color="#22C55E" />
       </mesh>
 
-      {/* Floating $ when producing income */}
       {hasIncome && (
         <group position={[0, CASH_REGISTER_SIZE[1] + 1.2, 0]}>
           <CashFloat />
         </group>
       )}
 
-      {/* Light */}
       <pointLight
         ref={lightRef}
         position={[0, CASH_REGISTER_SIZE[1] + 0.5, 0]}
@@ -284,21 +303,33 @@ function CashFloat() {
 }
 
 // ============================================================
-// PLOT FLOOR
+// PLOT FLOOR — with a real collider so players can stand on it
 // ============================================================
 function PlotFloor() {
+  // Plot floor: box centered at y = PLOT_FLOOR_Y - 0.5, height 1
+  // Top surface at y = PLOT_FLOOR_Y = 0.25
+  const centerY = PLOT_FLOOR_Y - 0.5;
+
   return (
-    <>
-      <mesh position={[0, PLOT_FLOOR_Y - 0.5, 0]} receiveShadow>
+    <RigidBody type="fixed" colliders={false} friction={0.9}>
+      {/* Explicit cuboid collider — half-extents are half the size */}
+      <CuboidCollider
+        args={[PLOT_SIZE / 2, 0.5, PLOT_SIZE / 2]}
+        position={[0, centerY, 0]}
+      />
+
+      {/* Visual floor mesh */}
+      <mesh position={[0, centerY, 0]} receiveShadow>
         <boxGeometry args={[PLOT_SIZE, 1, PLOT_SIZE]} />
         <meshStandardMaterial color={PLOT_FLOOR_COLOR} roughness={0.9} />
       </mesh>
 
-      <mesh position={[0, PLOT_FLOOR_Y - 0.4, 0]} receiveShadow>
+      {/* Decorative rim (visual only — no collider) */}
+      <mesh position={[0, PLOT_FLOOR_Y - 0.4, 0]}>
         <boxGeometry args={[PLOT_SIZE + 0.4, 0.4, PLOT_SIZE + 0.4]} />
         <meshStandardMaterial color={PLOT_EDGE_COLOR} roughness={0.85} />
       </mesh>
-    </>
+    </RigidBody>
   );
 }
 
@@ -323,16 +354,13 @@ export default function PizzaPlot({
       {OVEN_SLOT_OFFSETS.map((offset, i) => {
         const oven = ovens[i] || { owned: false, level: 0 };
 
-        // Compute whether this specific oven can currently be acted on
         let canUpgrade = false;
         if (isOwnedByMe) {
           if (oven.owned) {
-            // Owned oven: can upgrade if not maxed and can afford it
             canUpgrade =
               oven.level < MAX_OVEN_LEVEL &&
               coins >= getOvenUpgradeCost(oven.level);
           } else {
-            // Unowned slot: can buy if this is the next oven in line
             const nextCost = getNextOvenCost(ovens);
             canUpgrade = nextCost !== null && coins >= nextCost;
           }
