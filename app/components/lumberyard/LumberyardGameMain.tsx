@@ -42,34 +42,21 @@ import {
   startAmbientMusic,
   stopAmbientMusic,
 } from "../../../lib/sounds";
-import { filterMessage } from "../../../lib/chatFilter";
 
 // ============================================================
 // GLOBAL CHANNEL MANAGER
 // ============================================================
-
-type ChatMessage = {
-  id: string;
-  userId: string;
-  username: string;
-  text: string;
-  expiresAt: number;
-};
 
 type ChannelState = {
   channel: any;
   name: string;
   subscribers: Set<(data: RemoteLumberData) => void>;
   presenceSubscribers: Set<(count: number) => void>;
-  chatSubscribers: Set<(msg: ChatMessage) => void>;
   initialized: boolean;
   subscribed: boolean;
 };
 
 const channels = new Map<string, ChannelState>();
-
-const CHAT_LIFETIME_MS = 5000;
-const CHAT_MAX_LENGTH = 120;
 
 function ensureChannel(
   channelName: string,
@@ -85,7 +72,6 @@ function ensureChannel(
 ): ChannelState {
   const existing = channels.get(channelName);
   if (existing && existing.subscribed) {
-    console.log("[ensureChannel] reusing existing channel:", channelName);
     return existing;
   }
 
@@ -95,13 +81,11 @@ function ensureChannel(
   );
 
   if (alreadyInSupabase) {
-    console.log("[ensureChannel] found channel already in Supabase, reusing:", channelName);
     const reused: ChannelState = {
       channel: alreadyInSupabase,
       name: channelName,
       subscribers: existing?.subscribers || new Set(),
       presenceSubscribers: existing?.presenceSubscribers || new Set(),
-      chatSubscribers: existing?.chatSubscribers || new Set(),
       initialized: true,
       subscribed: true,
     };
@@ -109,14 +93,11 @@ function ensureChannel(
     return reused;
   }
 
-  console.log("[ensureChannel] creating NEW channel:", channelName, "for user:", selfUserId);
-
   const state: ChannelState = {
     channel: null,
     name: channelName,
     subscribers: existing?.subscribers || new Set(),
     presenceSubscribers: existing?.presenceSubscribers || new Set(),
-    chatSubscribers: existing?.chatSubscribers || new Set(),
     initialized: false,
     subscribed: false,
   };
@@ -143,23 +124,9 @@ function ensureChannel(
     state.subscribers.forEach((fn) => fn(data));
   });
 
-  // ===== Chat broadcast listener =====
-  channel.on("broadcast", { event: "chat" }, ({ payload }: any) => {
-    if (!payload || payload.userId === selfUserId) return;
-    const msg: ChatMessage = {
-      id: payload.id,
-      userId: payload.userId,
-      username: payload.username,
-      text: filterMessage(String(payload.text || "").slice(0, CHAT_MAX_LENGTH)),
-      expiresAt: Date.now() + CHAT_LIFETIME_MS,
-    };
-    state.chatSubscribers.forEach((fn) => fn(msg));
-  });
-
   channel.on("presence", { event: "sync" }, () => {
     const presenceState = channel.presenceState();
     const count = Math.max(1, Object.keys(presenceState).length);
-    console.log("[presence:sync] count:", count);
     state.presenceSubscribers.forEach((fn) => fn(count));
 
     const s = getSelfState();
@@ -181,12 +148,10 @@ function ensureChannel(
   channel.on("presence", { event: "leave" }, () => {
     const presenceState = channel.presenceState();
     const count = Math.max(1, Object.keys(presenceState).length);
-    console.log("[presence:leave] count:", count);
     state.presenceSubscribers.forEach((fn) => fn(count));
   });
 
   channel.subscribe((status: string) => {
-    console.log("[channel] subscribe status:", status, "for", channelName);
     if (status === "SUBSCRIBED") {
       state.subscribed = true;
       channel.track({
@@ -276,14 +241,6 @@ export default function LumberyardGame({
   const currentAxe = getAxe(progress.currentAxe);
   const currentAxeIdRef = useRef<AxeId>(progress.currentAxe);
 
-  // Chat state
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatOpen, setChatOpen] = useState(false);
-  const [draft, setDraft] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-  const lastChatSentRef = useRef(0);
-  const chatChannelRef = useRef<any>(null);
-
   useEffect(() => {
     currentAxeIdRef.current = progress.currentAxe;
   }, [progress.currentAxe]);
@@ -362,7 +319,6 @@ export default function LumberyardGame({
     );
 
     channelRef.current = state.channel;
-    chatChannelRef.current = state.channel;
 
     const onPlayer = (data: RemoteLumberData) => {
       setOthers((prev) => {
@@ -380,29 +336,18 @@ export default function LumberyardGame({
       setOnlineCount(count);
     };
 
-    // ===== Chat subscriber =====
-    const onChat = (msg: ChatMessage) => {
-      setChatMessages((prev) => {
-        if (prev.some((m) => m.id === msg.id)) return prev;
-        return [...prev, msg];
-      });
-    };
-
     state.subscribers.add(onPlayer);
     state.presenceSubscribers.add(onPresence);
-    state.chatSubscribers.add(onChat);
 
     const staleTimer = setInterval(() => {
       const now = Date.now();
       setOthers((prev) => prev.filter((p) => now - p.lastSeen < STALE_TIMEOUT));
-      setChatMessages((prev) => prev.filter((m) => m.expiresAt > now));
     }, 1500);
 
     return () => {
       clearInterval(staleTimer);
       state.subscribers.delete(onPlayer);
       state.presenceSubscribers.delete(onPresence);
-      state.chatSubscribers.delete(onChat);
     };
   }, [world?.id, userId, username, config]);
 
@@ -428,59 +373,6 @@ export default function LumberyardGame({
 
     return () => clearInterval(interval);
   }, [userId, username, config]);
-
-  // ===== Chat send =====
-  const sendChat = useCallback(() => {
-    const text = draft.trim();
-    if (!text) { setChatOpen(false); setDraft(""); return; }
-    const now = Date.now();
-    if (now - lastChatSentRef.current < 500) return;
-    lastChatSentRef.current = now;
-    const filtered = filterMessage(text.slice(0, CHAT_MAX_LENGTH));
-    const id = typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const msg: ChatMessage = {
-      id,
-      userId,
-      username,
-      text: filtered,
-      expiresAt: Date.now() + CHAT_LIFETIME_MS,
-    };
-    setChatMessages((prev) => [...prev, msg]);
-    const channel = chatChannelRef.current;
-    if (channel) {
-      channel.send({
-        type: "broadcast",
-        event: "chat",
-        payload: { id: msg.id, userId: msg.userId, username: msg.username, text: msg.text },
-      });
-    }
-    setDraft("");
-    setChatOpen(false);
-  }, [draft, userId, username]);
-
-  // ===== Chat hotkey =====
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const active = document.activeElement as HTMLElement | null;
-      const inInput = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA");
-      if ((e.key === "t" || e.key === "T") && !chatOpen && !inInput) {
-        e.preventDefault();
-        setChatOpen(true);
-      } else if (e.key === "Escape" && chatOpen) {
-        e.preventDefault();
-        setChatOpen(false);
-        setDraft("");
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [chatOpen]);
-
-  useEffect(() => {
-    if (chatOpen && inputRef.current) inputRef.current.focus();
-  }, [chatOpen]);
 
   const handleChop = useCallback(
     (spawnId: string) => {
@@ -770,7 +662,7 @@ export default function LumberyardGame({
               <LumberyardPlayer
                 config={config}
                 spawnPosition={LUMBERYARD_SPAWN}
-                inputDisabled={inputDisabled || shopOpen || chatOpen}
+                inputDisabled={inputDisabled || shopOpen}
                 isTouchDevice={isTouchDevice}
                 currentAxeId={progress.currentAxe}
                 onPositionUpdate={handlePositionUpdate}
@@ -813,75 +705,6 @@ export default function LumberyardGame({
           </div>
         )}
       </div>
-
-      {/* ===== Chat display ===== */}
-      {chatMessages.length > 0 && (
-        <div className="absolute bottom-40 left-6 z-30 space-y-1 max-w-[400px]">
-          {chatMessages.slice(-5).map((m) => (
-            <div
-              key={m.id}
-              className="bg-black/70 backdrop-blur px-3 py-1.5 rounded text-white text-sm"
-            >
-              <span className="font-bold text-[#00E5FF]">{m.username}:</span>{" "}
-              <span>{m.text}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ===== Chat input ===== */}
-      {chatOpen && (
-        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 w-[min(560px,90vw)] z-40">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              sendChat();
-            }}
-            className="bg-black/85 backdrop-blur border-2 border-[#6C3CE0] rounded-lg px-3 py-2 flex items-center gap-2 shadow-2xl"
-          >
-            <span className="text-[#00E5FF] font-bold text-sm flex-shrink-0">
-              💬
-            </span>
-            <input
-              ref={inputRef}
-              type="text"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value.slice(0, CHAT_MAX_LENGTH))}
-              placeholder="Type a message…"
-              className="flex-1 bg-transparent text-white text-sm outline-none placeholder-white/40"
-              maxLength={CHAT_MAX_LENGTH}
-              autoComplete="off"
-            />
-            <button
-              type="submit"
-              className="text-white bg-[#6C3CE0] hover:bg-[#5A2FC7] text-xs font-bold px-3 py-1.5 rounded flex-shrink-0"
-            >
-              Send
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setChatOpen(false);
-                setDraft("");
-              }}
-              className="text-white/60 hover:text-white text-sm flex-shrink-0"
-            >
-              ✕
-            </button>
-          </form>
-          <p className="text-[10px] text-white/50 text-center mt-1">
-            Esc to cancel
-          </p>
-        </div>
-      )}
-
-      {!chatOpen && !isTouchDevice && (
-        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 pointer-events-none z-20">
-          <div className="bg-black/40 backdrop-blur px-3 py-1 rounded-full text-white/50 text-[10px]">
-            Press <kbd className="bg-white/10 px-1 rounded">T</kbd> to chat
-          </div>
-        </div>
-      )}
 
       <button
         onClick={toggleMusic}
