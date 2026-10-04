@@ -57,6 +57,7 @@ const KEY_MAP = [
 
 const STALE_TIMEOUT = 3000;
 const BROADCAST_INTERVAL = 66;
+const MIN_PLAYERS_TO_START = 2;
 
 type Props = {
   config: AvatarConfig;
@@ -86,17 +87,25 @@ export default function ChaosColiseumGameMain({
   const [localKills, setLocalKills] = useState(0);
   const [localDeaths, setLocalDeaths] = useState(0);
   const [respawnAt, setRespawnAt] = useState(0);
-  const [spawnPosition, setSpawnPosition] = useState<[number, number, number]>(() => [...COLISEUM_SPAWNS[0]]);
+
+  // Random spawn per player
+  const [spawnPosition, setSpawnPosition] = useState<[number, number, number]>(
+    () => pickRandomSpawn()
+  );
 
   // ===== Remote players =====
   const [others, setOthers] = useState<RemoteChaosData[]>([]);
+
+  // ===== Per-player kills/deaths tracking =====
+  const [remoteKills, setRemoteKills] = useState<Record<string, number>>({});
+  const [remoteDeaths, setRemoteDeaths] = useState<Record<string, number>>({});
 
   // ===== Kill feed =====
   const [killFeed, setKillFeed] = useState<KillFeedEntry[]>([]);
 
   // ===== Round phase =====
-  const [phase, setPhase] = useState<RoundPhase>("countdown");
-  const [roundStartAt, setRoundStartAt] = useState(Date.now() + 3000);
+  const [phase, setPhase] = useState<RoundPhase>("waiting");
+  const [roundStartAt, setRoundStartAt] = useState(0);
   const [roundTimeLeft, setRoundTimeLeft] = useState(ROUND_DURATION_MS / 1000);
   const [roundOver, setRoundOver] = useState(false);
   const [localWon, setLocalWon] = useState(false);
@@ -110,14 +119,14 @@ export default function ChaosColiseumGameMain({
   const localHpRef = useRef(PLAYER_MAX_HP);
   const localAliveRef = useRef(true);
   const othersRef = useRef<RemoteChaosData[]>([]);
-  const lastSwingBroadcastRef = useRef(0);
   const lastSwingingRef = useRef(false);
   const lastDamagerRef = useRef<{ id: string; name: string } | null>(null);
+  const phaseRef = useRef<RoundPhase>("waiting");
 
-  // Sync local state to refs
   useEffect(() => { localHpRef.current = localHp; }, [localHp]);
   useEffect(() => { localAliveRef.current = localAlive; }, [localAlive]);
   useEffect(() => { othersRef.current = others; }, [others]);
+  useEffect(() => { phaseRef.current = phase; }, [phase]);
 
   // ============================================================
   // LOAD PROGRESS
@@ -150,6 +159,21 @@ export default function ChaosColiseumGameMain({
       stopColiseumMusic();
     };
   }, []);
+
+  // ============================================================
+  // WAITING-FOR-PLAYERS → COUNTDOWN
+  // ============================================================
+  // When we have at least MIN_PLAYERS_TO_START (2) players in the room
+  // (us + 1 other), transition from "waiting" to "countdown".
+  useEffect(() => {
+    if (phase !== "waiting") return;
+    const totalPlayers = 1 + others.length;
+    if (totalPlayers >= MIN_PLAYERS_TO_START) {
+      setPhase("countdown");
+      setRoundStartAt(Date.now() + 3000);
+      setCountdownLeft(3);
+    }
+  }, [phase, others.length]);
 
   // ============================================================
   // COUNTDOWN
@@ -188,13 +212,14 @@ export default function ChaosColiseumGameMain({
         setPhase("over");
 
         const allPlayers = [
-          { id: userId, username, kills: localKills, deaths: localDeaths, alive: localAlive },
+          { id: userId, username, kills: localKills },
           ...othersRef.current.map((o) => ({
-            id: o.id, username: o.username, kills: 0, deaths: 0, alive: o.alive,
+            id: o.id, username: o.username, kills: remoteKills[o.id] || 0,
           })),
         ];
         const maxKills = Math.max(...allPlayers.map((p) => p.kills));
-        const won = localKills > 0 && localKills >= maxKills;
+        const myKills = localKills;
+        const won = myKills > 0 && myKills >= maxKills;
         setLocalWon(won);
         if (won) playRoundWin(); else playRoundLose();
 
@@ -204,7 +229,7 @@ export default function ChaosColiseumGameMain({
       }
     }, 200);
     return () => clearInterval(interval);
-  }, [phase, roundStartAt, localKills, localDeaths, localAlive, userId, username, progress]);
+  }, [phase, roundStartAt, localKills, userId, username, progress, remoteKills]);
 
   // ============================================================
   // RESPAWN TIMER
@@ -239,7 +264,6 @@ export default function ChaosColiseumGameMain({
       },
     });
 
-    // ===== STATE BROADCAST =====
     channel.on("broadcast", { event: "state" }, ({ payload }: any) => {
       if (!payload || payload.id === userId) return;
       const data: RemoteChaosData = {
@@ -265,21 +289,16 @@ export default function ChaosColiseumGameMain({
       });
     });
 
-    // ===== HIT RECEIVED (we were hit) =====
     channel.on("broadcast", { event: "hit" }, ({ payload }: any) => {
       if (!payload || payload.targetId !== userId) return;
-
-      // Record who last hit us so we can credit the kill on our own death
       lastDamagerRef.current = {
         id: payload.attackerId,
         name: payload.attackerName,
       };
-
       const fromPos = payload.attackerPos as [number, number, number];
       localPlayerApiRef.current?.applyDamage(SWORD_DAMAGE, fromPos);
     });
 
-    // ===== KILL RECEIVED (someone killed someone) =====
     channel.on("broadcast", { event: "kill" }, ({ payload }: any) => {
       if (!payload) return;
 
@@ -291,15 +310,34 @@ export default function ChaosColiseumGameMain({
       };
       setKillFeed((prev) => [...prev.slice(-4), entry]);
 
+      // Track kills per remote player
+      if (payload.killerId && payload.killerId !== userId) {
+        setRemoteKills((prev) => ({
+          ...prev,
+          [payload.killerId]: (prev[payload.killerId] || 0) + 1,
+        }));
+      }
+
+      // Track deaths per remote player
+      if (payload.victimId && payload.victimId !== userId) {
+        setRemoteDeaths((prev) => ({
+          ...prev,
+          [payload.victimId]: (prev[payload.victimId] || 0) + 1,
+        }));
+      }
+
       // If we're the killer, count the kill
       if (payload.killerId === userId) {
         setLocalKills((k) => k + 1);
         playKillConfirm();
+        const newKills = localKills + 1;
+        if (newKills >= 3 && newKills % 2 === 1) {
+          playStreakSound(newKills);
+        }
         recordKill().then(setProgress);
       }
     });
 
-    // ===== PRESENCE =====
     channel
       .on("presence", { event: "sync" }, () => {
         const now = Date.now();
@@ -318,7 +356,6 @@ export default function ChaosColiseumGameMain({
 
     channelRef.current = channel;
 
-    // Stale cleanup
     const staleTimer = setInterval(() => {
       const now = Date.now();
       setOthers((prev) => prev.filter((p) => now - p.lastSeen < STALE_TIMEOUT));
@@ -331,7 +368,7 @@ export default function ChaosColiseumGameMain({
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [world?.id, userId, username]);
+  }, [world?.id, userId, username, localKills]);
 
   // ============================================================
   // PERIODIC STATE BROADCAST
@@ -364,7 +401,7 @@ export default function ChaosColiseumGameMain({
   }, [userId, username, config, phase]);
 
   // ============================================================
-  // HANDLE PLAYER POSITION UPDATE
+  // HANDLE POSITION UPDATE
   // ============================================================
   const handlePositionUpdate = useCallback((state: PlayerState) => {
     localPosRef.current = state.pos;
@@ -373,11 +410,11 @@ export default function ChaosColiseumGameMain({
   }, []);
 
   // ============================================================
-  // HANDLE SWING (local player attack)
+  // HANDLE SWING
   // ============================================================
   const handleSwing = useCallback(
     (attackerPos: [number, number, number], attackerRotY: number) => {
-      if (phase !== "playing") return;
+      if (phaseRef.current !== "playing") return;
 
       const [ax, ay, az] = attackerPos;
       const halfArcRad = (SWORD_ARC_DEGREES / 2) * (Math.PI / 180);
@@ -400,8 +437,6 @@ export default function ChaosColiseumGameMain({
 
         if (Math.abs(diff) > halfArcRad) continue;
 
-        // Hit! Send broadcast to the target.
-        // The target's client will detect its own death and broadcast the kill.
         const channel = channelRef.current;
         if (channel) {
           channel.send({
@@ -417,11 +452,10 @@ export default function ChaosColiseumGameMain({
           });
           playSwordHit();
         }
-        // Only hit one player per swing
         break;
       }
     },
-    [phase, userId, username]
+    [userId, username]
   );
 
   // ============================================================
@@ -432,7 +466,7 @@ export default function ChaosColiseumGameMain({
   }, []);
 
   // ============================================================
-  // DEATH HANDLER — broadcast the kill, credit the last damager
+  // DEATH HANDLER
   // ============================================================
   const handleLocalDeath = useCallback(() => {
     setLocalAlive(false);
@@ -468,18 +502,20 @@ export default function ChaosColiseumGameMain({
     setRespawnAt(0);
     setRoundOver(false);
     setLocalWon(false);
-    setPhase("countdown");
-    setRoundStartAt(Date.now() + 3000);
+    setPhase("waiting");
+    setRoundStartAt(0);
     setCountdownLeft(3);
     setRoundTimeLeft(ROUND_DURATION_MS / 1000);
-    setSpawnPosition([...COLISEUM_SPAWNS[0]]);
+    setSpawnPosition(pickRandomSpawn());
     setKillFeed([]);
     setOthers([]);
+    setRemoteKills({});
+    setRemoteDeaths({});
     lastDamagerRef.current = null;
   }, []);
 
   // ============================================================
-  // BUILD PLAYER SCORES FOR HUD
+  // PLAYER SCORES FOR HUD
   // ============================================================
   const playerScores = [
     {
@@ -492,18 +528,17 @@ export default function ChaosColiseumGameMain({
     ...others.map((o) => ({
       id: o.id,
       username: o.username,
-      kills: 0,
-      deaths: 0,
+      kills: remoteKills[o.id] || 0,
+      deaths: remoteDeaths[o.id] || 0,
       alive: o.alive,
     })),
   ];
 
-  // ============================================================
-  // RESPAWN COUNTDOWN
-  // ============================================================
   const respawnSecondsLeft = localAlive
     ? 0
     : Math.max(0, (respawnAt - Date.now()) / 1000);
+
+  const totalPlayers = 1 + others.length;
 
   // ============================================================
   // LOADING
@@ -545,7 +580,6 @@ export default function ChaosColiseumGameMain({
               />
               <hemisphereLight args={["#FFE4B5", "#4A2E1A", 0.35]} />
 
-              {/* Arena platforms */}
               {COLISEUM_PLATFORMS.map((p, i) => (
                 <RigidBody key={`plat-${i}`} type="fixed" position={p.position} colliders="cuboid" friction={0.9}>
                   <mesh castShadow receiveShadow>
@@ -555,7 +589,6 @@ export default function ChaosColiseumGameMain({
                 </RigidBody>
               ))}
 
-              {/* Boundary walls */}
               {COLISEUM_WALLS.map((w, i) => (
                 <RigidBody key={`wall-${i}`} type="fixed" position={w.position} colliders="cuboid">
                   <mesh castShadow receiveShadow>
@@ -565,7 +598,6 @@ export default function ChaosColiseumGameMain({
                 </RigidBody>
               ))}
 
-              {/* Visual tiered seating (no collision) */}
               {COLISEUM_TIERS.map((t, i) => (
                 <mesh key={`tier-${i}`} position={t.position} receiveShadow>
                   <boxGeometry args={t.size} />
@@ -573,8 +605,8 @@ export default function ChaosColiseumGameMain({
                 </mesh>
               ))}
 
-              {/* Local player */}
-              {phase === "playing" || phase === "countdown" ? (
+              {/* Local player (renders in every phase except "over") */}
+              {phase !== "over" ? (
                 <ChaosColiseumPlayer
                   config={config}
                   spawnPosition={spawnPosition}
@@ -591,7 +623,6 @@ export default function ChaosColiseumGameMain({
                 />
               ) : null}
 
-              {/* Remote players */}
               {others.map((p) => (
                 <RemoteChaosPlayer key={p.id} data={p} />
               ))}
@@ -600,7 +631,51 @@ export default function ChaosColiseumGameMain({
         </Canvas>
       </KeyboardControls>
 
-      {/* Countdown overlay */}
+      {/* ===== WAITING FOR PLAYERS overlay ===== */}
+      {phase === "waiting" && (
+        <div
+          className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none"
+          style={{ background: "radial-gradient(circle at center, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.85) 80%)" }}
+        >
+          <div style={{ textAlign: "center", padding: "0 24px" }}>
+            <div style={{ fontSize: 64, marginBottom: 8, filter: "drop-shadow(0 0 20px rgba(255,215,0,0.5))" }}>
+              ⚔️
+            </div>
+            <div
+              style={{
+                fontSize: 28,
+                fontWeight: 900,
+                color: "#FFD700",
+                letterSpacing: "0.05em",
+                textShadow: "0 0 20px rgba(255,215,0,0.6)",
+              }}
+            >
+              WAITING FOR PLAYERS
+            </div>
+            <div
+              style={{
+                fontSize: 16,
+                color: "rgba(255,255,255,0.7)",
+                marginTop: 12,
+                fontWeight: 700,
+              }}
+            >
+              {totalPlayers} / {MIN_PLAYERS_TO_START} players
+            </div>
+            <div
+              style={{
+                fontSize: 13,
+                color: "rgba(255,255,255,0.45)",
+                marginTop: 16,
+              }}
+            >
+              The round will begin when {MIN_PLAYERS_TO_START} players are ready.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== COUNTDOWN overlay ===== */}
       {phase === "countdown" && (
         <div
           className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none"
@@ -617,21 +692,24 @@ export default function ChaosColiseumGameMain({
         </div>
       )}
 
-      {/* HUD */}
-      <ChaosColiseumHud
-        localUsername={username}
-        localHp={localHp}
-        localAlive={localAlive}
-        localKills={localKills}
-        localDeaths={localDeaths}
-        respawnSecondsLeft={respawnSecondsLeft}
-        players={playerScores}
-        killFeed={killFeed}
-        roundTimeLeft={roundTimeLeft}
-        roundOver={roundOver}
-        localWon={localWon}
-        onRestart={handleRestart}
-      />
+      {/* ===== HUD ===== */}
+      {/* Hide the full HUD during waiting so the overlay is clean. */}
+      {phase !== "waiting" && (
+        <ChaosColiseumHud
+          localUsername={username}
+          localHp={localHp}
+          localAlive={localAlive}
+          localKills={localKills}
+          localDeaths={localDeaths}
+          respawnSecondsLeft={respawnSecondsLeft}
+          players={playerScores}
+          killFeed={killFeed}
+          roundTimeLeft={roundTimeLeft}
+          roundOver={roundOver}
+          localWon={localWon}
+          onRestart={handleRestart}
+        />
+      )}
     </div>
   );
 }
