@@ -35,25 +35,31 @@ function getHpColor(hp: number): string {
 }
 
 // ============================================================
-// SWORD MESH — positioned inside the character's right palm
+// SWORD MESH — gripped in the palm, blade pointing forward
 // ============================================================
 function RemoteSwordMesh() {
   return (
-    <group position={[0, 0.02, 0.05]} rotation={[0.1, 0, 0]}>
-      {/* Handle / grip — sits inside the palm */}
-      <mesh castShadow position={[0, 0.15, 0]}>
+    <group position={[0, 0, 0.08]} rotation={[-Math.PI / 2.5, 0, 0]}>
+      {/* Handle / grip — passes through the palm */}
+      <mesh castShadow position={[0, -0.1, 0]}>
         <boxGeometry args={[0.07, 0.3, 0.07]} />
         <meshStandardMaterial color="#4A2E1A" roughness={0.9} />
       </mesh>
 
-      {/* Crossguard */}
-      <mesh castShadow position={[0, 0.32, 0]}>
+      {/* Pommel below the fist */}
+      <mesh castShadow position={[0, -0.28, 0]}>
+        <sphereGeometry args={[0.06, 12, 12]} />
+        <meshStandardMaterial color="#B8860B" metalness={0.8} roughness={0.3} />
+      </mesh>
+
+      {/* Crossguard just above the fist */}
+      <mesh castShadow position={[0, 0.08, 0]}>
         <boxGeometry args={[0.32, 0.06, 0.08]} />
         <meshStandardMaterial color="#B8860B" metalness={0.8} roughness={0.3} />
       </mesh>
 
-      {/* Blade */}
-      <mesh castShadow position={[0, 0.85, 0]}>
+      {/* Blade extending forward from the fist */}
+      <mesh castShadow position={[0, 0.65, 0]}>
         <boxGeometry args={[0.09, 1.1, 0.03]} />
         <meshStandardMaterial
           color="#E8E8E8"
@@ -65,7 +71,7 @@ function RemoteSwordMesh() {
       </mesh>
 
       {/* Blade tip highlight */}
-      <mesh castShadow position={[0, 1.42, 0]}>
+      <mesh castShadow position={[0, 1.24, 0]}>
         <boxGeometry args={[0.09, 0.14, 0.03]} />
         <meshStandardMaterial
           color="#FFFFFF"
@@ -74,12 +80,6 @@ function RemoteSwordMesh() {
           emissive="#FFFFFF"
           emissiveIntensity={0.3}
         />
-      </mesh>
-
-      {/* Pommel */}
-      <mesh castShadow position={[0, -0.02, 0]}>
-        <sphereGeometry args={[0.06, 12, 12]} />
-        <meshStandardMaterial color="#B8860B" metalness={0.8} roughness={0.3} />
       </mesh>
     </group>
   );

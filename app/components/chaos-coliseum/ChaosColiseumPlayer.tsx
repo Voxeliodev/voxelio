@@ -78,25 +78,31 @@ export type ChaosPlayerApi = {
 };
 
 // ============================================================
-// SWORD MESH — positioned inside the character's right palm
+// SWORD MESH — gripped in the palm, blade pointing forward
 // ============================================================
 function SwordMesh() {
   return (
-    <group position={[0, 0.02, 0.05]} rotation={[0.1, 0, 0]}>
-      {/* Handle / grip — sits inside the palm */}
-      <mesh castShadow position={[0, 0.15, 0]}>
+    <group position={[0, 0, 0.08]} rotation={[-Math.PI / 2.5, 0, 0]}>
+      {/* Handle / grip — passes through the palm */}
+      <mesh castShadow position={[0, -0.1, 0]}>
         <boxGeometry args={[0.07, 0.3, 0.07]} />
         <meshStandardMaterial color="#4A2E1A" roughness={0.9} />
       </mesh>
 
-      {/* Crossguard */}
-      <mesh castShadow position={[0, 0.32, 0]}>
+      {/* Pommel below the fist */}
+      <mesh castShadow position={[0, -0.28, 0]}>
+        <sphereGeometry args={[0.06, 12, 12]} />
+        <meshStandardMaterial color="#B8860B" metalness={0.8} roughness={0.3} />
+      </mesh>
+
+      {/* Crossguard just above the fist */}
+      <mesh castShadow position={[0, 0.08, 0]}>
         <boxGeometry args={[0.32, 0.06, 0.08]} />
         <meshStandardMaterial color="#B8860B" metalness={0.8} roughness={0.3} />
       </mesh>
 
-      {/* Blade */}
-      <mesh castShadow position={[0, 0.85, 0]}>
+      {/* Blade extending forward from the fist */}
+      <mesh castShadow position={[0, 0.65, 0]}>
         <boxGeometry args={[0.09, 1.1, 0.03]} />
         <meshStandardMaterial
           color="#E8E8E8"
@@ -108,7 +114,7 @@ function SwordMesh() {
       </mesh>
 
       {/* Blade tip highlight */}
-      <mesh castShadow position={[0, 1.42, 0]}>
+      <mesh castShadow position={[0, 1.24, 0]}>
         <boxGeometry args={[0.09, 0.14, 0.03]} />
         <meshStandardMaterial
           color="#FFFFFF"
@@ -117,12 +123,6 @@ function SwordMesh() {
           emissive="#FFFFFF"
           emissiveIntensity={0.3}
         />
-      </mesh>
-
-      {/* Pommel */}
-      <mesh castShadow position={[0, -0.02, 0]}>
-        <sphereGeometry args={[0.06, 12, 12]} />
-        <meshStandardMaterial color="#B8860B" metalness={0.8} roughness={0.3} />
       </mesh>
     </group>
   );
@@ -369,7 +369,6 @@ export default function ChaosColiseumPlayer({
       return;
     }
 
-    // Sword swing animation decay
     if (swingTriggerRef.current !== lastSwingTriggerRef.current) {
       lastSwingTriggerRef.current = swingTriggerRef.current;
       chopSwingRef.current = 1;
@@ -381,7 +380,6 @@ export default function ChaosColiseumPlayer({
       );
     }
 
-    // Ground
     const grounded = checkGrounded();
     if (grounded) {
       coyoteTimerRef.current = COYOTE_TIME;
@@ -390,7 +388,6 @@ export default function ChaosColiseumPlayer({
     }
     groundedRef.current = grounded;
 
-    // Movement input
     let localX = 0;
     let localZ = 0;
     if (!inputDisabled) {
@@ -419,7 +416,6 @@ export default function ChaosColiseumPlayer({
     velocityXZRef.current.y +=
       (targetVZ - velocityXZRef.current.y) * Math.min(1, rate * dt);
 
-    // Knockback decay
     knockbackRef.current.x *= Math.pow(0.88, dt * 60);
     knockbackRef.current.y *= Math.pow(0.88, dt * 60);
     if (Math.abs(knockbackRef.current.x) < 0.1) knockbackRef.current.x = 0;
@@ -435,7 +431,6 @@ export default function ChaosColiseumPlayer({
       true
     );
 
-    // Jump
     jumpCooldownRef.current -= dt;
     const wantsJump = !inputDisabled && keys.jump;
     if (wantsJump && jumpCooldownRef.current <= 0) {
@@ -456,7 +451,6 @@ export default function ChaosColiseumPlayer({
       jumpRequestedRef.current = false;
     }
 
-    // Position & facing
     const pos = bodyRef.current.translation();
     const speed = Math.hypot(velocityXZRef.current.x, velocityXZRef.current.y);
     const isMoving = speed > 0.8;
@@ -479,7 +473,6 @@ export default function ChaosColiseumPlayer({
     }
     facingRef.current = visualRef.current?.rotation.y || 0;
 
-    // Camera
     if (visualRef.current) {
       const camYaw = cameraYawRef.current;
       const camPitch = cameraPitchRef.current;
@@ -499,7 +492,6 @@ export default function ChaosColiseumPlayer({
       camera.lookAt(lookX, lookY, lookZ);
     }
 
-    // Broadcast
     const now = performance.now();
     if (onPositionUpdate && now - lastBroadcastRef.current > 66) {
       lastBroadcastRef.current = now;
