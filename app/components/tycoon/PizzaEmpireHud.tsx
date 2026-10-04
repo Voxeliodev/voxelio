@@ -1,17 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import {
-  formatCoins,
-  type PizzaEmpireProgress,
-} from "../../../lib/pizzaEmpireProgress";
+import { type PizzaEmpireProgress } from "../../../lib/pizzaEmpireProgress";
 
 // ============================================================
 // PIZZA EMPIRE — HUD overlay
 // ============================================================
-// Top bar with coins, income rate, and stats. Bottom-right has
-// a small controls legend. Optional "Reset Empire" button in a
-// small menu for starting over.
+// Top bar with coins, income rate, and stats. Bottom-center has
+// a small controls legend. Top-right has a menu with reset.
 // ============================================================
 
 type Props = {
@@ -23,8 +19,15 @@ type Props = {
 };
 
 // ============================================================
-// INCOME RATE FORMATTER
+// NUMBER FORMATTERS
 // ============================================================
+function formatCoins(n: number): string {
+  if (n < 1000) return `${Math.floor(n)}`;
+  if (n < 1_000_000) return `${(n / 1000).toFixed(1)}K`;
+  if (n < 1_000_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  return `${(n / 1_000_000_000).toFixed(1)}B`;
+}
+
 function formatIncome(rate: number): string {
   if (rate < 10) return rate.toFixed(1);
   if (rate < 1000) return Math.round(rate).toString();
@@ -56,7 +59,7 @@ export default function PizzaEmpireHud({
           gap: 8,
         }}
       >
-        {/* Coins display — the star of the show */}
+        {/* Coins display */}
         <div
           style={{
             background:
@@ -336,8 +339,7 @@ export default function PizzaEmpireHud({
         {menuOpen && (
           <div
             style={{
-              background:
-                "linear-gradient(160deg, #1A1A2E 0%, #0F0F22 100%)",
+              background: "linear-gradient(160deg, #1A1A2E 0%, #0F0F22 100%)",
               border: "2px solid rgba(139, 95, 255, 0.5)",
               borderRadius: 12,
               padding: 8,
