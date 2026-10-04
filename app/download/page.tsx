@@ -99,7 +99,7 @@ export default function DownloadPage() {
                   color: "rgba(255,255,255,0.55)",
                 }}
               >
-                Version 1.0.0 · Windows · 82 MB
+                Version 1.0.1 · Windows · 82 MB
               </div>
             </div>
           </div>
@@ -120,6 +120,7 @@ export default function DownloadPage() {
               "Faster performance than the browser",
               "Sign in automatically from the website",
               "Press Esc to leave a game",
+              "Auto-updates to the latest version",
             ].map((text) => (
               <li
                 key={text}
@@ -151,10 +152,9 @@ export default function DownloadPage() {
             ))}
           </ul>
 
-          {/* Download button */}
+          {/* Download button — points to GitHub's "latest" redirect */}
           <a
-            href="/voxelio-player-setup.exe"
-            download
+            href="https://github.com/VoxelioDev/voxelio-player/releases/latest/download/Voxelio-Setup.exe"
             style={{
               display: "block",
               textAlign: "center",
