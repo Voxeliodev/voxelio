@@ -616,6 +616,17 @@ function TouchLookArea({ onLook }: { onLook: (dx: number, dy: number) => void })
   return <div onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} className="fixed top-0 right-0 w-1/2 h-full touch-none select-none z-20" style={{ background: "transparent" }} />;
 }
 
+// ============================================================
+// COMPUTE CHAT CHANNEL NAME
+// ============================================================
+// Each game uses its own movement channel, but chat should be shared across
+// the whole world. So the chat channel name is derived from the world ID only,
+// not the layout. This means all players inside the same world see the same
+// chat, regardless of which layout they're playing.
+function getChatChannelName(worldId: string): string {
+  return `world-chat-${worldId}`;
+}
+
 export default function WorldPage() {
   const params = useParams();
   const worldId = (params.id as string) || "";
@@ -644,6 +655,7 @@ export default function WorldPage() {
   const [liking, setLiking] = useState(false);
 
   const channelRef = useRef<any>(null);
+  const chatChannelRef = useRef<any>(null);
   const lobbyRef = useRef<any>(null);
   const localPosRef = useRef<{ pos: [number, number, number]; rotY: number }>({ pos: [0, CHARACTER_Y_OFFSET, 0], rotY: 0 });
   const userRef = useRef<User | null>(null);
@@ -776,7 +788,7 @@ export default function WorldPage() {
   useEffect(() => {
     if (!user || !worldId) return;
     const interval = setInterval(() => {
-      const channel = channelRef.current;
+      const channel = chatChannelRef.current;
       if (!channel) return;
       const queue = pendingChatRef.current;
       if (queue.length === 0) return;
@@ -834,7 +846,7 @@ export default function WorldPage() {
 
     setChatMessages((prev) => [...prev, msg]);
 
-    const channel = channelRef.current;
+    const channel = chatChannelRef.current;
     if (channel) {
       try {
         channel.send({ type: "broadcast", event: "chat", payload });
@@ -870,6 +882,7 @@ export default function WorldPage() {
     channel.send({ type: "broadcast", event: "move", payload: { id: me.id, username: me.username, displayId: me.displayId ?? null, avatarConfig: me.avatarConfig, pos, rotY } });
   }, []);
 
+  // ===== Movement channel (per-layout) =====
   useEffect(() => {
     if (!user || !worldId) return;
     const channel = supabase.channel(`world-${worldId}`, { config: { broadcast: { self: false }, presence: { key: user.id } } });
@@ -882,13 +895,6 @@ export default function WorldPage() {
           const next: RemotePlayerData = { id: payload.id, username: payload.username, displayId: payload.displayId, avatarConfig: payload.avatarConfig, targetPos: payload.pos, targetRotY: payload.rotY, lastSeen: Date.now() };
           if (existing >= 0) { const copy = [...prev]; copy[existing] = next; return copy; }
           return [...prev, next];
-        });
-      })
-      .on("broadcast", { event: "chat" }, ({ payload }) => {
-        if (!payload || payload.userId === user.id) return;
-        setChatMessages((prev) => {
-          if (prev.some((m) => m.id === payload.id)) return prev;
-          return [...prev, { id: payload.id, userId: payload.userId, username: payload.username, text: filterMessage(String(payload.text || "").slice(0, CHAT_MAX_LENGTH)), expiresAt: Date.now() + CHAT_LIFETIME_MS }];
         });
       })
       .on("presence", { event: "sync" }, () => {
@@ -918,6 +924,43 @@ export default function WorldPage() {
       channel.untrack();
       supabase.removeChannel(channel);
       channelRef.current = null;
+    };
+  }, [user?.id, worldId]);
+
+  // ===== Chat channel (shared across layouts in the same world) =====
+  useEffect(() => {
+    if (!user || !worldId) return;
+    const chatChannelName = getChatChannelName(worldId);
+    const channel = supabase.channel(chatChannelName, {
+      config: { broadcast: { self: false }, presence: { key: user.id } },
+    });
+
+    channel
+      .on("broadcast", { event: "chat" }, ({ payload }) => {
+        if (!payload || payload.userId === user.id) return;
+        setChatMessages((prev) => {
+          if (prev.some((m) => m.id === payload.id)) return prev;
+          return [...prev, {
+            id: payload.id,
+            userId: payload.userId,
+            username: payload.username,
+            text: filterMessage(String(payload.text || "").slice(0, CHAT_MAX_LENGTH)),
+            expiresAt: Date.now() + CHAT_LIFETIME_MS,
+          }];
+        });
+      })
+      .subscribe((status: string) => {
+        if (status === "SUBSCRIBED") {
+          channel.track({ id: user.id, username: user.username, worldId });
+        }
+      });
+
+    chatChannelRef.current = channel;
+
+    return () => {
+      channel.untrack();
+      supabase.removeChannel(channel);
+      chatChannelRef.current = null;
     };
   }, [user?.id, worldId]);
 
