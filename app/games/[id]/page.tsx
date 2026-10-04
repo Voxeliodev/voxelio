@@ -194,21 +194,10 @@ function Nametag({ username, userId }: { username: string; userId: string }) {
   );
 }
 
-function ChatBubble({ text }: { text: string }) {
-  return (
-    <Html position={[0, 3.2, 0]} center distanceFactor={10} zIndexRange={[15, 10]} style={{ pointerEvents: "none", overflow: "visible" }}>
-      <div style={{ display: "inline-block", whiteSpace: "nowrap", background: "rgba(26, 26, 46, 0.92)", color: "#FFFFFF", padding: "6px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.2)", fontSize: 14, lineHeight: 1.2, boxShadow: "0 4px 12px rgba(0,0,0,0.4)", fontFamily: "system-ui, -apple-system, sans-serif" }}>
-        {text}
-      </div>
-    </Html>
-  );
-}
-
 function RemotePlayer({
-  data, chatMessage, remotePositions,
+  data, remotePositions,
 }: {
   data: RemotePlayerData;
-  chatMessage?: ChatMessage | null;
   remotePositions: React.MutableRefObject<Map<string, THREE.Vector3>>;
 }) {
   const groupRef = useRef<THREE.Group>(null);
@@ -239,20 +228,18 @@ function RemotePlayer({
   return (
     <group ref={groupRef} position={data.targetPos}>
       <Nametag username={data.username} userId={data.id} />
-      {chatMessage && <ChatBubble text={chatMessage.text} />}
       <Character config={data.avatarConfig} hideAccessory walking={walkingRef.current} />
     </group>
   );
 }
 
 function LocalPlayer({
-  config, myId, blocks, onMove, chatMessage, inputDisabled, remotePositions, isTouchDevice,
+  config, myId, blocks, onMove, inputDisabled, remotePositions, isTouchDevice,
 }: {
   config: AvatarConfig;
   myId: string;
   blocks: BlockData[];
   onMove: (pos: [number, number, number], rotY: number) => void;
-  chatMessage?: ChatMessage | null;
   inputDisabled: boolean;
   remotePositions: React.MutableRefObject<Map<string, THREE.Vector3>>;
   isTouchDevice: boolean;
@@ -465,7 +452,6 @@ function LocalPlayer({
 
   return (
     <group ref={groupRef} position={safeSpawn}>
-      {chatMessage && <ChatBubble text={chatMessage.text} />}
       <Character config={config} hideAccessory walking={walking} />
     </group>
   );
@@ -481,14 +467,13 @@ function Ground({ color }: { color: string }) {
 }
 
 function WorldScene({
-  config, userId, username, world, others, chatMessages, onMove, inputDisabled, isTouchDevice,
+  config, userId, username, world, others, onMove, inputDisabled, isTouchDevice,
 }: {
   config: AvatarConfig;
   userId: string;
   username: string;
   world: World;
   others: RemotePlayerData[];
-  chatMessages: ChatMessage[];
   onMove: (pos: [number, number, number], rotY: number) => void;
   inputDisabled: boolean;
   isTouchDevice: boolean;
@@ -496,15 +481,6 @@ function WorldScene({
   const layout = getLayout(world.layout);
   const blocks = layout.blocks;
   const remotePositions = useRef<Map<string, THREE.Vector3>>(new Map());
-
-  const latestFor = (id: string): ChatMessage | null => {
-    let best: ChatMessage | null = null;
-    for (const m of chatMessages) {
-      if (m.userId !== id) continue;
-      if (!best || m.expiresAt > best.expiresAt) best = m;
-    }
-    return best;
-  };
 
   return (
     <>
@@ -519,9 +495,9 @@ function WorldScene({
           <meshStandardMaterial color={b.color} roughness={0.75} />
         </mesh>
       ))}
-      <LocalPlayer config={config} myId={userId} blocks={blocks} onMove={onMove} chatMessage={latestFor(userId)} inputDisabled={inputDisabled} remotePositions={remotePositions} isTouchDevice={isTouchDevice} />
+      <LocalPlayer config={config} myId={userId} blocks={blocks} onMove={onMove} inputDisabled={inputDisabled} remotePositions={remotePositions} isTouchDevice={isTouchDevice} />
       {others.map((p) => (
-        <RemotePlayer key={p.id} data={p} chatMessage={latestFor(p.id)} remotePositions={remotePositions} />
+        <RemotePlayer key={p.id} data={p} remotePositions={remotePositions} />
       ))}
     </>
   );
@@ -618,14 +594,14 @@ function TouchLookArea({ onLook }: { onLook: (dx: number, dy: number) => void })
 }
 
 // ============================================================
-// CHAT CHANNEL NAME — shared across all layouts in the same world
+// CHAT CHANNEL NAME
 // ============================================================
 function getChatChannelName(worldId: string): string {
   return `world-chat-${worldId}`;
 }
 
 // ============================================================
-// CHAT OVERLAY — floating message list shown on top of ANY game
+// CHAT OVERLAY — the ONLY chat display in the game
 // ============================================================
 function ChatOverlay({ messages }: { messages: ChatMessage[] }) {
   const now = Date.now();
@@ -698,7 +674,6 @@ export default function WorldPage() {
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   const [others, setOthers] = useState<RemotePlayerData[]>([]);
   const [onlineCount, setOnlineCount] = useState(1);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [overlayMessages, setOverlayMessages] = useState<ChatMessage[]>([]);
 
   const [chatOpen, setChatOpen] = useState(false);
@@ -835,7 +810,6 @@ export default function WorldPage() {
   useEffect(() => {
     const timer = setInterval(() => {
       const now = Date.now();
-      setChatMessages((prev) => prev.filter((m) => m.expiresAt > now));
       setOverlayMessages((prev) => prev.filter((m) => m.expiresAt > now));
     }, 500);
     return () => clearInterval(timer);
@@ -865,10 +839,6 @@ export default function WorldPage() {
   }, [user, worldId]);
 
   const addChatMessage = useCallback((msg: ChatMessage) => {
-    setChatMessages((prev) => {
-      if (prev.some((m) => m.id === msg.id)) return prev;
-      return [...prev, msg];
-    });
     const overlayMsg: ChatMessage = {
       ...msg,
       expiresAt: Date.now() + CHAT_OVERLAY_LIFETIME_MS,
@@ -1071,8 +1041,6 @@ export default function WorldPage() {
 
   if (!world) return <div className="fixed inset-0 bg-black flex items-center justify-center text-white">Loading world…</div>;
 
-  const isGameLayout = world.layout === "obby" || world.layout === "lumberyard" || world.layout === "chaos-coliseum";
-
   return (
     <div className="fixed inset-0 bg-black overflow-hidden">
       {world.layout === "obby" ? (
@@ -1105,12 +1073,12 @@ export default function WorldPage() {
       ) : (
         <KeyboardControls map={KEY_MAP}>
           <Canvas shadows camera={{ position: [0, 5, 9], fov: 55 }} dpr={[1, 2]} style={{ background: "#87CEEB" }}>
-            <WorldScene config={user.avatarConfig} userId={user.id} username={user.username} world={world} others={others} chatMessages={chatMessages} onMove={handleMove} inputDisabled={chatOpen} isTouchDevice={isTouchDevice} />
+            <WorldScene config={user.avatarConfig} userId={user.id} username={user.username} world={world} others={others} onMove={handleMove} inputDisabled={chatOpen} isTouchDevice={isTouchDevice} />
           </Canvas>
         </KeyboardControls>
       )}
 
-      {isGameLayout && <ChatOverlay messages={overlayMessages} />}
+      <ChatOverlay messages={overlayMessages} />
 
       {isTouchDevice && !chatOpen && world.layout !== "obby" && world.layout !== "lumberyard" && world.layout !== "chaos-coliseum" && (<><TouchLookArea onLook={touchLook} /><Joystick /><JumpButton /></>)}
 
