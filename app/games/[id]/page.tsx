@@ -18,6 +18,7 @@ import Sawmill from "@/app/components/lumberyard/Sawmill";
 import { getCurrentUser, formatVoxbux, awardPlayedWithOwner, type User, type AvatarConfig } from "../../../lib/auth";
 import { supabase } from "../../../lib/supabase";
 import { playError } from "../../../lib/sounds";
+import { playInVoxelioApp } from "../../../lib/voxelioPlayer";
 import {
   fetchWorldById,
   incrementWorldVisits,
@@ -272,7 +273,7 @@ function LocalPlayer({
     let lastY = 0;
 
     const onMouseDown = (e: MouseEvent) => {
-      if (e.button === 0 || e.button === 2) {
+      if (e.button === 2) {
         dragging = true;
         lastX = e.clientX;
         lastY = e.clientY;
@@ -675,6 +676,7 @@ export default function WorldPage() {
   const [others, setOthers] = useState<RemotePlayerData[]>([]);
   const [onlineCount, setOnlineCount] = useState(1);
   const [overlayMessages, setOverlayMessages] = useState<ChatMessage[]>([]);
+  const [launchStatus, setLaunchStatus] = useState<"idle" | "launching" | "not-installed" | "failed">("idle");
 
   const [chatOpen, setChatOpen] = useState(false);
   const [draft, setDraft] = useState("");
@@ -929,6 +931,22 @@ export default function WorldPage() {
     channel.send({ type: "broadcast", event: "move", payload: { id: me.id, username: me.username, displayId: me.displayId ?? null, avatarConfig: me.avatarConfig, pos, rotY } });
   }, []);
 
+  const handlePlayInApp = useCallback(async () => {
+    if (launchStatus === "launching") return;
+    setLaunchStatus("launching");
+
+    const result = await playInVoxelioApp(worldId);
+
+    if (result.success) {
+      setTimeout(() => setLaunchStatus("idle"), 2000);
+    } else if (result.reason === "not_installed") {
+      setLaunchStatus("not-installed");
+    } else {
+      setLaunchStatus("failed");
+      setTimeout(() => setLaunchStatus("idle"), 2500);
+    }
+  }, [worldId, launchStatus]);
+
   useEffect(() => {
     if (!user || !worldId) return;
     const channel = supabase.channel(`world-${worldId}`, { config: { broadcast: { self: false }, presence: { key: user.id } } });
@@ -1090,6 +1108,112 @@ export default function WorldPage() {
         </div>
       </div>
 
+      {/* ===== PLAY IN VOXELIO APP BUTTON ===== */}
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30">
+        <button
+          onClick={handlePlayInApp}
+          disabled={launchStatus === "launching"}
+          className="flex items-center gap-2 rounded-xl font-black text-sm px-5 py-2.5 shadow-2xl transition active:scale-[0.98]"
+          style={{
+            background:
+              launchStatus === "launching"
+                ? "linear-gradient(180deg, #6B7280, #4B5563)"
+                : "linear-gradient(180deg, #22C55E 0%, #16A34A 100%)",
+            border: "2px solid #15803D",
+            color: "white",
+            boxShadow:
+              launchStatus === "launching"
+                ? "0 6px 20px rgba(107,114,128,0.4)"
+                : "0 6px 20px rgba(34,197,94,0.5), inset 0 1px 0 rgba(255,255,255,0.25)",
+            cursor: launchStatus === "launching" ? "wait" : "pointer",
+          }}
+        >
+          <span style={{ fontSize: 16 }}>▶</span>
+          <span>
+            {launchStatus === "launching"
+              ? "Launching…"
+              : launchStatus === "failed"
+              ? "Failed — try again"
+              : "Play in Voxelio App"}
+          </span>
+        </button>
+      </div>
+
+      {/* ===== NOT-INSTALLED POPUP ===== */}
+      {launchStatus === "not-installed" && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{
+            background: "rgba(0,0,0,0.75)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+          }}
+          onClick={() => setLaunchStatus("idle")}
+        >
+          <div
+            className="rounded-2xl p-6 max-w-md mx-4 text-center"
+            style={{
+              background:
+                "linear-gradient(160deg, #1A1A2E 0%, #0F0F22 50%, #0A0A1E 100%)",
+              border: "2px solid rgba(139, 95, 255, 0.4)",
+              boxShadow:
+                "0 20px 60px rgba(0,0,0,0.8), 0 0 40px rgba(139,95,255,0.2)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 56, marginBottom: 12 }}>🎮</div>
+            <div
+              style={{
+                fontSize: 22,
+                fontWeight: 900,
+                color: "white",
+                marginBottom: 8,
+              }}
+            >
+              Voxelio Player Not Installed
+            </div>
+            <div
+              style={{
+                fontSize: 14,
+                color: "rgba(255,255,255,0.65)",
+                marginBottom: 24,
+                lineHeight: 1.5,
+              }}
+            >
+              To play Voxelio games in full-screen, download the Voxelio Player app.
+            </div>
+            <div className="flex gap-2 justify-center">
+              <Link
+                href="/download"
+                className="rounded-lg font-black text-sm px-5 py-2.5 no-underline"
+                style={{
+                  background:
+                    "linear-gradient(180deg, #8B5FFF 0%, #6C3CE0 50%, #5A2FC7 100%)",
+                  border: "2px solid #4A1FA8",
+                  color: "white",
+                  boxShadow:
+                    "0 6px 20px rgba(108,60,224,0.5), inset 0 1px 0 rgba(255,255,255,0.25)",
+                }}
+              >
+                ⬇ Download App
+              </Link>
+              <button
+                onClick={() => setLaunchStatus("idle")}
+                className="rounded-lg font-bold text-sm px-5 py-2.5"
+                style={{
+                  background: "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(255,255,255,0.15)",
+                  color: "rgba(255,255,255,0.8)",
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="absolute top-3 right-3 flex items-center gap-2 z-30">
         <button onClick={handleLike} disabled={liking} title={liked ? "Unlike this world" : "Like this world"}
           className={`backdrop-blur px-3 py-2 rounded border text-white text-xs font-bold flex items-center gap-2 transition ${liked ? "bg-pink-500/80 border-pink-300 hover:bg-pink-500" : "bg-black/60 border-white/20 hover:bg-black/80"} ${liking ? "opacity-70 cursor-wait" : ""}`}>
@@ -1112,7 +1236,7 @@ export default function WorldPage() {
           <p className="font-bold mb-1">🎮 Controls</p>
           <p><kbd className="bg-white/10 px-1 rounded">W</kbd> <kbd className="bg-white/10 px-1 rounded">A</kbd> <kbd className="bg-white/10 px-1 rounded">S</kbd> <kbd className="bg-white/10 px-1 rounded">D</kbd> — Move</p>
           <p><kbd className="bg-white/10 px-1 rounded">Space</kbd> — Jump</p>
-          <p className="text-white/70">🖱️ <strong>Drag</strong> to look around · <strong>Scroll</strong> to zoom</p>
+          <p className="text-white/70">🖱️ <strong>Right-click drag</strong> to look around · <strong>Scroll</strong> to zoom</p>
           <p><kbd className="bg-white/10 px-1 rounded">T</kbd> — Chat</p>
         </div>
       )}
