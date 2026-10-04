@@ -19,17 +19,13 @@ import {
   BUY_BUTTON_DISABLED_COLOR,
   CASH_REGISTER_COLOR,
   CASH_REGISTER_DARK,
-  getNextOvenCost,
+  MAX_OVEN_LEVEL,
+  getOvenUpgradeCost,
 } from "../../../lib/pizzaEmpire";
+import { getNextOvenCost } from "../../../lib/pizzaEmpireProgress";
 
 // ============================================================
 // PIZZA PLOT — one player's plot
-// ============================================================
-// Renders the plot floor, edge walls, all 12 ovens in a grid,
-// the buy button, and the cash register.
-//
-// The player who owns the plot can click the ovens and buy
-// button. Other players can walk on the plot but can't interact.
 // ============================================================
 
 type Props = {
@@ -43,7 +39,7 @@ type Props = {
 };
 
 // ============================================================
-// BUY BUTTON — big green pad that purchases the next oven
+// BUY BUTTON
 // ============================================================
 function BuyButton({
   coins,
@@ -93,13 +89,13 @@ function BuyButton({
         document.body.style.cursor = "";
       }}
     >
-      {/* Base pad — the clickable slab */}
+      {/* Base pad */}
       <mesh position={[0, -0.2, 0]} receiveShadow>
         <boxGeometry args={[BUY_BUTTON_SIZE[0] + 0.4, 0.4, BUY_BUTTON_SIZE[2] + 0.4]} />
         <meshStandardMaterial color="#2A2A2A" roughness={0.9} />
       </mesh>
 
-      {/* Button top — colored */}
+      {/* Button top */}
       <mesh
         position={[0, pressed ? -0.2 : 0, 0]}
         castShadow
@@ -114,11 +110,7 @@ function BuyButton({
         />
       </mesh>
 
-      {/* Label text — floating HTML-ish plane using emissive material */}
-      <mesh position={[0, 1.1, 0]} rotation={[0, 0, 0]}>
-        <planeGeometry args={[3.4, 0.7]} />
-        <meshBasicMaterial color="transparent" transparent opacity={0} />
-      </mesh>
+      {/* Overhead label panel */}
       <group position={[0, 1.1, 0]}>
         <mesh>
           <planeGeometry args={[3.6, 0.8]} />
@@ -130,7 +122,7 @@ function BuyButton({
         </mesh>
       </group>
 
-      {/* Sparkle particles when affordable */}
+      {/* Sparkle particles when affordable and hovered */}
       {active && hovered && (
         <Sparkles color="#FFD700" count={6} spread={1.5} position={[0, 1, 0]} />
       )}
@@ -139,7 +131,7 @@ function BuyButton({
 }
 
 // ============================================================
-// SIMPLE SPARKLES — small floating particles for feedback
+// SPARKLES
 // ============================================================
 function Sparkles({
   color,
@@ -169,7 +161,8 @@ function Sparkles({
     groupRef.current.children.forEach((child, i) => {
       const data = initialPositions.current[i];
       if (!data) return;
-      child.position.y = data.y + Math.sin(t * data.speed * 2 + data.phase) * 0.4;
+      child.position.y =
+        data.y + Math.sin(t * data.speed * 2 + data.phase) * 0.4;
       const scale = 0.6 + Math.sin(t * 3 + data.phase) * 0.3;
       child.scale.set(scale, scale, scale);
     });
@@ -188,8 +181,7 @@ function Sparkles({
 }
 
 // ============================================================
-// CASH REGISTER — decorational gold register, glowing when
-// income is flowing
+// CASH REGISTER
 // ============================================================
 function CashRegister({ hasIncome }: { hasIncome: boolean }) {
   const lightRef = useRef<THREE.PointLight>(null);
@@ -198,7 +190,6 @@ function CashRegister({ hasIncome }: { hasIncome: boolean }) {
     if (!lightRef.current) return;
     const t = state.clock.elapsedTime;
     if (hasIncome) {
-      // Gentle pulse
       lightRef.current.intensity = 0.6 + Math.sin(t * 2) * 0.2;
     } else {
       lightRef.current.intensity = 0.15;
@@ -210,16 +201,30 @@ function CashRegister({ hasIncome }: { hasIncome: boolean }) {
       {/* Register body */}
       <mesh position={[0, CASH_REGISTER_SIZE[1] / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={CASH_REGISTER_SIZE} />
-        <meshStandardMaterial color={CASH_REGISTER_COLOR} metalness={0.7} roughness={0.3} />
+        <meshStandardMaterial
+          color={CASH_REGISTER_COLOR}
+          metalness={0.7}
+          roughness={0.3}
+        />
       </mesh>
 
-      {/* Darker trim band */}
+      {/* Trim band */}
       <mesh position={[0, CASH_REGISTER_SIZE[1] * 0.6, 0]}>
-        <boxGeometry args={[CASH_REGISTER_SIZE[0] + 0.05, 0.15, CASH_REGISTER_SIZE[2] + 0.05]} />
-        <meshStandardMaterial color={CASH_REGISTER_DARK} metalness={0.6} roughness={0.4} />
+        <boxGeometry
+          args={[
+            CASH_REGISTER_SIZE[0] + 0.05,
+            0.15,
+            CASH_REGISTER_SIZE[2] + 0.05,
+          ]}
+        />
+        <meshStandardMaterial
+          color={CASH_REGISTER_DARK}
+          metalness={0.6}
+          roughness={0.4}
+        />
       </mesh>
 
-      {/* Screen — small dark panel on top */}
+      {/* Screen */}
       <mesh position={[0, CASH_REGISTER_SIZE[1] + 0.1, 0]}>
         <boxGeometry args={[1.4, 0.6, 1.4]} />
         <meshStandardMaterial color="#1A1A1A" roughness={0.4} />
@@ -231,14 +236,14 @@ function CashRegister({ hasIncome }: { hasIncome: boolean }) {
         <meshBasicMaterial color="#22C55E" />
       </mesh>
 
-      {/* Floating $ symbol above */}
+      {/* Floating $ when producing income */}
       {hasIncome && (
         <group position={[0, CASH_REGISTER_SIZE[1] + 1.2, 0]}>
           <CashFloat />
         </group>
       )}
 
-      {/* Light above register */}
+      {/* Light */}
       <pointLight
         ref={lightRef}
         position={[0, CASH_REGISTER_SIZE[1] + 0.5, 0]}
@@ -250,7 +255,6 @@ function CashRegister({ hasIncome }: { hasIncome: boolean }) {
   );
 }
 
-// A floating "$" made of three simple meshes
 function CashFloat() {
   const groupRef = useRef<THREE.Group>(null);
 
@@ -263,17 +267,14 @@ function CashFloat() {
 
   return (
     <group ref={groupRef}>
-      {/* Vertical bar of the $ */}
       <mesh>
         <boxGeometry args={[0.08, 0.55, 0.08]} />
         <meshBasicMaterial color="#FFD700" />
       </mesh>
-      {/* Top curve */}
       <mesh position={[0, 0.18, 0]}>
         <boxGeometry args={[0.22, 0.08, 0.08]} />
         <meshBasicMaterial color="#FFD700" />
       </mesh>
-      {/* Bottom curve */}
       <mesh position={[0, -0.18, 0]}>
         <boxGeometry args={[0.22, 0.08, 0.08]} />
         <meshBasicMaterial color="#FFD700" />
@@ -283,18 +284,16 @@ function CashFloat() {
 }
 
 // ============================================================
-// PLOT FLOOR — the raised platform the player stands on
+// PLOT FLOOR
 // ============================================================
 function PlotFloor() {
   return (
     <>
-      {/* Main floor slab */}
       <mesh position={[0, PLOT_FLOOR_Y - 0.5, 0]} receiveShadow>
         <boxGeometry args={[PLOT_SIZE, 1, PLOT_SIZE]} />
         <meshStandardMaterial color={PLOT_FLOOR_COLOR} roughness={0.9} />
       </mesh>
 
-      {/* Edge rim — decorative border */}
       <mesh position={[0, PLOT_FLOOR_Y - 0.4, 0]} receiveShadow>
         <boxGeometry args={[PLOT_SIZE + 0.4, 0.4, PLOT_SIZE + 0.4]} />
         <meshStandardMaterial color={PLOT_EDGE_COLOR} roughness={0.85} />
@@ -315,40 +314,50 @@ export default function PizzaPlot({
   onBuyOven,
   onUpgradeOven,
 }: Props) {
-  // Compute whether any oven is producing income — for the register glow
   const hasIncome = ovens.some((o) => o.owned && o.level > 0);
 
   return (
     <group position={position}>
-      {/* Floor + rim */}
       <PlotFloor />
 
-      {/* 12 ovens arranged in a 4x3 grid */}
-      {OVEN_SLOT_OFFSETS.map((offset, i) => (
-        <group key={i} position={offset}>
-          <PizzaOven
-            oven={ovens[i] || { owned: false, level: 0 }}
-            slotIndex={i}
-            isOwned={isOwnedByMe}
-            canUpgrade={
-              isOwnedByMe &&
-              (ovens[i]?.owned ? ovens[i].level < 5 : coins >= 0)
-            }
-            onClick={(slot) => {
-              if (!isOwnedByMe) return;
-              // If unowned → buy next oven
-              // If owned → upgrade this oven
-              if (!ovens[slot]?.owned) {
-                onBuyOven();
-              } else {
-                onUpgradeOven(slot);
-              }
-            }}
-          />
-        </group>
-      ))}
+      {OVEN_SLOT_OFFSETS.map((offset, i) => {
+        const oven = ovens[i] || { owned: false, level: 0 };
 
-      {/* Buy button — placed at the front of the plot */}
+        // Compute whether this specific oven can currently be acted on
+        let canUpgrade = false;
+        if (isOwnedByMe) {
+          if (oven.owned) {
+            // Owned oven: can upgrade if not maxed and can afford it
+            canUpgrade =
+              oven.level < MAX_OVEN_LEVEL &&
+              coins >= getOvenUpgradeCost(oven.level);
+          } else {
+            // Unowned slot: can buy if this is the next oven in line
+            const nextCost = getNextOvenCost(ovens);
+            canUpgrade = nextCost !== null && coins >= nextCost;
+          }
+        }
+
+        return (
+          <group key={i} position={offset}>
+            <PizzaOven
+              oven={oven}
+              slotIndex={i}
+              isOwned={isOwnedByMe}
+              canUpgrade={canUpgrade}
+              onClick={(slot) => {
+                if (!isOwnedByMe) return;
+                if (!ovens[slot]?.owned) {
+                  onBuyOven();
+                } else {
+                  onUpgradeOven(slot);
+                }
+              }}
+            />
+          </group>
+        );
+      })}
+
       <BuyButton
         coins={coins}
         ovens={ovens}
@@ -356,7 +365,6 @@ export default function PizzaPlot({
         onBuy={onBuyOven}
       />
 
-      {/* Cash register at the back */}
       <CashRegister hasIncome={hasIncome} />
     </group>
   );
