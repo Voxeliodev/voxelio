@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
-import AccountBadge from "../../components/AccountBadge";
-import { getCurrentUser, formatVoxbux, awardPlayedWithOwner, type User } from "../../../lib/auth";
+import { getCurrentUser, formatVoxbux, type User } from "../../../lib/auth";
 import { supabase } from "../../../lib/supabase";
 import {
   fetchWorldById,
@@ -18,10 +17,6 @@ import { playInVoxelioApp } from "../../../lib/voxelioPlayer";
 
 // ============================================================
 // GAME DETAILS PAGE — /games/[id]
-// ============================================================
-// Shows the game's info, stats, and a big Play button. Games are
-// only playable through the Voxelio Player desktop app — this page
-// never renders the game itself.
 // ============================================================
 
 export default function GameDetailsPage() {
@@ -42,10 +37,8 @@ export default function GameDetailsPage() {
   >("idle");
 
   const [activeTab, setActiveTab] = useState<"about" | "servers">("about");
+  const [currentOnline, setCurrentOnline] = useState(0);
 
-  // ============================================================
-  // LOAD USER + WORLD
-  // ============================================================
   useEffect(() => {
     const u = getCurrentUser();
     setUser(u);
@@ -67,9 +60,47 @@ export default function GameDetailsPage() {
     });
   }, [worldId]);
 
-  // ============================================================
-  // LIKE HANDLER
-  // ============================================================
+  // ===== Online count =====
+  useEffect(() => {
+    if (!worldId) return;
+    const observerKey = `details-${Math.random().toString(36).slice(2, 10)}`;
+    const lobby = supabase.channel("world-lobby", {
+      config: { presence: { key: observerKey } },
+    });
+
+    const update = () => {
+      try {
+        const state = lobby.presenceState() as Record<string, any[]>;
+        let count = 0;
+        for (const key of Object.keys(state)) {
+          const entries = state[key];
+          if (!Array.isArray(entries)) continue;
+          for (const e of entries) {
+            if (e && typeof e === "object" && (e as any).worldId === worldId) {
+              count += 1;
+            }
+          }
+        }
+        setCurrentOnline(count);
+      } catch {
+        setCurrentOnline(0);
+      }
+    };
+
+    lobby
+      .on("presence", { event: "sync" }, update)
+      .on("presence", { event: "join" }, update)
+      .on("presence", { event: "leave" }, update)
+      .subscribe(() => update());
+
+    const interval = setInterval(update, 4000);
+
+    return () => {
+      clearInterval(interval);
+      supabase.removeChannel(lobby);
+    };
+  }, [worldId]);
+
   const handleLike = useCallback(async () => {
     if (!user || liking) return;
     setLiking(true);
@@ -85,9 +116,6 @@ export default function GameDetailsPage() {
     setLiking(false);
   }, [user, liking, liked, likeCount, worldId]);
 
-  // ============================================================
-  // PLAY IN APP
-  // ============================================================
   const handlePlay = useCallback(async () => {
     if (launchStatus === "launching") return;
     setLaunchStatus("launching");
@@ -104,21 +132,9 @@ export default function GameDetailsPage() {
     }
   }, [worldId, launchStatus]);
 
-  // ============================================================
-  // LOADING
-  // ============================================================
   if (!mounted) {
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          background: "#1A1A2E",
-          color: "white",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
+      <div className="py-20 text-center text-[#666] font-semibold">
         Loading…
       </div>
     );
@@ -126,34 +142,17 @@ export default function GameDetailsPage() {
 
   if (notFound) {
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          background: "#1A1A2E",
-          color: "white",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 24,
-          gap: 16,
-        }}
-      >
-        <div style={{ fontSize: 64 }}>🌍</div>
-        <div style={{ fontSize: 28, fontWeight: 900 }}>World Not Found</div>
-        <p style={{ color: "rgba(255,255,255,0.6)" }}>
-          This world doesn't exist or was removed.
+      <div className="bg-white border-2 border-dashed border-[#C5C8D6] rounded p-16 text-center">
+        <div className="text-7xl mb-4">🌍</div>
+        <h2 className="text-2xl font-black text-[#1A1A2E] mb-2">
+          World Not Found
+        </h2>
+        <p className="text-sm text-[#666] mb-6">
+          This world doesn&apos;t exist or was removed.
         </p>
         <Link
           href="/games"
-          style={{
-            background: "linear-gradient(180deg, #7B4FF7, #5A2FC7)",
-            color: "white",
-            padding: "10px 24px",
-            borderRadius: 8,
-            textDecoration: "none",
-            fontWeight: 700,
-          }}
+          className="inline-block bg-[#6C3CE0] hover:bg-[#5A2FC7] text-white font-bold text-sm px-6 py-2.5 rounded border-2 border-[#4A1FA8]"
         >
           ← Back to Games
         </Link>
@@ -163,350 +162,119 @@ export default function GameDetailsPage() {
 
   if (!world) {
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          background: "#1A1A2E",
-          color: "white",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
+      <div className="py-20 text-center text-[#666] font-semibold">
         Loading world…
       </div>
     );
   }
 
-  // ============================================================
-  // RENDER
-  // ============================================================
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#0D0D15",
-        color: "white",
-        fontFamily: "system-ui, -apple-system, sans-serif",
-        paddingBottom: 60,
-      }}
-    >
-      {/* ===== TOP NAV (keeps existing site chrome feel) ===== */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "12px 24px",
-          borderBottom: "1px solid rgba(255,255,255,0.08)",
-          background: "#0A0A12",
-          position: "sticky",
-          top: 0,
-          zIndex: 40,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
-          <Link
-            href="/games"
-            style={{
-              color: "rgba(255,255,255,0.7)",
-              textDecoration: "none",
-              fontSize: 13,
-              fontWeight: 600,
-            }}
-          >
-            ← Games
-          </Link>
-          <Link
-            href="/"
-            style={{
-              color: "white",
-              textDecoration: "none",
-              fontWeight: 900,
-              fontSize: 16,
-              letterSpacing: "0.02em",
-            }}
-          >
-            VOXELIO
-          </Link>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {user ? (
-            <>
-              <span
-                style={{
-                  color: "#FFD700",
-                  fontWeight: 700,
-                  fontSize: 13,
-                }}
-              >
-                {formatVoxbux(user.voxbux)}
-              </span>
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontSize: 13,
-                  fontWeight: 700,
-                }}
-              >
-                {user.username}
-                <AccountBadge
-                  username={user.username}
-                  userId={user.id}
-                  size={14}
-                />
-              </span>
-            </>
-          ) : (
-            <Link
-              href="/signin"
-              style={{
-                background: "linear-gradient(180deg, #7B4FF7, #5A2FC7)",
-                color: "white",
-                padding: "6px 16px",
-                borderRadius: 6,
-                textDecoration: "none",
-                fontSize: 13,
-                fontWeight: 700,
-              }}
-            >
-              Sign In
-            </Link>
-          )}
-        </div>
-      </div>
-
-      {/* ===== MAIN CONTENT ===== */}
-      <div
-        style={{
-          maxWidth: 1200,
-          margin: "0 auto",
-          padding: "24px 24px 0",
-        }}
-      >
-        {/* ===== GAME HEADER: image left, info right ===== */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)",
-            gap: 32,
-            alignItems: "start",
-          }}
-        >
-          {/* ---- LEFT: Thumbnail ---- */}
+    <div className="space-y-6">
+      {/* ===== GAME HEADER: thumbnail + info ===== */}
+      <div className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden">
+        <div className="grid md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-0">
+          {/* LEFT: Thumbnail */}
           <div
+            className="aspect-video relative overflow-hidden"
             style={{
-              aspectRatio: "16 / 9",
               background: world.imageUrl
                 ? `url(${world.imageUrl}) center/cover`
-                : world.thumbnailColor || "#7B2FF7",
-              borderRadius: 12,
-              position: "relative",
-              overflow: "hidden",
-              boxShadow: "0 20px 60px rgba(0,0,0,0.6)",
-              border: "1px solid rgba(255,255,255,0.08)",
+                : `linear-gradient(135deg, ${world.thumbnailColor} 0%, ${world.thumbnailColor}dd 100%)`,
             }}
           >
             {!world.imageUrl && (
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 96,
-                }}
-              >
+              <div className="absolute inset-0 flex items-center justify-center text-[120px]">
                 {world.thumbnailEmoji}
               </div>
             )}
           </div>
 
-          {/* ---- RIGHT: Game info + Play button ---- */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <h1
-              style={{
-                fontSize: 34,
-                fontWeight: 900,
-                margin: 0,
-                letterSpacing: "0.01em",
-                lineHeight: 1.1,
-              }}
-            >
+          {/* RIGHT: Info + Play */}
+          <div className="p-6 flex flex-col gap-3 border-l-2 border-[#E5E7F0]">
+            <h1 className="text-3xl font-black text-[#1A1A2E] leading-tight">
               {world.name}
             </h1>
 
-            {/* Creator row */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                fontSize: 14,
-                color: "rgba(255,255,255,0.7)",
-              }}
-            >
-              <span>By</span>
-              <span
-                style={{
-                  color: "#00E5FF",
-                  fontWeight: 700,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                }}
-              >
+            <div className="text-sm text-[#666]">
+              By{" "}
+              <span className="text-[#4A1FA8] font-bold">
                 @{world.creator || "voxelio"}
               </span>
             </div>
 
-            {/* Maturity + category */}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 4,
-                fontSize: 13,
-                color: "rgba(255,255,255,0.55)",
-              }}
-            >
+            <div className="text-xs text-[#666] space-y-1">
               <div>
-                <strong style={{ color: "white" }}>Category:</strong>{" "}
-                {world.category}
+                <strong className="text-[#1A1A2E]">Category:</strong>{" "}
+                <span className="capitalize">{world.category}</span>
               </div>
               <div>
-                <strong style={{ color: "white" }}>Max Players:</strong>{" "}
+                <strong className="text-[#1A1A2E]">Max Players:</strong>{" "}
                 {world.maxPlayers}
               </div>
             </div>
 
-            {/* PLAY BUTTON + icons */}
-            <div style={{ marginTop: 12 }}>
-              <div style={{ display: "flex", gap: 8 }}>
-                {/* Big Play button */}
-                <button
-                  onClick={handlePlay}
-                  disabled={launchStatus === "launching"}
-                  style={{
-                    flex: 1,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 10,
-                    height: 56,
-                    borderRadius: 8,
-                    border: "none",
-                    background:
-                      launchStatus === "launching"
-                        ? "linear-gradient(180deg, #6B7280, #4B5563)"
-                        : "linear-gradient(180deg, #00A2FF 0%, #0072C7 100%)",
-                    color: "white",
-                    fontSize: 18,
-                    fontWeight: 900,
-                    cursor:
-                      launchStatus === "launching" ? "wait" : "pointer",
-                    boxShadow:
-                      launchStatus === "launching"
-                        ? "0 4px 16px rgba(107,114,128,0.4)"
-                        : "0 4px 16px rgba(0,162,255,0.4)",
-                    transition: "transform 0.15s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (launchStatus !== "launching")
-                      e.currentTarget.style.transform = "scale(1.02)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = "scale(1)";
-                  }}
-                >
-                  <span style={{ fontSize: 20 }}>
-                    {launchStatus === "launching" ? "⏳" : "▶"}
-                  </span>
-                  <span>
-                    {launchStatus === "launching"
-                      ? "Launching…"
-                      : launchStatus === "failed"
-                      ? "Try Again"
-                      : "Play"}
-                  </span>
-                </button>
-              </div>
+            {/* PLAY BUTTON */}
+            <button
+              onClick={handlePlay}
+              disabled={launchStatus === "launching"}
+              className="mt-3 w-full h-14 rounded-lg font-black text-lg text-white flex items-center justify-center gap-3 transition-all hover:scale-[1.01] active:scale-[0.99]"
+              style={{
+                background:
+                  launchStatus === "launching"
+                    ? "linear-gradient(180deg, #9CA3AF, #6B7280)"
+                    : "linear-gradient(180deg, #00A2FF 0%, #0072C7 100%)",
+                boxShadow:
+                  launchStatus === "launching"
+                    ? "0 4px 12px rgba(107,114,128,0.4)"
+                    : "0 6px 20px rgba(0,162,255,0.4)",
+                border: "2px solid #005A9E",
+                cursor: launchStatus === "launching" ? "wait" : "pointer",
+              }}
+            >
+              <span className="text-xl">
+                {launchStatus === "launching" ? "⏳" : "▶"}
+              </span>
+              <span>
+                {launchStatus === "launching"
+                  ? "Launching…"
+                  : launchStatus === "failed"
+                  ? "Try Again"
+                  : "Play"}
+              </span>
+            </button>
 
-              {/* Under-play row: Like, Favorite, Notify */}
-              <div
+            {/* STAT ROW */}
+            <div className="flex justify-around mt-3 pt-3 border-t border-[#E5E7F0]">
+              <button
+                onClick={handleLike}
+                disabled={liking}
+                className="flex flex-col items-center gap-1 text-xs font-bold transition"
                 style={{
-                  display: "flex",
-                  gap: 24,
-                  marginTop: 16,
-                  justifyContent: "space-around",
+                  color: liked ? "#FF4D8D" : "#666",
+                  cursor: liking ? "wait" : "pointer",
+                  background: "transparent",
+                  border: "none",
                 }}
               >
-                <button
-                  onClick={handleLike}
-                  disabled={liking}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: liked ? "#FF4D8D" : "rgba(255,255,255,0.6)",
-                    cursor: liking ? "wait" : "pointer",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 4,
-                    fontSize: 12,
-                    fontWeight: 700,
-                  }}
-                >
-                  <span style={{ fontSize: 20 }}>
-                    {liked ? "❤️" : "🤍"}
-                  </span>
-                  {likeCount.toLocaleString()}
-                </button>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 4,
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: "rgba(255,255,255,0.6)",
-                  }}
-                >
-                  <span style={{ fontSize: 20 }}>👥</span>
-                  {world.visits.toLocaleString()}
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 4,
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: "rgba(255,255,255,0.6)",
-                  }}
-                >
-                  <span style={{ fontSize: 20 }}>⭐</span>
-                  {world.favorites.toLocaleString()}
-                </div>
+                <span className="text-xl">{liked ? "❤️" : "🤍"}</span>
+                {likeCount.toLocaleString()}
+              </button>
+              <div className="flex flex-col items-center gap-1 text-xs font-bold text-[#666]">
+                <span className="text-xl">👥</span>
+                {currentOnline} online
+              </div>
+              <div className="flex flex-col items-center gap-1 text-xs font-bold text-[#666]">
+                <span className="text-xl">⭐</span>
+                {world.favorites.toLocaleString()}
               </div>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* ===== TABS ===== */}
-        <div
-          style={{
-            display: "flex",
-            gap: 0,
-            marginTop: 40,
-            borderBottom: "1px solid rgba(255,255,255,0.08)",
-          }}
-        >
+      {/* ===== TABS ===== */}
+      <div className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden">
+        <div className="flex border-b-2 border-[#E5E7F0]">
           {(
             [
               { key: "about", label: "About" },
@@ -516,209 +284,115 @@ export default function GameDetailsPage() {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              style={{
-                background: "transparent",
-                border: "none",
-                borderBottom:
-                  activeTab === tab.key
-                    ? "3px solid white"
-                    : "3px solid transparent",
-                color:
-                  activeTab === tab.key
-                    ? "white"
-                    : "rgba(255,255,255,0.55)",
-                fontSize: 14,
-                fontWeight: 900,
-                padding: "14px 32px",
-                cursor: "pointer",
-                letterSpacing: "0.02em",
-              }}
+              className={`px-8 py-3 text-sm font-black transition ${
+                activeTab === tab.key
+                  ? "bg-[#EEF0F7] text-[#4A1FA8] border-b-4 border-[#6C3CE0] -mb-0.5"
+                  : "text-[#666] hover:text-[#4A1FA8]"
+              }`}
+              style={{ background: "transparent" }}
             >
               {tab.label}
             </button>
           ))}
         </div>
 
-        {/* ===== TAB CONTENT ===== */}
         {activeTab === "about" && (
-          <div style={{ padding: "24px 0", maxWidth: 720 }}>
-            <h2
-              style={{
-                fontSize: 18,
-                fontWeight: 900,
-                margin: "0 0 12px",
-              }}
-            >
-              Description
-            </h2>
-            <p
-              style={{
-                fontSize: 14,
-                lineHeight: 1.6,
-                color: "rgba(255,255,255,0.75)",
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {world.description || "No description provided."}
-            </p>
+          <div className="p-6 space-y-6">
+            <div>
+              <h2 className="text-lg font-black text-[#1A1A2E] mb-2">
+                Description
+              </h2>
+              <p className="text-sm text-[#444] whitespace-pre-wrap leading-relaxed">
+                {world.description || "No description provided."}
+              </p>
+            </div>
 
-            <h2
-              style={{
-                fontSize: 18,
-                fontWeight: 900,
-                margin: "32px 0 12px",
-              }}
-            >
-              Stats
-            </h2>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-                gap: 16,
-                fontSize: 13,
-              }}
-            >
-              {[
-                ["Active", world.visits.toLocaleString()],
-                ["Visits", world.visits.toLocaleString()],
-                ["Likes", world.likes.toLocaleString()],
-                ["Favorites", world.favorites.toLocaleString()],
-                ["Max Players", String(world.maxPlayers)],
-                ["Category", world.category],
-                [
-                  "Created",
-                  new Date(world.createdAt).toLocaleDateString(),
-                ],
-              ].map(([label, value]) => (
-                <div key={label}>
-                  <div
-                    style={{
-                      color: "rgba(255,255,255,0.5)",
-                      fontSize: 11,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.08em",
-                      fontWeight: 700,
-                      marginBottom: 4,
-                    }}
-                  >
-                    {label}
+            <div>
+              <h2 className="text-lg font-black text-[#1A1A2E] mb-3">
+                Stats
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {[
+                  ["Active", `${currentOnline} online`],
+                  ["Visits", world.visits.toLocaleString()],
+                  ["Likes", world.likes.toLocaleString()],
+                  ["Favorites", world.favorites.toLocaleString()],
+                  ["Max Players", String(world.maxPlayers)],
+                  ["Category", world.category],
+                  [
+                    "Created",
+                    new Date(world.createdAt).toLocaleDateString(),
+                  ],
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#999] mb-1">
+                      {label}
+                    </div>
+                    <div className="text-sm font-black text-[#1A1A2E] capitalize">
+                      {value}
+                    </div>
                   </div>
-                  <div style={{ fontWeight: 700 }}>{value}</div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         )}
 
         {activeTab === "servers" && (
-          <div
-            style={{
-              padding: "32px 0",
-              textAlign: "center",
-              color: "rgba(255,255,255,0.6)",
-            }}
-          >
-            <div style={{ fontSize: 40, marginBottom: 8 }}>🌐</div>
-            <div style={{ fontSize: 16, fontWeight: 700 }}>
+          <div className="p-12 text-center">
+            <div className="text-5xl mb-3">🌐</div>
+            <div className="text-base font-black text-[#1A1A2E] mb-1">
               Server list coming soon
             </div>
-            <div style={{ fontSize: 13, marginTop: 6 }}>
+            <div className="text-xs text-[#666]">
               In the meantime, click Play to join a public server.
             </div>
           </div>
         )}
       </div>
 
+      {/* ===== BACK LINK ===== */}
+      <div className="text-center">
+        <Link
+          href="/games"
+          className="inline-block text-sm font-bold text-[#6C3CE0] hover:underline"
+        >
+          ← Back to Games
+        </Link>
+      </div>
+
       {/* ===== NOT-INSTALLED POPUP ===== */}
       {launchStatus === "not-installed" && (
         <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
           style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 100,
-            background: "rgba(0,0,0,0.75)",
-            backdropFilter: "blur(8px)",
-            WebkitBackdropFilter: "blur(8px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
+            background: "rgba(0,0,0,0.6)",
+            backdropFilter: "blur(6px)",
           }}
           onClick={() => setLaunchStatus("idle")}
         >
           <div
-            style={{
-              background:
-                "linear-gradient(160deg, #1A1A2E 0%, #0F0F22 50%, #0A0A1E 100%)",
-              border: "2px solid rgba(139, 95, 255, 0.4)",
-              boxShadow:
-                "0 20px 60px rgba(0,0,0,0.8), 0 0 40px rgba(139,95,255,0.2)",
-              borderRadius: 20,
-              padding: 32,
-              maxWidth: 440,
-              margin: "0 16px",
-              textAlign: "center",
-            }}
+            className="bg-white rounded-2xl p-8 max-w-md mx-4 text-center border-4 border-[#6C3CE0] shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ fontSize: 56, marginBottom: 12 }}>🎮</div>
-            <div
-              style={{
-                fontSize: 22,
-                fontWeight: 900,
-                marginBottom: 8,
-              }}
-            >
+            <div className="text-6xl mb-3">🎮</div>
+            <h3 className="text-2xl font-black text-[#1A1A2E] mb-2">
               Voxelio Player Not Installed
-            </div>
-            <div
-              style={{
-                fontSize: 14,
-                color: "rgba(255,255,255,0.65)",
-                marginBottom: 24,
-                lineHeight: 1.5,
-              }}
-            >
-              To play Voxelio games, download the Voxelio Player app.
-              It&apos;s free, fast, and runs full-screen.
-            </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                justifyContent: "center",
-              }}
-            >
+            </h3>
+            <p className="text-sm text-[#666] mb-6 leading-relaxed">
+              To play Voxelio games, download the Voxelio Player app. It&apos;s
+              free, fast, and runs full-screen.
+            </p>
+            <div className="flex gap-2 justify-center">
               <Link
                 href="/download"
-                style={{
-                  background:
-                    "linear-gradient(180deg, #8B5FFF 0%, #6C3CE0 50%, #5A2FC7 100%)",
-                  border: "2px solid #4A1FA8",
-                  color: "white",
-                  padding: "10px 20px",
-                  fontSize: 14,
-                  fontWeight: 900,
-                  borderRadius: 10,
-                  textDecoration: "none",
-                  boxShadow:
-                    "0 6px 20px rgba(108,60,224,0.5), inset 0 1px 0 rgba(255,255,255,0.25)",
-                }}
+                className="bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white font-black text-sm px-6 py-3 rounded-lg border-2 border-[#4A1FA8] hover:from-[#8B5FFF] hover:to-[#6A3FD7] transition"
               >
                 ⬇ Download App
               </Link>
               <button
                 onClick={() => setLaunchStatus("idle")}
-                style={{
-                  background: "rgba(255,255,255,0.08)",
-                  border: "1px solid rgba(255,255,255,0.15)",
-                  color: "rgba(255,255,255,0.8)",
-                  padding: "10px 20px",
-                  fontSize: 14,
-                  fontWeight: 700,
-                  borderRadius: 10,
-                  cursor: "pointer",
-                }}
+                className="bg-[#EEF0F7] text-[#4A1FA8] font-bold text-sm px-6 py-3 rounded-lg border-2 border-[#C5C8D6] hover:bg-[#E0E3EE] transition"
               >
                 Cancel
               </button>
@@ -727,37 +401,12 @@ export default function GameDetailsPage() {
         </div>
       )}
 
-      {/* ===== FAILED POPUP ===== */}
+      {/* ===== FAILED TOAST ===== */}
       {launchStatus === "failed" && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 24,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "rgba(220,38,38,0.9)",
-            backdropFilter: "blur(8px)",
-            padding: "12px 20px",
-            borderRadius: 10,
-            color: "white",
-            fontSize: 13,
-            fontWeight: 700,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
-            zIndex: 100,
-          }}
-        >
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-red-600 text-white font-bold text-sm px-5 py-3 rounded-lg shadow-2xl z-50">
           Failed to launch the app. Please try again.
         </div>
       )}
-
-      {/* ===== RESPONSIVE GRID OVERRIDE ===== */}
-      <style jsx global>{`
-        @media (max-width: 800px) {
-          .game-header-grid {
-            grid-template-columns: 1fr !important;
-          }
-        }
-      `}</style>
     </div>
   );
 }

@@ -2,18 +2,6 @@
 
 import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
-import {
-  getCurrentUser,
-  signOut,
-  formatVoxbux,
-  getUnreadCount,
-  subscribeAuth,
-  type User,
-} from "../../lib/auth";
-import { isOwnerAccount } from "../../lib/badges";
-import AccountBadge from "../components/AccountBadge";
-import NavLink from "../components/NavLink";
-import VoxelioLogo from "../components/VoxelioLogo";
 import { supabase } from "../../lib/supabase";
 import { fetchWorlds, type World } from "../../lib/worlds";
 
@@ -39,7 +27,6 @@ function formatCount(n: number): string {
 }
 
 export default function GamesPage() {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [worlds, setWorlds] = useState<World[]>([]);
   const [featured, setFeatured] = useState<World[]>([]);
   const [playerCounts, setPlayerCounts] = useState<Record<string, number>>({});
@@ -51,14 +38,6 @@ export default function GamesPage() {
   const [tick, setTick] = useState(0);
 
   const initialLoadRef = useRef(true);
-
-  const refreshUser = () => setCurrentUser(getCurrentUser());
-
-  useEffect(() => {
-    refreshUser();
-    const unsub = subscribeAuth(() => refreshUser());
-    return () => unsub();
-  }, []);
 
   // ===== Fetch worlds =====
   useEffect(() => {
@@ -90,10 +69,9 @@ export default function GamesPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // ===== Subscribe to world-lobby presence for live player counts =====
+  // ===== Live player counts =====
   useEffect(() => {
     const observerKey = `observer-${Math.random().toString(36).slice(2, 10)}`;
-
     const lobby = supabase.channel("world-lobby", {
       config: { presence: { key: observerKey } },
     });
@@ -129,273 +107,181 @@ export default function GamesPage() {
     };
   }, []);
 
-  const handleSignOut = async () => {
-    await signOut();
-    setCurrentUser(null);
-  };
-
-  const unreadCount = currentUser ? getUnreadCount(currentUser.id) : 0;
-  const isOwner = isOwnerAccount(currentUser?.username);
-
-  const navTabs: any[] = [
-    { name: "Home", href: "/" },
-    { name: "Games", href: "/games", active: true },
-    { name: "Create", href: "/create" },
-    { name: "Catalog", href: "/catalog" },
-    ...(isOwner ? [{ name: "Dev", href: "/dev", dev: true }] : []),
-    { name: "Friends", href: "/friends" },
-    { name: "Messages", href: "/messages" },
-    { name: "Avatar", href: "/avatar" },
-    { name: "INDEV Club", href: "/indev", special: true },
-  ];
-
   return (
-    <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans theme-container">
-
-      {/* TOP BAR */}
-      <div className="bg-[#1A1A2E] text-white text-xs">
-        <div className="max-w-6xl mx-auto px-3 py-1.5 flex justify-between items-center">
-          <div className="flex gap-4 items-center">
-            {currentUser ? (
-              <>
-                <span className="text-gray-400">
-                  Welcome,{" "}
-                  <strong className="text-white inline-flex items-center">
-                    {currentUser.username}
-                    <AccountBadge username={currentUser.username} userId={currentUser.id} size={12} />
-                  </strong>
-                </span>
-                <button onClick={handleSignOut} className="hover:text-[#00E5FF]">Sign Out</button>
-              </>
-            ) : (
-              <>
-                <span className="text-gray-400">Welcome, Guest</span>
-                <Link href="/signin" className="hover:text-[#00E5FF]">Sign In</Link>
-                <Link href="/signup" className="hover:text-[#00E5FF]">Sign Up</Link>
-              </>
-            )}
+    <>
+      {/* HERO */}
+      <div className="bg-gradient-to-r from-[#6C3CE0] via-[#7B4FF7] to-[#00B8D4] rounded border-2 border-[#4A1FA8] p-6 md:p-8 text-white relative overflow-hidden mb-6">
+        <div className="relative z-10 max-w-2xl">
+          <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm px-3 py-1 rounded-full text-[11px] font-bold mb-3">
+            <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+            {totalPlaying} {totalPlaying === 1 ? "PLAYER" : "PLAYERS"} IN GAME
           </div>
-          <div className="flex gap-4">
-            <span>
-              Voxbux:{" "}
-              <strong className="text-[#FFD700]">
-                {currentUser ? formatVoxbux(currentUser.voxbux) : "? V$"}
-              </strong>
-            </span>
-            <Link href="#" className="hover:text-[#00E5FF]">Help</Link>
+          <h1
+            className="text-3xl md:text-5xl font-black mb-3"
+            style={{ textShadow: "2px 2px 0 rgba(0,0,0,0.3)" }}
+          >
+            Discover Worlds
+          </h1>
+          <p className="text-white/90 mb-5 text-sm md:text-base max-w-xl">
+            Jump into any world with your custom avatar. Meet other players,
+            build, race, explore — all in real time.
+          </p>
+          <div className="flex gap-2 flex-wrap">
+            <Link
+              href={`/games/${featured[0]?.id || "impossible-obby"}`}
+              className="bg-gradient-to-b from-[#22C55E] to-[#16A34A] text-white font-bold text-sm px-5 py-2.5 rounded border-2 border-[#15803D] hover:from-[#4ADE80] hover:to-[#22C55E] transition shadow-md inline-block"
+            >
+              🎮 Quick Play
+            </Link>
+            <Link
+              href="/create"
+              title="Coming soon — world creation is locked for now"
+              className="bg-white/50 text-[#4A1FA8]/60 font-bold text-sm px-5 py-2.5 rounded border-2 border-[#4A1FA8]/40 transition shadow-md inline-block cursor-not-allowed"
+            >
+              🔒 Create a World
+            </Link>
+          </div>
+        </div>
+        <div className="absolute -right-12 -bottom-12 text-[200px] opacity-20 select-none">
+          🎮
+        </div>
+      </div>
+
+      {/* FEATURED ROW */}
+      {featured.length > 0 && (
+        <section className="mb-6">
+          <div className="flex items-center justify-between mb-3 border-b-2 border-[#C5C8D6] pb-1">
+            <h2 className="text-lg font-black text-[#4A1FA8] flex items-center gap-2">
+              ✨ Featured
+            </h2>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+            {featured.map((world) => (
+              <WorldCard
+                key={world.id}
+                world={world}
+                playerCount={playerCounts[world.id] || 0}
+                compact
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* FILTERS */}
+      <div className="bg-white border-2 border-[#C5C8D6] rounded p-3 mb-4 space-y-3">
+        <div>
+          <p className="text-[10px] font-bold text-[#666] uppercase tracking-wide mb-2">
+            Sort by
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {(
+              [
+                { id: "popular" as const, label: "Popular", emoji: "🔥" },
+                { id: "top" as const, label: "Top Rated", emoji: "⭐" },
+                { id: "new" as const, label: "New", emoji: "🆕" },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setSort(t.id)}
+                className={`px-3 py-1.5 text-xs font-bold rounded-full border transition flex items-center gap-1.5 ${
+                  sort === t.id
+                    ? "bg-[#6C3CE0] text-white border-[#4A1FA8]"
+                    : "bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE]"
+                }`}
+              >
+                <span>{t.emoji}</span>
+                <span>{t.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-[10px] font-bold text-[#666] uppercase tracking-wide mb-2">
+            Category
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => setCategory(cat.id)}
+                className={`px-3 py-1.5 text-xs font-bold rounded-full border transition flex items-center gap-1.5 ${
+                  category === cat.id
+                    ? "bg-[#6C3CE0] text-white border-[#4A1FA8]"
+                    : "bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE]"
+                }`}
+              >
+                <span>{cat.emoji}</span>
+                <span>{cat.name}</span>
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
-      {/* HEADER */}
-      <header className="bg-gradient-to-b from-[#6C3CE0] to-[#5A2FC7] border-b-4 border-[#4A1FA8]">
-        <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
-          <VoxelioLogo />
-          <div className="hidden md:flex items-center gap-2 bg-white/10 rounded px-3 py-1.5 border border-white/20">
-            <input
-              type="text"
-              placeholder="Search games..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="bg-transparent text-white placeholder-white/60 text-sm outline-none w-48"
-            />
-            <span className="text-white text-sm">🔍</span>
-          </div>
+      {/* MAIN GRID */}
+      <section>
+        <div className="flex items-center justify-between mb-3 border-b-2 border-[#C5C8D6] pb-1">
+          <h2 className="text-lg font-black text-[#4A1FA8] flex items-center gap-2">
+            🌍 All Worlds
+          </h2>
+          <span className="text-xs text-[#666] font-semibold">
+            {loading
+              ? "Loading…"
+              : `${worlds.length} ${worlds.length === 1 ? "world" : "worlds"}`}
+          </span>
         </div>
-      </header>
 
-      {/* NAV */}
-      <nav className="bg-[#4A1FA8] border-b-2 border-[#2D1070]">
-        <div className="max-w-6xl mx-auto px-3 flex flex-wrap">
-          {navTabs.map((tab) => (
-            <NavLink
-              key={tab.name}
-              href={tab.href}
-              className={`px-4 py-2.5 text-sm font-bold border-r border-[#3A1580] transition relative ${
-                tab.active
-                  ? "bg-[#EEF0F7] text-[#4A1FA8]"
-                  : tab.dev
-                  ? "text-[#FF6B6B] hover:bg-[#3A1580]"
-                  : tab.special
-                  ? "text-[#FFD700] hover:bg-[#3A1580]"
-                  : "text-white hover:bg-[#3A1580]"
-              }`}
-            >
-              {tab.name}
-              {tab.name === "Messages" && unreadCount > 0 && (
-                <span className="ml-1 bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">
-                  {unreadCount}
-                </span>
-              )}
-            </NavLink>
-          ))}
-        </div>
-      </nav>
-
-      <main className="max-w-6xl mx-auto px-3 py-6">
-
-        {/* HERO */}
-        <div className="bg-gradient-to-r from-[#6C3CE0] via-[#7B4FF7] to-[#00B8D4] rounded border-2 border-[#4A1FA8] p-6 md:p-8 text-white relative overflow-hidden mb-6">
-          <div className="relative z-10 max-w-2xl">
-            <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm px-3 py-1 rounded-full text-[11px] font-bold mb-3">
-              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-              {totalPlaying} {totalPlaying === 1 ? "PLAYER" : "PLAYERS"} IN GAME
-            </div>
-            <h1
-              className="text-3xl md:text-5xl font-black mb-3"
-              style={{ textShadow: "2px 2px 0 rgba(0,0,0,0.3)" }}
-            >
-              Discover Worlds
-            </h1>
-            <p className="text-white/90 mb-5 text-sm md:text-base max-w-xl">
-              Jump into any world with your custom avatar. Meet other players, build, race, explore — all in real time.
-            </p>
-            <div className="flex gap-2 flex-wrap">
-              <Link
-                href={`/games/${featured[0]?.id || "impossible-obby"}`}
-                className="bg-gradient-to-b from-[#22C55E] to-[#16A34A] text-white font-bold text-sm px-5 py-2.5 rounded border-2 border-[#15803D] hover:from-[#4ADE80] hover:to-[#22C55E] transition shadow-md inline-block"
+        {loading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            {[...Array(8)].map((_, i) => (
+              <div
+                key={i}
+                className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden"
               >
-                🎮 Quick Play
-              </Link>
-              <Link
-                href="/create"
-                title="Coming soon — world creation is locked for now"
-                className="bg-white/50 text-[#4A1FA8]/60 font-bold text-sm px-5 py-2.5 rounded border-2 border-[#4A1FA8]/40 transition shadow-md inline-block cursor-not-allowed"
-              >
-                🔒 Create a World
-              </Link>
-            </div>
-          </div>
-          <div className="absolute -right-12 -bottom-12 text-[200px] opacity-20 select-none">
-            🎮
-          </div>
-        </div>
-
-        {/* FEATURED ROW */}
-        {featured.length > 0 && (
-          <section className="mb-6">
-            <div className="flex items-center justify-between mb-3 border-b-2 border-[#C5C8D6] pb-1">
-              <h2 className="text-lg font-black text-[#4A1FA8] flex items-center gap-2">
-                ✨ Featured
-              </h2>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-              {featured.map((world) => (
-                <WorldCard
-                  key={world.id}
-                  world={world}
-                  playerCount={playerCounts[world.id] || 0}
-                  compact
-                />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* FILTERS */}
-        <div className="bg-white border-2 border-[#C5C8D6] rounded p-3 mb-4 space-y-3">
-          <div>
-            <p className="text-[10px] font-bold text-[#666] uppercase tracking-wide mb-2">Sort by</p>
-            <div className="flex flex-wrap gap-1.5">
-              {([
-                { id: "popular" as const, label: "Popular", emoji: "🔥" },
-                { id: "top" as const, label: "Top Rated", emoji: "⭐" },
-                { id: "new" as const, label: "New", emoji: "🆕" },
-              ]).map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setSort(t.id)}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-full border transition flex items-center gap-1.5 ${
-                    sort === t.id
-                      ? "bg-[#6C3CE0] text-white border-[#4A1FA8]"
-                      : "bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE]"
-                  }`}
-                >
-                  <span>{t.emoji}</span>
-                  <span>{t.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className="text-[10px] font-bold text-[#666] uppercase tracking-wide mb-2">Category</p>
-            <div className="flex flex-wrap gap-1.5">
-              {CATEGORIES.map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => setCategory(cat.id)}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-full border transition flex items-center gap-1.5 ${
-                    category === cat.id
-                      ? "bg-[#6C3CE0] text-white border-[#4A1FA8]"
-                      : "bg-[#EEF0F7] text-[#4A1FA8] border-[#C5C8D6] hover:bg-[#E0E3EE]"
-                  }`}
-                >
-                  <span>{cat.emoji}</span>
-                  <span>{cat.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* MAIN GRID */}
-        <section>
-          <div className="flex items-center justify-between mb-3 border-b-2 border-[#C5C8D6] pb-1">
-            <h2 className="text-lg font-black text-[#4A1FA8] flex items-center gap-2">
-              🌍 All Worlds
-            </h2>
-            <span className="text-xs text-[#666] font-semibold">
-              {loading ? "Loading…" : `${worlds.length} ${worlds.length === 1 ? "world" : "worlds"}`}
-            </span>
-          </div>
-
-          {loading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {[...Array(8)].map((_, i) => (
-                <div key={i} className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden">
-                  <div className="aspect-square bg-[#EEF0F7] animate-pulse" />
-                  <div className="p-2 space-y-1">
-                    <div className="h-3 bg-[#EEF0F7] rounded animate-pulse" />
-                    <div className="h-2 bg-[#EEF0F7] rounded animate-pulse w-2/3" />
-                  </div>
+                <div className="aspect-square bg-[#EEF0F7] animate-pulse" />
+                <div className="p-2 space-y-1">
+                  <div className="h-3 bg-[#EEF0F7] rounded animate-pulse" />
+                  <div className="h-2 bg-[#EEF0F7] rounded animate-pulse w-2/3" />
                 </div>
-              ))}
-            </div>
-          ) : worlds.length === 0 ? (
-            <div className="bg-white border-2 border-dashed border-[#C5C8D6] rounded p-16 text-center">
-              <div className="text-7xl mb-4">🔍</div>
-              <h3 className="font-black text-2xl text-[#1A1A2E] mb-2">No Worlds Found</h3>
-              <p className="text-sm text-[#666] max-w-lg mx-auto mb-6">
-                Try a different search, sort, or category.
-              </p>
-              <button
-                onClick={() => { setSearch(""); setCategory("all"); setSort("popular"); }}
-                className="text-xs font-bold text-[#6C3CE0] hover:underline"
-              >
-                Clear filters
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {worlds.map((world) => (
-                <WorldCard
-                  key={world.id}
-                  world={world}
-                  playerCount={playerCounts[world.id] || 0}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-      </main>
-
-      <footer className="bg-[#1A1A2E] text-white mt-8 border-t-4 border-[#4A1FA8]">
-        <div className="max-w-6xl mx-auto px-3 py-6 text-center text-xs text-gray-500">
-          © 2026 Voxelio. Voxelio is not affiliated with any other platform.
-        </div>
-      </footer>
-    </div>
+              </div>
+            ))}
+          </div>
+        ) : worlds.length === 0 ? (
+          <div className="bg-white border-2 border-dashed border-[#C5C8D6] rounded p-16 text-center">
+            <div className="text-7xl mb-4">🔍</div>
+            <h3 className="font-black text-2xl text-[#1A1A2E] mb-2">
+              No Worlds Found
+            </h3>
+            <p className="text-sm text-[#666] max-w-lg mx-auto mb-6">
+              Try a different search, sort, or category.
+            </p>
+            <button
+              onClick={() => {
+                setSearch("");
+                setCategory("all");
+                setSort("popular");
+              }}
+              className="text-xs font-bold text-[#6C3CE0] hover:underline"
+            >
+              Clear filters
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            {worlds.map((world) => (
+              <WorldCard
+                key={world.id}
+                world={world}
+                playerCount={playerCounts[world.id] || 0}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+    </>
   );
 }
 
@@ -472,7 +358,6 @@ function WorldCard({
   );
 }
 
-// Lighten or darken a hex color by a percent (-100..100)
 function shade(hex: string, percent: number): string {
   const clean = hex.replace("#", "");
   const num = parseInt(clean, 16);
