@@ -11,6 +11,7 @@ import { playError } from "../../../lib/sounds";
 import ObbyGame from "../../components/obby/ObbyGame";
 import LumberyardGame from "../../components/lumberyard/LumberyardGameMain";
 import ChaosColiseumGameMain from "../../components/chaos-coliseum/ChaosColiseumGameMain";
+import PizzaEmpireGameMain from "../../components/tycoon/PizzaEmpireGameMain";
 
 // ============================================================
 // VOXELIO PLAYER — in-app game launcher page
@@ -208,8 +209,7 @@ function PlayerPageInner() {
     })();
   }, [token, worldId]);
 
-  // ===== Join world-lobby presence so the details page counts us =====
-  // This is what makes "X online" accurate on /games/[id].
+  // ===== Join world-lobby presence =====
   useEffect(() => {
     if (!user || !worldId || status !== "ready") return;
 
@@ -564,6 +564,15 @@ function PlayerPageInner() {
           inputDisabled={chatOpen}
           isTouchDevice={isTouchDevice}
         />
+      ) : world.layout === "pizza-empire" ? (
+        <PizzaEmpireGameMain
+          config={user.avatarConfig}
+          userId={user.id}
+          username={user.username}
+          world={world}
+          inputDisabled={chatOpen}
+          isTouchDevice={isTouchDevice}
+        />
       ) : (
         <div
           style={{
@@ -615,7 +624,7 @@ function PlayerPageInner() {
         Exit
       </button>
 
-      {/* ===== "Press T to chat" HINT ===== */}
+      {/* "Press T to chat" hint */}
       {!chatOpen && !isTouchDevice && (
         <div
           style={{
