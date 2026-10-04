@@ -223,7 +223,9 @@ function PlayerPageInner() {
           id: payload.id,
           userId: payload.userId,
           username: payload.username,
-          text: filterMessage(String(payload.text || "").slice(0, CHAT_MAX_LENGTH)),
+          text: filterMessage(
+            String(payload.text || "").slice(0, CHAT_MAX_LENGTH)
+          ),
           expiresAt: Date.now() + CHAT_OVERLAY_LIFETIME_MS,
         };
         setOverlayMessages((prev) => {
@@ -299,7 +301,9 @@ function PlayerPageInner() {
 
     if (now < muteUntilRef.current) {
       const remaining = Math.ceil((muteUntilRef.current - now) / 1000);
-      setSystemMessage(`🚫 You are muted for spamming. ${remaining}s remaining.`);
+      setSystemMessage(
+        `🚫 You are muted for spamming. ${remaining}s remaining.`
+      );
       playError();
       setDraft("");
       setChatOpen(false);
@@ -502,7 +506,7 @@ function PlayerPageInner() {
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "black" }}>
-      {/* Game canvas — pass chatOpen as inputDisabled */}
+      {/* Game canvas */}
       {world.layout === "obby" ? (
         <ObbyGame
           config={user.avatarConfig}
@@ -581,6 +585,66 @@ function PlayerPageInner() {
         Exit
       </button>
 
+      {/* ===== "Press T to chat" HINT ===== */}
+      {!chatOpen && !isTouchDevice && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 20,
+            left: 16,
+            zIndex: 90,
+            pointerEvents: "none",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            background: "rgba(0,0,0,0.65)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+            border: "1px solid rgba(139, 95, 255, 0.35)",
+            borderRadius: 10,
+            padding: "8px 14px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+            fontFamily: "system-ui, -apple-system, sans-serif",
+          }}
+        >
+          <span style={{ fontSize: 16 }}>💬</span>
+          <span
+            style={{
+              color: "rgba(255,255,255,0.75)",
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            Press
+          </span>
+          <span
+            style={{
+              background: "linear-gradient(180deg, #6C3CE0, #5A2FC7)",
+              border: "1px solid #4A1FA8",
+              borderRadius: 5,
+              color: "white",
+              fontSize: 11,
+              fontWeight: 900,
+              padding: "2px 8px",
+              boxShadow:
+                "0 2px 0 #3A1580, inset 0 1px 0 rgba(255,255,255,0.15)",
+              fontFamily: "monospace",
+            }}
+          >
+            T
+          </span>
+          <span
+            style={{
+              color: "rgba(255,255,255,0.75)",
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            to chat
+          </span>
+        </div>
+      )}
+
       {/* System message */}
       {systemMessage && (
         <div
@@ -616,7 +680,7 @@ function PlayerPageInner() {
         <div
           style={{
             position: "fixed",
-            bottom: 96,
+            bottom: 24,
             left: "50%",
             transform: "translateX(-50%)",
             width: "min(560px, 90vw)",
@@ -704,36 +768,8 @@ function PlayerPageInner() {
               fontFamily: "system-ui, -apple-system, sans-serif",
             }}
           >
-            Esc to cancel
+            Press Esc to cancel
           </p>
-        </div>
-      )}
-
-      {/* "Press T to chat" hint */}
-      {!chatOpen && !isTouchDevice && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 24,
-            left: "50%",
-            transform: "translateX(-50%)",
-            pointerEvents: "none",
-            zIndex: 20,
-          }}
-        >
-          <div
-            style={{
-              background: "rgba(0,0,0,0.4)",
-              backdropFilter: "blur(6px)",
-              padding: "4px 12px",
-              borderRadius: 999,
-              color: "rgba(255,255,255,0.5)",
-              fontSize: 10,
-              fontFamily: "system-ui, -apple-system, sans-serif",
-            }}
-          >
-            Press T to chat
-          </div>
         </div>
       )}
     </div>
