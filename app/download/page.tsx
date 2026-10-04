@@ -1,12 +1,42 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 // ============================================================
 // /download — Install Voxelio Player
 // ============================================================
 
+const GITHUB_REPO = "VoxelioDev/voxelio-player";
+const DOWNLOAD_URL = `https://github.com/${GITHUB_REPO}/releases/latest/download/Voxelio-Setup.exe`;
+
 export default function DownloadPage() {
+  const [version, setVersion] = useState<string>("1.0.2");
+  const [loading, setLoading] = useState(true);
+
+  // Fetch the latest version from GitHub Releases API
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (cancelled || !json) return;
+        const tag = String(json.tag_name || "").replace(/^v/, "");
+        if (tag) setVersion(tag);
+      })
+      .catch(() => {
+        // Silently fail — keep the default version
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div
       style={{
@@ -99,7 +129,7 @@ export default function DownloadPage() {
                   color: "rgba(255,255,255,0.55)",
                 }}
               >
-                Version 1.0.1 · Windows · 82 MB
+                {loading ? "Checking version…" : `Version ${version} · Windows`}
               </div>
             </div>
           </div>
@@ -152,9 +182,9 @@ export default function DownloadPage() {
             ))}
           </ul>
 
-          {/* Download button — points to GitHub's "latest" redirect */}
+          {/* Download button */}
           <a
-            href="https://github.com/VoxelioDev/voxelio-player/releases/latest/download/Voxelio-Setup.exe"
+            href={DOWNLOAD_URL}
             style={{
               display: "block",
               textAlign: "center",
