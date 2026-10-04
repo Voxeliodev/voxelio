@@ -131,6 +131,7 @@ function PlayerPageInner() {
   const recentMessagesRef = useRef<string[]>([]);
   const muteUntilRef = useRef(0);
   const chatChannelRef = useRef<any>(null);
+  const lobbyRef = useRef<any>(null);
   const userRef = useRef<User | null>(null);
 
   useEffect(() => {
@@ -206,6 +207,35 @@ function PlayerPageInner() {
       }
     })();
   }, [token, worldId]);
+
+  // ===== Join world-lobby presence so the details page counts us =====
+  // This is what makes "X online" accurate on /games/[id].
+  useEffect(() => {
+    if (!user || !worldId || status !== "ready") return;
+
+    const lobby = supabase.channel("world-lobby", {
+      config: { presence: { key: user.id } },
+    });
+
+    lobby.subscribe((s: string) => {
+      if (s === "SUBSCRIBED") {
+        lobby.track({
+          userId: user.id,
+          username: user.username,
+          worldId,
+          joinedAt: Date.now(),
+        });
+      }
+    });
+
+    lobbyRef.current = lobby;
+
+    return () => {
+      lobby.untrack();
+      supabase.removeChannel(lobby);
+      lobbyRef.current = null;
+    };
+  }, [user, worldId, status]);
 
   // ===== Chat channel subscription =====
   useEffect(() => {
