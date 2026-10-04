@@ -626,9 +626,9 @@ function getChatChannelName(worldId: string): string {
 
 // ============================================================
 // CHAT OVERLAY — floating message list shown on top of ANY game
+// Includes the account badge next to each username.
 // ============================================================
 function ChatOverlay({ messages }: { messages: ChatMessage[] }) {
-  // Show the last 6 messages that haven't expired
   const now = Date.now();
   const recent = messages
     .filter((m) => m.expiresAt > now)
@@ -645,7 +645,7 @@ function ChatOverlay({ messages }: { messages: ChatMessage[] }) {
         display: "flex",
         flexDirection: "column",
         gap: "4px",
-        maxWidth: "320px",
+        maxWidth: "340px",
       }}
     >
       {recent.map((m) => (
@@ -665,12 +665,17 @@ function ChatOverlay({ messages }: { messages: ChatMessage[] }) {
             WebkitBackdropFilter: "blur(8px)",
             fontFamily: "system-ui, -apple-system, sans-serif",
             animation: "chatOverlayIn 0.2s ease-out",
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            flexWrap: "wrap",
           }}
         >
-          <span style={{ color: "#00E5FF", fontWeight: 700, marginRight: "6px" }}>
-            {m.username}:
+          <span style={{ color: "#00E5FF", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+            {m.username}
+            <AccountBadge username={m.username} userId={m.userId} size={14} />
           </span>
-          <span style={{ color: "rgba(255,255,255,0.92)" }}>{m.text}</span>
+          <span style={{ color: "rgba(255,255,255,0.92)", marginLeft: "2px" }}>{m.text}</span>
         </div>
       ))}
       <style jsx global>{`
@@ -695,7 +700,6 @@ export default function WorldPage() {
   const [others, setOthers] = useState<RemotePlayerData[]>([]);
   const [onlineCount, setOnlineCount] = useState(1);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  // These are the messages that render in the overlay (with a longer lifetime)
   const [overlayMessages, setOverlayMessages] = useState<ChatMessage[]>([]);
 
   const [chatOpen, setChatOpen] = useState(false);
@@ -861,14 +865,11 @@ export default function WorldPage() {
     return () => clearInterval(interval);
   }, [user, worldId]);
 
-  // Helper: add a chat message to both the bubble list and the overlay list
   const addChatMessage = useCallback((msg: ChatMessage) => {
-    // For chat bubbles above players (short lifetime)
     setChatMessages((prev) => {
       if (prev.some((m) => m.id === msg.id)) return prev;
       return [...prev, msg];
     });
-    // For the persistent overlay (longer lifetime)
     const overlayMsg: ChatMessage = {
       ...msg,
       expiresAt: Date.now() + CHAT_OVERLAY_LIFETIME_MS,
@@ -921,7 +922,6 @@ export default function WorldPage() {
     const msg: ChatMessage = { id, userId: me.id, username: me.username, text: filtered, expiresAt: Date.now() + CHAT_LIFETIME_MS };
     const payload = { id: msg.id, userId: msg.userId, username: msg.username, text: msg.text };
 
-    // Add to our own views immediately
     addChatMessage(msg);
 
     const channel = chatChannelRef.current;
@@ -960,7 +960,6 @@ export default function WorldPage() {
     channel.send({ type: "broadcast", event: "move", payload: { id: me.id, username: me.username, displayId: me.displayId ?? null, avatarConfig: me.avatarConfig, pos, rotY } });
   }, []);
 
-  // ===== Movement channel (per-layout) =====
   useEffect(() => {
     if (!user || !worldId) return;
     const channel = supabase.channel(`world-${worldId}`, { config: { broadcast: { self: false }, presence: { key: user.id } } });
@@ -1005,7 +1004,6 @@ export default function WorldPage() {
     };
   }, [user?.id, worldId]);
 
-  // ===== Chat channel (shared across all layouts in the same world) =====
   useEffect(() => {
     if (!user || !worldId) return;
     const chatChannelName = getChatChannelName(worldId);
@@ -1113,7 +1111,6 @@ export default function WorldPage() {
         </KeyboardControls>
       )}
 
-      {/* Chat overlay — shown on top of all game layouts so chat is visible everywhere */}
       {isGameLayout && <ChatOverlay messages={overlayMessages} />}
 
       {isTouchDevice && !chatOpen && world.layout !== "obby" && world.layout !== "lumberyard" && world.layout !== "chaos-coliseum" && (<><TouchLookArea onLook={touchLook} /><Joystick /><JumpButton /></>)}
