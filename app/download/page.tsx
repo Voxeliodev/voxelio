@@ -11,10 +11,9 @@ const GITHUB_REPO = "VoxelioDev/voxelio-player";
 const DOWNLOAD_URL = `https://github.com/${GITHUB_REPO}/releases/latest/download/Voxelio-Setup.exe`;
 
 export default function DownloadPage() {
-  const [version, setVersion] = useState<string>("1.0.2");
+  const [version, setVersion] = useState<string>("1.0.3");
   const [loading, setLoading] = useState(true);
 
-  // Fetch the latest version from GitHub Releases API
   useEffect(() => {
     let cancelled = false;
 
