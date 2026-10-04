@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { getCurrentUser, formatVoxbux, type User } from "../../../lib/auth";
+import { getCurrentUser, type User } from "../../../lib/auth";
 import { supabase } from "../../../lib/supabase";
 import {
   fetchWorldById,
@@ -169,8 +169,19 @@ export default function GameDetailsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* ===== GAME HEADER: thumbnail + info ===== */}
+    <div className="space-y-4">
+      {/* ===== BACK BUTTON ===== */}
+      <Link
+        href="/games"
+        className="inline-flex items-center gap-2 text-sm font-bold text-[#4A1FA8] hover:text-[#6C3CE0] transition group"
+      >
+        <span className="inline-block transition-transform group-hover:-translate-x-0.5">
+          ←
+        </span>
+        <span>Back to Games</span>
+      </Link>
+
+      {/* ===== GAME HEADER ===== */}
       <div className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden">
         <div className="grid md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-0">
           {/* LEFT: Thumbnail */}
@@ -289,7 +300,7 @@ export default function GameDetailsPage() {
                   ? "bg-[#EEF0F7] text-[#4A1FA8] border-b-4 border-[#6C3CE0] -mb-0.5"
                   : "text-[#666] hover:text-[#4A1FA8]"
               }`}
-              style={{ background: "transparent" }}
+              style={{ background: activeTab === tab.key ? "#EEF0F7" : "transparent" }}
             >
               {tab.label}
             </button>
@@ -351,8 +362,8 @@ export default function GameDetailsPage() {
         )}
       </div>
 
-      {/* ===== BACK LINK ===== */}
-      <div className="text-center">
+      {/* ===== BOTTOM BACK LINK ===== */}
+      <div className="text-center pt-2">
         <Link
           href="/games"
           className="inline-block text-sm font-bold text-[#6C3CE0] hover:underline"
