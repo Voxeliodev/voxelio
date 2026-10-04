@@ -78,19 +78,24 @@ export type ChaosPlayerApi = {
 };
 
 // ============================================================
-// SWORD MESH
+// SWORD MESH — positioned inside the character's right palm
 // ============================================================
 function SwordMesh() {
   return (
-    <group position={[0, 0.15, 0.2]} rotation={[0.2, 0, 0]}>
+    <group position={[0, 0.02, 0.05]} rotation={[0.1, 0, 0]}>
+      {/* Handle / grip — sits inside the palm */}
       <mesh castShadow position={[0, 0.15, 0]}>
         <boxGeometry args={[0.07, 0.3, 0.07]} />
         <meshStandardMaterial color="#4A2E1A" roughness={0.9} />
       </mesh>
+
+      {/* Crossguard */}
       <mesh castShadow position={[0, 0.32, 0]}>
         <boxGeometry args={[0.32, 0.06, 0.08]} />
         <meshStandardMaterial color="#B8860B" metalness={0.8} roughness={0.3} />
       </mesh>
+
+      {/* Blade */}
       <mesh castShadow position={[0, 0.85, 0]}>
         <boxGeometry args={[0.09, 1.1, 0.03]} />
         <meshStandardMaterial
@@ -101,6 +106,8 @@ function SwordMesh() {
           emissiveIntensity={0.1}
         />
       </mesh>
+
+      {/* Blade tip highlight */}
       <mesh castShadow position={[0, 1.42, 0]}>
         <boxGeometry args={[0.09, 0.14, 0.03]} />
         <meshStandardMaterial
@@ -111,6 +118,8 @@ function SwordMesh() {
           emissiveIntensity={0.3}
         />
       </mesh>
+
+      {/* Pommel */}
       <mesh castShadow position={[0, -0.02, 0]}>
         <sphereGeometry args={[0.06, 12, 12]} />
         <meshStandardMaterial color="#B8860B" metalness={0.8} roughness={0.3} />
@@ -157,7 +166,6 @@ export default function ChaosColiseumPlayer({
   const forcedFacingRef = useRef<number | null>(null);
   const facingRef = useRef(0);
 
-  // Sword swing state
   const swingTriggerRef = useRef(0);
   const lastSwingTimeRef = useRef(0);
   const lastSwingTriggerRef = useRef(0);
@@ -361,11 +369,7 @@ export default function ChaosColiseumPlayer({
       return;
     }
 
-    // ===== SWORD SWING ANIMATION =====
-    // A 3-phase swing:
-    //   Phase 1 (0.0 → 0.35): wind-up — arm raises over shoulder
-    //   Phase 2 (0.35 → 0.75): strike — arm slashes downward + forward
-    //   Phase 3 (0.75 → 1.0): recover — arm returns to idle
+    // Sword swing animation decay
     if (swingTriggerRef.current !== lastSwingTriggerRef.current) {
       lastSwingTriggerRef.current = swingTriggerRef.current;
       chopSwingRef.current = 1;
@@ -377,7 +381,7 @@ export default function ChaosColiseumPlayer({
       );
     }
 
-    // Ground check
+    // Ground
     const grounded = checkGrounded();
     if (grounded) {
       coyoteTimerRef.current = COYOTE_TIME;

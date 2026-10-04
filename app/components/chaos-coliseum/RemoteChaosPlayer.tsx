@@ -35,19 +35,24 @@ function getHpColor(hp: number): string {
 }
 
 // ============================================================
-// SWORD MESH — matches the one on the local player
+// SWORD MESH — positioned inside the character's right palm
 // ============================================================
 function RemoteSwordMesh() {
   return (
-    <group position={[0, 0.15, 0.2]} rotation={[0.2, 0, 0]}>
+    <group position={[0, 0.02, 0.05]} rotation={[0.1, 0, 0]}>
+      {/* Handle / grip — sits inside the palm */}
       <mesh castShadow position={[0, 0.15, 0]}>
         <boxGeometry args={[0.07, 0.3, 0.07]} />
         <meshStandardMaterial color="#4A2E1A" roughness={0.9} />
       </mesh>
+
+      {/* Crossguard */}
       <mesh castShadow position={[0, 0.32, 0]}>
         <boxGeometry args={[0.32, 0.06, 0.08]} />
         <meshStandardMaterial color="#B8860B" metalness={0.8} roughness={0.3} />
       </mesh>
+
+      {/* Blade */}
       <mesh castShadow position={[0, 0.85, 0]}>
         <boxGeometry args={[0.09, 1.1, 0.03]} />
         <meshStandardMaterial
@@ -58,6 +63,8 @@ function RemoteSwordMesh() {
           emissiveIntensity={0.1}
         />
       </mesh>
+
+      {/* Blade tip highlight */}
       <mesh castShadow position={[0, 1.42, 0]}>
         <boxGeometry args={[0.09, 0.14, 0.03]} />
         <meshStandardMaterial
@@ -68,6 +75,8 @@ function RemoteSwordMesh() {
           emissiveIntensity={0.3}
         />
       </mesh>
+
+      {/* Pommel */}
       <mesh castShadow position={[0, -0.02, 0]}>
         <sphereGeometry args={[0.06, 12, 12]} />
         <meshStandardMaterial color="#B8860B" metalness={0.8} roughness={0.3} />
@@ -82,7 +91,6 @@ export default function RemoteChaosPlayer({ data }: { data: RemoteChaosData }) {
   const currentRotRef = useRef(data.targetRotY);
   const walkRef = useRef(false);
 
-  // Sword swing animation state
   const chopSwingRef = useRef(0);
   const lastSwingingRef = useRef(false);
 
@@ -104,7 +112,6 @@ export default function RemoteChaosPlayer({ data }: { data: RemoteChaosData }) {
     const moved = before.distanceTo(currentPosRef.current) > 0.01;
     walkRef.current = moved;
 
-    // Trigger swing when flag flips to true
     if (data.swinging && !lastSwingingRef.current) {
       chopSwingRef.current = 1;
     }
@@ -194,7 +201,6 @@ export default function RemoteChaosPlayer({ data }: { data: RemoteChaosData }) {
       </Html>
 
       <group position={[0, VISUAL_OFFSET_Y, 0]}>
-        {/* Add sword to right hand so we can see other players' weapons */}
         <Character
           config={data.avatarConfig}
           hideAccessory
