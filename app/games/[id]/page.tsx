@@ -63,6 +63,7 @@ const BROADCAST_INTERVAL = 50;
 const HEARTBEAT_INTERVAL = 400;
 const STALE_TIMEOUT = 3000;
 const CHAT_LIFETIME_MS = 5000;
+const CHAT_OVERLAY_LIFETIME_MS = 7000;
 const CHAT_MAX_LENGTH = 120;
 const CHAT_MUTE_DURATION_MS = 60_000;
 const CHAT_SPAM_THRESHOLD = 3;
@@ -617,14 +618,69 @@ function TouchLookArea({ onLook }: { onLook: (dx: number, dy: number) => void })
 }
 
 // ============================================================
-// COMPUTE CHAT CHANNEL NAME
+// CHAT CHANNEL NAME — shared across all layouts in the same world
 // ============================================================
-// Each game uses its own movement channel, but chat should be shared across
-// the whole world. So the chat channel name is derived from the world ID only,
-// not the layout. This means all players inside the same world see the same
-// chat, regardless of which layout they're playing.
 function getChatChannelName(worldId: string): string {
   return `world-chat-${worldId}`;
+}
+
+// ============================================================
+// CHAT OVERLAY — floating message list shown on top of ANY game
+// ============================================================
+function ChatOverlay({ messages }: { messages: ChatMessage[] }) {
+  // Show the last 6 messages that haven't expired
+  const now = Date.now();
+  const recent = messages
+    .filter((m) => m.expiresAt > now)
+    .slice(-6);
+
+  if (recent.length === 0) return null;
+
+  return (
+    <div
+      className="absolute z-30 pointer-events-none"
+      style={{
+        bottom: "120px",
+        left: "16px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "4px",
+        maxWidth: "320px",
+      }}
+    >
+      {recent.map((m) => (
+        <div
+          key={m.id}
+          style={{
+            background: "linear-gradient(90deg, rgba(0,0,0,0.85), rgba(20,10,40,0.75))",
+            border: "1px solid rgba(108, 60, 224, 0.4)",
+            borderLeft: "3px solid #6C3CE0",
+            borderRadius: "8px",
+            padding: "6px 10px",
+            color: "white",
+            fontSize: "13px",
+            fontWeight: 500,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+            fontFamily: "system-ui, -apple-system, sans-serif",
+            animation: "chatOverlayIn 0.2s ease-out",
+          }}
+        >
+          <span style={{ color: "#00E5FF", fontWeight: 700, marginRight: "6px" }}>
+            {m.username}:
+          </span>
+          <span style={{ color: "rgba(255,255,255,0.92)" }}>{m.text}</span>
+        </div>
+      ))}
+      <style jsx global>{`
+        @keyframes chatOverlayIn {
+          from { opacity: 0; transform: translateX(-12px); }
+          to   { opacity: 1; transform: translateX(0); }
+        }
+      `}</style>
+    </div>
+  );
 }
 
 export default function WorldPage() {
@@ -639,6 +695,8 @@ export default function WorldPage() {
   const [others, setOthers] = useState<RemotePlayerData[]>([]);
   const [onlineCount, setOnlineCount] = useState(1);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  // These are the messages that render in the overlay (with a longer lifetime)
+  const [overlayMessages, setOverlayMessages] = useState<ChatMessage[]>([]);
 
   const [chatOpen, setChatOpen] = useState(false);
   const [draft, setDraft] = useState("");
@@ -775,6 +833,7 @@ export default function WorldPage() {
     const timer = setInterval(() => {
       const now = Date.now();
       setChatMessages((prev) => prev.filter((m) => m.expiresAt > now));
+      setOverlayMessages((prev) => prev.filter((m) => m.expiresAt > now));
     }, 500);
     return () => clearInterval(timer);
   }, []);
@@ -801,6 +860,24 @@ export default function WorldPage() {
     }, 200);
     return () => clearInterval(interval);
   }, [user, worldId]);
+
+  // Helper: add a chat message to both the bubble list and the overlay list
+  const addChatMessage = useCallback((msg: ChatMessage) => {
+    // For chat bubbles above players (short lifetime)
+    setChatMessages((prev) => {
+      if (prev.some((m) => m.id === msg.id)) return prev;
+      return [...prev, msg];
+    });
+    // For the persistent overlay (longer lifetime)
+    const overlayMsg: ChatMessage = {
+      ...msg,
+      expiresAt: Date.now() + CHAT_OVERLAY_LIFETIME_MS,
+    };
+    setOverlayMessages((prev) => {
+      if (prev.some((m) => m.id === overlayMsg.id)) return prev;
+      return [...prev, overlayMsg];
+    });
+  }, []);
 
   const sendChat = useCallback(() => {
     const me = user;
@@ -844,7 +921,8 @@ export default function WorldPage() {
     const msg: ChatMessage = { id, userId: me.id, username: me.username, text: filtered, expiresAt: Date.now() + CHAT_LIFETIME_MS };
     const payload = { id: msg.id, userId: msg.userId, username: msg.username, text: msg.text };
 
-    setChatMessages((prev) => [...prev, msg]);
+    // Add to our own views immediately
+    addChatMessage(msg);
 
     const channel = chatChannelRef.current;
     if (channel) {
@@ -858,7 +936,7 @@ export default function WorldPage() {
     }
 
     setDraft(""); setChatOpen(false);
-  }, [draft, user]);
+  }, [draft, user, addChatMessage]);
 
   const cancelChat = useCallback(() => { setChatOpen(false); setDraft(""); }, []);
 
@@ -927,7 +1005,7 @@ export default function WorldPage() {
     };
   }, [user?.id, worldId]);
 
-  // ===== Chat channel (shared across layouts in the same world) =====
+  // ===== Chat channel (shared across all layouts in the same world) =====
   useEffect(() => {
     if (!user || !worldId) return;
     const chatChannelName = getChatChannelName(worldId);
@@ -938,16 +1016,14 @@ export default function WorldPage() {
     channel
       .on("broadcast", { event: "chat" }, ({ payload }) => {
         if (!payload || payload.userId === user.id) return;
-        setChatMessages((prev) => {
-          if (prev.some((m) => m.id === payload.id)) return prev;
-          return [...prev, {
-            id: payload.id,
-            userId: payload.userId,
-            username: payload.username,
-            text: filterMessage(String(payload.text || "").slice(0, CHAT_MAX_LENGTH)),
-            expiresAt: Date.now() + CHAT_LIFETIME_MS,
-          }];
-        });
+        const incoming: ChatMessage = {
+          id: payload.id,
+          userId: payload.userId,
+          username: payload.username,
+          text: filterMessage(String(payload.text || "").slice(0, CHAT_MAX_LENGTH)),
+          expiresAt: Date.now() + CHAT_LIFETIME_MS,
+        };
+        addChatMessage(incoming);
       })
       .subscribe((status: string) => {
         if (status === "SUBSCRIBED") {
@@ -962,7 +1038,7 @@ export default function WorldPage() {
       supabase.removeChannel(channel);
       chatChannelRef.current = null;
     };
-  }, [user?.id, worldId]);
+  }, [user?.id, worldId, addChatMessage]);
 
   const touchLook = useCallback((dx: number, dy: number) => {
     touchLookState.yawDelta -= dx * 0.005;
@@ -997,6 +1073,8 @@ export default function WorldPage() {
   }
 
   if (!world) return <div className="fixed inset-0 bg-black flex items-center justify-center text-white">Loading world…</div>;
+
+  const isGameLayout = world.layout === "obby" || world.layout === "lumberyard" || world.layout === "chaos-coliseum";
 
   return (
     <div className="fixed inset-0 bg-black overflow-hidden">
@@ -1034,6 +1112,9 @@ export default function WorldPage() {
           </Canvas>
         </KeyboardControls>
       )}
+
+      {/* Chat overlay — shown on top of all game layouts so chat is visible everywhere */}
+      {isGameLayout && <ChatOverlay messages={overlayMessages} />}
 
       {isTouchDevice && !chatOpen && world.layout !== "obby" && world.layout !== "lumberyard" && world.layout !== "chaos-coliseum" && (<><TouchLookArea onLook={touchLook} /><Joystick /><JumpButton /></>)}
 
