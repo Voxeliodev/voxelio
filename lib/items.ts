@@ -184,10 +184,21 @@ export const ITEMS: Item[] = [
     rarity: "epic",
     previewEmoji: "🦸",
     creator: "Voxelio",
-    // modelPath: "/models/Vox_Cape.glb", // <-- COMMENTED OUT UNTIL YOU HAVE THE FILE
-    // modelScale: 1,
-    // modelOffset: [0, 0, 0],
-    // modelRotation: [0, 0, 0],
+    // modelPath: "/models/Vox_Cape.glb", 
+  },
+  {
+    id: "back-crazyvox-backpack",
+    name: "CrazyVox's Backpack",
+    description: "A custom backpack designed by CrazyVox. Perfect for carrying all your loot.",
+    price: 2500,
+    category: "back",
+    rarity: "epic",
+    previewEmoji: "🎒",
+    creator: "Voxelio",
+    modelPath: "/models/CrazyVox_Backpack.glb",
+    modelScale: 1,
+    modelOffset: [0, 0, 0],
+    modelRotation: [0, 0, 0],
   },
 
   // ===== FACES =====
