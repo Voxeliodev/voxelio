@@ -103,7 +103,7 @@ export const ITEMS: Item[] = [
     id: "hat-frozen-shard-horns",
     name: "Frozen Shard Horns",
     description: "Piercing horns made of pure, frozen crystal. They radiate a chilling aura.",
-    price: 1500,
+    price: 15000,
     category: "hats",
     rarity: "epic",
     previewEmoji: "🧊",
