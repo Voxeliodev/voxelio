@@ -15,7 +15,6 @@ import {
   type AvatarConfig,
 } from "../../lib/auth";
 import { isOwnerAccount } from "../../lib/badges";
-import { SITE_THEME } from "../../lib/theme-config"; // <-- IMPORTED THEME
 import {
   BODY_PART_SLOTS,
   DEFAULT_PART_ID,
@@ -59,9 +58,6 @@ export default function AvatarEditorPage() {
 
   const sceneRef = useRef<THREE.Scene | null>(null);
   const [exporting, setExporting] = useState(false);
-
-  // DYNAMIC LOGO
-  const logoSrc = SITE_THEME === "halloween" ? "/voxelio-logo-halloween.png" : "/voxelio-logo.png";
 
   const refreshFromStorage = useCallback(() => {
     const fresh = getCurrentUser();
@@ -283,9 +279,9 @@ export default function AvatarEditorPage() {
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
             <img 
-              src={logoSrc} 
+              src="/voxelio-logo.png" 
               alt="Voxelio" 
-              className="h-16 w-auto object-contain drop-shadow-md" 
+              className="h-14 w-auto object-contain bg-white rounded px-4 py-1.5 shadow-md" 
             />
           </Link>
         </div>

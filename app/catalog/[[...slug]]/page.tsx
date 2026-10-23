@@ -12,7 +12,6 @@ import {
   type User,
 } from "../../../lib/auth";
 import { isOwnerAccount } from "../../../lib/badges";
-import { SITE_THEME } from "../../../lib/theme-config"; // <-- IMPORTED THEME
 import AccountBadge from "../../components/AccountBadge";
 import ItemPreview from "../../components/ItemPreview";
 import ItemModal from "../../components/ItemModal";
@@ -63,9 +62,6 @@ export default function CatalogPage() {
   const [sales, setSales] = useState<Record<string, number>>({});
 
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
-
-  // DYNAMIC LOGO
-  const logoSrc = SITE_THEME === "halloween" ? "/voxelio-logo-halloween.png" : "/voxelio-logo.png";
 
   const refreshUser = () => setCurrentUser(getCurrentUser());
 
@@ -184,9 +180,9 @@ export default function CatalogPage() {
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
             <img 
-              src={logoSrc} 
+              src="/voxelio-logo.png" 
               alt="Voxelio" 
-              className="h-16 w-auto object-contain drop-shadow-md" 
+              className="h-14 w-auto object-contain bg-white rounded px-4 py-1.5 shadow-md" 
             />
           </Link>
           <div className="hidden md:flex items-center gap-2 bg-white/10 rounded px-3 py-1.5 border border-white/20">
