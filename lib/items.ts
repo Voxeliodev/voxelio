@@ -25,14 +25,6 @@ export type Item = {
   // If false, item can't be purchased (still ownable via redeem/admin)
   forSale?: boolean;
 
-  // If true, item is completely hidden from the catalog.
-  // Owners still see it in their inventory / avatar editor.
-  hidden?: boolean;
-
-  // URL to an uploaded image (used by community shirts and any
-  // other item that needs a custom texture)
-  imageUrl?: string;
-
   modelPath?: string;
   modelScale?: number;
   modelOffset?: [number, number, number];
@@ -91,6 +83,22 @@ export const ITEMS: Item[] = [
     previewEmoji: "🎃",
     creator: "Voxelio",
     modelPath: "/models/Vox_Haloween.glb",
+    modelScale: 1,
+    modelOffset: [0, 0, 0],
+    modelRotation: [0, 0, 0],
+  },
+  {
+    id: "hat-mysterious-pumpkin",
+    name: "Mysterious Pumpkin",
+    description:
+      "A strange, glowing pumpkin that sits upon your head. Perfect for spooky season.",
+    price: 5000,
+    category: "hats",
+    rarity: "legendary",
+    previewEmoji: "🎃",
+    creator: "Voxelio",
+    // CHANGE THIS if your file is named differently (e.g. mysterious_pumpkin.glb)
+    modelPath: "/models/Mysterious_Pumpkin.glb",
     modelScale: 1,
     modelOffset: [0, 0, 0],
     modelRotation: [0, 0, 0],
@@ -250,31 +258,6 @@ export const ITEMS: Item[] = [
     forSale: false,
     faceImageUrl: "/faces/ruby-anger-face.png",
   },
-  {
-    id: "face-radioactive-enraged",
-    name: "Radioactive Face of the Enraged",
-    description:
-      "A face burning with radioactive fury, glowing with the rage of the enraged. Created by CrazyVox.",
-    price: 1000,
-    category: "faces",
-    rarity: "legendary",
-    previewEmoji: "☢️",
-    creator: "Voxelio",
-    faceImageUrl: "/faces/radioactive-face-of-the-enraged.png",
-  },
-  // 👇 Now on sale for 310 V$ — visible to everyone
-  {
-    id: "face-inferno-pumpkin",
-    name: "Inferno Pumpkin Face",
-    description:
-      "A blazing jack-o'-lantern face burning with eternal flame. Only available during the 2026 Halloween season, October 1st to October 31st.",
-    price: 310,
-    category: "faces",
-    rarity: "legendary",
-    previewEmoji: "🔥",
-    creator: "Voxelio",
-    faceImageUrl: "/faces/inferno-pumpkin.png",
-  },
 ];
 
 export function getItem(id: string): Item | undefined {
@@ -295,16 +278,9 @@ export function getItemBySlug(slug: string): Item | undefined {
   return ITEMS.find((i) => slugify(i.name).toLowerCase() === decoded);
 }
 
-// ============ CATALOG HELPERS (filter out hidden) ============
-/**
- * Returns items for the catalog. Hidden items are excluded unless
- * the user explicitly owns them.
- */
-export function getItemsByCategory(category: string, ownedIds: string[] = []): Item[] {
-  const visible = ITEMS.filter((i) => !i.hidden || ownedIds.includes(i.id));
-
-  if (category === "all" || category === "featured") return visible;
-  return visible.filter((i) => i.category === category);
+export function getItemsByCategory(category: string): Item[] {
+  if (category === "all" || category === "featured") return ITEMS;
+  return ITEMS.filter((i) => i.category === category);
 }
 
 export function getHats(): Item[] {
