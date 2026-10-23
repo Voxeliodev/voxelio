@@ -12,12 +12,10 @@ import {
   type User,
 } from "../../../lib/auth";
 import { isOwnerAccount } from "../../../lib/badges";
-import { supabase } from "../../../lib/supabase";
 import AccountBadge from "../../components/AccountBadge";
 import ItemPreview from "../../components/ItemPreview";
 import ItemModal from "../../components/ItemModal";
 import NavLink from "../../components/NavLink";
-import VoxelioLogo from "../../components/VoxelioLogo";
 import {
   getItemsByCategory,
   getItemBySlug,
@@ -62,49 +60,9 @@ export default function CatalogPage() {
   const [sort, setSort] = useState("relevance");
   const [sales, setSales] = useState<Record<string, number>>({});
 
-  const [communityShirts, setCommunityShirts] = useState<Item[]>([]);
-
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
 
   const refreshUser = () => setCurrentUser(getCurrentUser());
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadCommunityShirts = async () => {
-      const { data, error } = await supabase
-        .from("community_shirts")
-        .select("*")
-        .eq("status", "approved")
-        .order("approved_at", { ascending: false });
-
-      if (cancelled || error || !data) return;
-
-      const asItems: Item[] = data.map((s) => ({
-        id: `community-${s.id}`,
-        name: s.name,
-        description: s.description || `A community shirt by ${s.creator_username}`,
-        price: s.price,
-        category: "outfits" as const,
-        rarity: "rare" as const,
-        previewEmoji: "👕",
-        creator: s.creator_username,
-        imageUrl: s.image_url,
-      }));
-
-      setCommunityShirts(asItems);
-    };
-
-    loadCommunityShirts();
-
-    const onFocus = () => loadCommunityShirts();
-    window.addEventListener("focus", onFocus);
-
-    return () => {
-      cancelled = true;
-      window.removeEventListener("focus", onFocus);
-    };
-  }, []);
 
   useEffect(() => {
     refreshUser();
@@ -113,13 +71,7 @@ export default function CatalogPage() {
     const syncFromUrl = () => {
       const slug = getSlugFromUrl();
       if (slug) {
-        let item = getItemBySlug(slug);
-        if (!item) {
-          const decoded = decodeURIComponent(slug).toLowerCase();
-          item = communityShirts.find(
-            (i) => slugify(i.name).toLowerCase() === decoded
-          );
-        }
+        const item = getItemBySlug(slug);
         setSelectedItem(item || null);
       } else {
         setSelectedItem(null);
@@ -135,7 +87,7 @@ export default function CatalogPage() {
       unsub();
       window.removeEventListener("popstate", syncFromUrl);
     };
-  }, [communityShirts]);
+  }, []);
 
   const handleSignOut = async () => {
     await signOut();
@@ -154,13 +106,7 @@ export default function CatalogPage() {
 
   const activeCategory = CATEGORIES.find((c) => c.id === category);
 
-  let items = getItemsByCategory(category, currentUser?.ownedItems || []);
-
-  // 👇 Community shirts go FIRST so they always get a 3D preview
-  if (category === "all" || category === "featured" || category === "outfits") {
-    items = [...communityShirts, ...items];
-  }
-
+  let items = getItemsByCategory(category);
   if (search.trim()) {
     const q = search.toLowerCase();
     items = items.filter(
@@ -183,10 +129,8 @@ export default function CatalogPage() {
     { name: "INDEV Club", href: "/indev", special: true },
   ];
 
-  const isModalOpen = Boolean(selectedItem);
-
   return (
-    <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans theme-container">
+    <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans">
 
       {selectedItem && (
         <ItemModal
@@ -233,7 +177,9 @@ export default function CatalogPage() {
 
       <header className="bg-gradient-to-b from-[#6C3CE0] to-[#5A2FC7] border-b-4 border-[#4A1FA8]">
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
-          <VoxelioLogo />
+          <Link href="/" className="flex items-center gap-2">
+            <img src="/voxelio-logo.png" alt="Voxelio" className="h-14 w-auto object-contain bg-white rounded px-4 py-1.5 shadow-md" />
+          </Link>
           <div className="hidden md:flex items-center gap-2 bg-white/10 rounded px-3 py-1.5 border border-white/20">
             <input
               type="text"
@@ -379,7 +325,7 @@ export default function CatalogPage() {
 
             {items.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {items.map((item, index) => {
+                {items.map((item) => {
                   const owned = currentUser?.ownedItems.includes(item.id) || false;
                   const offSale = item.forSale === false;
                   const soldCount = sales[item.id] || 0;
@@ -397,16 +343,7 @@ export default function CatalogPage() {
                       }`}
                     >
                       <div className="pointer-events-none">
-                        {isModalOpen ? (
-                          <div
-                            className="w-full bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] flex items-center justify-center"
-                            style={{ height: 160 }}
-                          >
-                            <span style={{ fontSize: 64 }}>{item.previewEmoji}</span>
-                          </div>
-                        ) : (
-                          <ItemPreview item={item} size={160} renderIndex={index} />
-                        )}
+                        <ItemPreview item={item} size={160} />
                       </div>
 
                       <div className="p-3">

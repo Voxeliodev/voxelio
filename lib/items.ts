@@ -36,6 +36,7 @@ export type Item = {
   shirtTextSegments?: { text: string; color: string }[];
 
   faceImageUrl?: string;
+  imageUrl?: string; // <-- ADDED THIS to fix the build errors
 };
 
 export const ITEMS: Item[] = [
@@ -97,7 +98,6 @@ export const ITEMS: Item[] = [
     rarity: "legendary",
     previewEmoji: "🎃",
     creator: "Voxelio",
-    // CHANGE THIS if your file is named differently (e.g. mysterious_pumpkin.glb)
     modelPath: "/models/Mysterious_Pumpkin.glb",
     modelScale: 1,
     modelOffset: [0, 0, 0],
