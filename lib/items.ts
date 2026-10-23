@@ -184,10 +184,10 @@ export const ITEMS: Item[] = [
     rarity: "epic",
     previewEmoji: "🦸",
     creator: "Voxelio",
-    modelPath: "/models/Vox_Cape.glb", // Placeholder - update when you have a model
-    modelScale: 1,
-    modelOffset: [0, 0, 0],
-    modelRotation: [0, 0, 0],
+    // modelPath: "/models/Vox_Cape.glb", // <-- COMMENTED OUT UNTIL YOU HAVE THE FILE
+    // modelScale: 1,
+    // modelOffset: [0, 0, 0],
+    // modelRotation: [0, 0, 0],
   },
 
   // ===== FACES =====
