@@ -5,19 +5,14 @@ import * as THREE from "three";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, useGLTF } from "@react-three/drei";
 import type { AvatarConfig } from "../../lib/auth";
-import type { Item } from "../../lib/items";
 import { Hat3D } from "./Hats3D";
-import { Shirt3D, CommunityShirt3D } from "./Shirts3D";
+import { Shirt3D } from "./Shirts3D";
 import { Accessory3DGeometry } from "./Accessories3D";
+import { BackAccessory3D } from "./BackAccessories3D";
 import { Face3D, DefaultFace3D } from "./Faces3D";
 import { Hair3D } from "./Hair3D";
 import { getItem } from "../../lib/items";
-import { findCommunityShirt } from "../../lib/communityShirts";
 import { getBodyPart, type BodyPartSlot } from "../../lib/bodyParts";
-
-// ============================================================
-// VOXELIO 3D AVATAR
-// ============================================================
 
 const HELD_ACCESSORIES = ["accessory-vox-sword"];
 
@@ -134,39 +129,22 @@ function BodyPart({
   return <>{children}</>;
 }
 
-// ============================================================
-// CHARACTER
-// ============================================================
 export function Character({
   config,
   hideAccessory = false,
   walking = false,
-  rightHandRef,
-  rightHandContent,
-  resolvedShirt = null,
-  chopSwingRef,
 }: {
   config: AvatarConfig;
   hideAccessory?: boolean;
   walking?: boolean;
-  rightHandRef?: React.MutableRefObject<THREE.Group | null>;
-  rightHandContent?: React.ReactNode;
-  resolvedShirt?: Item | null;
-  chopSwingRef?: React.MutableRefObject<number>;
 }) {
   const skin = config.skinTone;
   const pants = config.pantsColor;
   const bodyParts = config.bodyParts;
   const partColors = config.partColors || {};
 
-  const shirtItem =
-    resolvedShirt ||
-    (config.shirt
-      ? (getItem(config.shirt) || findCommunityShirt(config.shirt))
-      : null);
-
+  const shirtItem = config.shirt ? getItem(config.shirt) : null;
   const shirtOverride = shirtItem?.shirtColorOverride || null;
-  const shirtImageUrl = shirtItem?.imageUrl;
 
   const torsoColor = shirtOverride || partColors.torso || config.shirtColor;
   const leftArmColor = shirtOverride || partColors.leftArm || config.shirtColor;
@@ -208,22 +186,8 @@ export function Character({
 
     const swing = Math.sin(walkPhaseRef.current) * 0.75 * walkAmountRef.current;
 
-    // LEFT ARM — always uses walking animation
     if (leftArmRef.current) leftArmRef.current.rotation.x = leftArmBaseX + swing;
-
-    // RIGHT ARM — chop swing overrides walking when active
-    const chopProgress = chopSwingRef?.current ?? 0;
-    if (rightArmRef.current) {
-      if (chopProgress > 0) {
-        // Curve: wind-up (raise) then strike (swing down forward)
-        const raise = Math.sin(Math.min(1, (1 - chopProgress) * 2) * Math.PI) * 1.1;
-        const strike = Math.sin(Math.max(0, 1 - chopProgress * 2) * Math.PI) * 1.5;
-        rightArmRef.current.rotation.x = -raise + strike;
-      } else {
-        rightArmRef.current.rotation.x = rightArmBaseX - swing;
-      }
-    }
-
+    if (rightArmRef.current) rightArmRef.current.rotation.x = rightArmBaseX - swing;
     if (leftLegRef.current) leftLegRef.current.rotation.x = -swing;
     if (rightLegRef.current) rightLegRef.current.rotation.x = swing;
   });
@@ -243,31 +207,25 @@ export function Character({
         />
       )}
 
-      <BodyPart slot="torso" partId={bodyParts?.torso}>
-        {shirtImageUrl ? (
-          <CommunityShirt3D
-            imageUrl={shirtImageUrl}
-            torsoSize={[0.9, 1, 0.5]}
-            torsoPosition={[0, 0.5, 0]}
-          />
-        ) : (
-          <RoundedBox
-            args={[0.9, 1, 0.5]}
-            radius={0.06}
-            smoothness={4}
-            position={[0, 0.5, 0]}
-            castShadow
-          >
-            <meshStandardMaterial color={torsoColor} roughness={0.7} />
-          </RoundedBox>
-        )}
-      </BodyPart>
-
-      {config.shirt && !shirtImageUrl && (
-        <Shirt3D shirtId={config.shirt} skinTone={skin} />
+      {/* BACK ACCESSORY RENDERED BEHIND TORSO */}
+      {config.backAccessory && (
+        <BackAccessory3D backAccessoryId={config.backAccessory} />
       )}
 
-      {/* LEFT ARM */}
+      <BodyPart slot="torso" partId={bodyParts?.torso}>
+        <RoundedBox
+          args={[0.9, 1, 0.5]}
+          radius={0.06}
+          smoothness={4}
+          position={[0, 0.5, 0]}
+          castShadow
+        >
+          <meshStandardMaterial color={torsoColor} roughness={0.7} />
+        </RoundedBox>
+      </BodyPart>
+
+      {config.shirt && <Shirt3D shirtId={config.shirt} skinTone={skin} />}
+
       <BodyPart slot="leftArm" partId={bodyParts?.leftArm}>
         <group ref={leftArmRef} position={[-0.6, 1.0, 0]}>
           <RoundedBox
@@ -291,7 +249,6 @@ export function Character({
         </group>
       </BodyPart>
 
-      {/* RIGHT ARM */}
       <BodyPart slot="rightArm" partId={bodyParts?.rightArm}>
         <group ref={rightArmRef} position={[0.6, shoulderY, 0]}>
           <RoundedBox
@@ -303,19 +260,15 @@ export function Character({
           >
             <meshStandardMaterial color={rightArmColor} roughness={0.7} />
           </RoundedBox>
-
-          {/* RIGHT HAND — wrapped so external components can attach things */}
-          <group ref={rightHandRef} position={[0, -1.15, 0]}>
-            <RoundedBox
-              args={[0.3, 0.3, 0.3]}
-              radius={0.06}
-              smoothness={4}
-              castShadow
-            >
-              <meshStandardMaterial color={rightHandColor} roughness={0.6} />
-            </RoundedBox>
-            {rightHandContent}
-          </group>
+          <RoundedBox
+            args={[0.3, 0.3, 0.3]}
+            radius={0.06}
+            smoothness={4}
+            position={[0, -1.15, 0]}
+            castShadow
+          >
+            <meshStandardMaterial color={rightHandColor} roughness={0.6} />
+          </RoundedBox>
 
           {!hideAccessory && config.accessory && (
             <group
@@ -328,7 +281,6 @@ export function Character({
         </group>
       </BodyPart>
 
-      {/* LEFT LEG */}
       <BodyPart slot="leftLeg" partId={bodyParts?.leftLeg}>
         <group ref={leftLegRef} position={[-0.25, 0, 0]}>
           <RoundedBox
@@ -352,7 +304,6 @@ export function Character({
         </group>
       </BodyPart>
 
-      {/* RIGHT LEG */}
       <BodyPart slot="rightLeg" partId={bodyParts?.rightLeg}>
         <group ref={rightLegRef} position={[0.25, 0, 0]}>
           <RoundedBox
@@ -422,13 +373,11 @@ export default function Avatar({
   size = 200,
   interactive = false,
   onSceneReady,
-  resolvedShirt = null,
 }: {
   config: AvatarConfig;
   size?: number;
   interactive?: boolean;
   onSceneReady?: (scene: THREE.Scene) => void;
-  resolvedShirt?: Item | null;
 }) {
   const cameraPosition = useMemo(() => computeCameraPosition(config), [config]);
 
@@ -470,7 +419,7 @@ export default function Avatar({
         <directionalLight position={[-3, 2, -3]} intensity={0.35} />
         <hemisphereLight args={["#ffffff", "#666680", 0.4]} />
 
-        <Character config={config} resolvedShirt={resolvedShirt} />
+        <Character config={config} />
 
         {onSceneReady && <SceneExporter onSceneReady={onSceneReady} />}
 

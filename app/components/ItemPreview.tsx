@@ -5,12 +5,11 @@ import { OrbitControls, RoundedBox, useGLTF } from "@react-three/drei";
 import { Suspense, useMemo, useEffect, useState } from "react";
 import * as THREE from "three";
 import { Hat3DGeometry } from "./Hats3D";
-import { Shirt3D, CommunityShirt3D } from "./Shirts3D";
+import { Shirt3D } from "./Shirts3D";
 import { Accessory3DGeometry } from "./Accessories3D";
+import { BackAccessory3DGeometry } from "./BackAccessories3D";
 import { Hair3DGeometry } from "./Hair3D";
 import type { Item } from "../../lib/items";
-
-const MAX_3D_PREVIEWS = 12;
 
 function AutoFitModel({ item, targetSize = 1.4 }: { item: Item; targetSize?: number }) {
   const gltf = useGLTF(item.modelPath!);
@@ -40,43 +39,7 @@ function AutoFitModel({ item, targetSize = 1.4 }: { item: Item; targetSize?: num
   return <primitive object={wrapper} />;
 }
 
-function CategoryFallback({ emoji, size }: { emoji: string; size: number }) {
-  return (
-    <div
-      className="w-full bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] flex items-center justify-center"
-      style={{ height: size }}
-    >
-      <span style={{ fontSize: size * 0.4 }}>{emoji}</span>
-    </div>
-  );
-}
-
-function CommunityShirtStatic({ item, size }: { item: Item; size: number }) {
-  return (
-    <div
-      className="w-full bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] flex items-center justify-center overflow-hidden"
-      style={{ height: size }}
-    >
-      <div
-        className="rounded shadow-md overflow-hidden"
-        style={{
-          width: size * 0.72,
-          height: size * 0.72,
-          backgroundImage: `url(${item.imageUrl})`,
-          backgroundSize: "430% 430%",
-          backgroundPosition: "50% 58%",
-          backgroundRepeat: "no-repeat",
-        }}
-      />
-    </div>
-  );
-}
-
-// ============================================================
-// 3D PREVIEWS
-// ============================================================
-
-function HatPreview3D({ item, size }: { item: Item; size: number }) {
+function HatPreview({ item, size }: { item: Item; size: number }) {
   const isGLB = Boolean(item.modelPath);
 
   return (
@@ -113,45 +76,8 @@ function HatPreview3D({ item, size }: { item: Item; size: number }) {
   );
 }
 
-function ShirtPreview3D({ item, size }: { item: Item; size: number }) {
+function ShirtPreview({ item, size }: { item: Item; size: number }) {
   const torsoColor = item.shirtColorOverride || "#0A0A0A";
-
-  if (item.imageUrl) {
-    return (
-      <div
-        className="w-full bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] cursor-grab active:cursor-grabbing"
-        style={{ height: size }}
-      >
-        <Canvas camera={{ position: [0, 0.15, 3.0], fov: 45 }} dpr={[1, 2]}>
-          <ambientLight intensity={0.75} />
-          <directionalLight position={[3, 5, 4]} intensity={1.15} />
-          <directionalLight position={[-3, 2, -3]} intensity={0.45} />
-          <hemisphereLight args={["#ffffff", "#666680", 0.4]} />
-
-          <group position={[0, -0.35, 0]}>
-            <CommunityShirt3D
-              imageUrl={item.imageUrl}
-              torsoSize={[0.9, 1, 0.5]}
-              torsoPosition={[0, 0.5, 0]}
-              armSize={[0.32, 1, 0.32]}
-              armOffsetX={0.57}
-              armOffsetY={0.95}
-            />
-          </group>
-
-          <OrbitControls
-            enablePan={false}
-            enableZoom={false}
-            autoRotate
-            autoRotateSpeed={1.5}
-            minPolarAngle={Math.PI / 4}
-            maxPolarAngle={Math.PI / 1.8}
-          />
-        </Canvas>
-      </div>
-    );
-  }
-
   return (
     <div
       className="w-full bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] cursor-grab active:cursor-grabbing"
@@ -187,7 +113,7 @@ function ShirtPreview3D({ item, size }: { item: Item; size: number }) {
   );
 }
 
-function HeadPreview3D({ item, size }: { item: Item; size: number }) {
+function HeadPreview({ item, size }: { item: Item; size: number }) {
   const isRound = item.id === "head-round";
   const isHeadless = item.id === "head-headless";
 
@@ -212,7 +138,12 @@ function HeadPreview3D({ item, size }: { item: Item; size: number }) {
         {isHeadless && (
           <mesh>
             <sphereGeometry args={[0.7, 24, 24]} />
-            <meshBasicMaterial color="#7B2FF7" wireframe transparent opacity={0.4} />
+            <meshBasicMaterial
+              color="#7B2FF7"
+              wireframe
+              transparent
+              opacity={0.4}
+            />
           </mesh>
         )}
 
@@ -229,7 +160,7 @@ function HeadPreview3D({ item, size }: { item: Item; size: number }) {
   );
 }
 
-function FacePreview3D({ item, size }: { item: Item; size: number }) {
+function FacePreview({ item, size }: { item: Item; size: number }) {
   const [texture, setTexture] = useState<THREE.Texture | null>(null);
 
   useEffect(() => {
@@ -310,7 +241,7 @@ function FacePreview3D({ item, size }: { item: Item; size: number }) {
   );
 }
 
-function HairPreview3D({ item, size }: { item: Item; size: number }) {
+function HairPreview({ item, size }: { item: Item; size: number }) {
   const isGLB = Boolean(item.modelPath);
 
   return (
@@ -318,7 +249,10 @@ function HairPreview3D({ item, size }: { item: Item; size: number }) {
       className="w-full bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] cursor-grab active:cursor-grabbing"
       style={{ height: size }}
     >
-      <Canvas camera={{ position: [0, 1.7, 2.2], fov: 45 }} dpr={[1, 2]}>
+      <Canvas
+        camera={{ position: [0, 1.7, 2.2], fov: 45 }}
+        dpr={[1, 2]}
+      >
         <ambientLight intensity={0.75} />
         <directionalLight position={[3, 5, 4]} intensity={1.15} />
         <directionalLight position={[-3, 2, -3]} intensity={0.5} />
@@ -358,7 +292,7 @@ function HairPreview3D({ item, size }: { item: Item; size: number }) {
   );
 }
 
-function AccessoryPreview3D({ item, size }: { item: Item; size: number }) {
+function AccessoryPreview({ item, size }: { item: Item; size: number }) {
   const isGLB = Boolean(item.modelPath);
 
   return (
@@ -396,61 +330,61 @@ function AccessoryPreview3D({ item, size }: { item: Item; size: number }) {
   );
 }
 
-// ============================================================
-// STATIC FALLBACKS
-// ============================================================
+function BackAccessoryPreview({ item, size }: { item: Item; size: number }) {
+  const isGLB = Boolean(item.modelPath);
 
-function StaticFace({ item, size }: { item: Item; size: number }) {
-  if (item.faceImageUrl) {
-    return (
-      <div
-        className="w-full bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] flex items-center justify-center overflow-hidden"
-        style={{ height: size }}
-      >
-        <img
-          src={item.faceImageUrl}
-          alt={item.name}
-          className="max-w-[70%] max-h-[70%] object-contain"
-          draggable={false}
+  return (
+    <div
+      className="w-full bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] cursor-grab active:cursor-grabbing"
+      style={{ height: size }}
+    >
+      <Canvas camera={{ position: [1.5, 0.5, 1.5], fov: 45 }} dpr={[1, 2]}>
+        <ambientLight intensity={0.8} />
+        <directionalLight position={[3, 5, 4]} intensity={1.2} />
+        <directionalLight position={[-3, 2, -3]} intensity={0.5} />
+        <hemisphereLight args={["#ffffff", "#666680", 0.5]} />
+
+        {isGLB ? (
+          <Suspense fallback={null}>
+            <AutoFitModel item={item} targetSize={1.6} />
+          </Suspense>
+        ) : (
+          <group position={[0, -0.5, 0]}>
+            <BackAccessory3DGeometry backAccessoryId={item.id} />
+          </group>
+        )}
+
+        <OrbitControls
+          enablePan={false}
+          enableZoom={false}
+          autoRotate
+          autoRotateSpeed={2}
+          minPolarAngle={Math.PI / 6}
+          maxPolarAngle={Math.PI / 1.6}
         />
-      </div>
-    );
-  }
-  return <CategoryFallback emoji={item.previewEmoji} size={size} />;
+      </Canvas>
+    </div>
+  );
 }
 
-function StaticShirt({ item, size }: { item: Item; size: number }) {
-  if (item.imageUrl) {
-    return <CommunityShirtStatic item={item} size={size} />;
-  }
-  return <CategoryFallback emoji={item.previewEmoji} size={size} />;
+function GenericPreview({ item, size }: { item: Item; size: number }) {
+  return (
+    <div
+      className="w-full bg-gradient-to-br from-[#EEF0F7] to-[#DDD6F0] flex items-center justify-center"
+      style={{ height: size }}
+    >
+      <span style={{ fontSize: size * 0.4 }}>{item.previewEmoji}</span>
+    </div>
+  );
 }
 
-// ============================================================
-// MAIN ROUTER
-// ============================================================
-export default function ItemPreview({
-  item,
-  size = 160,
-  renderIndex = 0,
-}: {
-  item: Item;
-  size?: number;
-  renderIndex?: number;
-}) {
-  const use3D = Boolean(item.imageUrl) || renderIndex < MAX_3D_PREVIEWS;
-
-  if (!use3D) {
-    if (item.category === "faces") return <StaticFace item={item} size={size} />;
-    if (item.category === "outfits") return <StaticShirt item={item} size={size} />;
-    return <CategoryFallback emoji={item.previewEmoji} size={size} />;
-  }
-
-  if (item.category === "hats") return <HatPreview3D item={item} size={size} />;
-  if (item.category === "outfits") return <ShirtPreview3D item={item} size={size} />;
-  if (item.category === "heads") return <HeadPreview3D item={item} size={size} />;
-  if (item.category === "faces") return <FacePreview3D item={item} size={size} />;
-  if (item.category === "hair") return <HairPreview3D item={item} size={size} />;
-  if (item.category === "accessories") return <AccessoryPreview3D item={item} size={size} />;
-  return <CategoryFallback emoji={item.previewEmoji} size={size} />;
+export default function ItemPreview({ item, size = 160 }: { item: Item; size?: number }) {
+  if (item.category === "hats") return <HatPreview item={item} size={size} />;
+  if (item.category === "outfits") return <ShirtPreview item={item} size={size} />;
+  if (item.category === "heads") return <HeadPreview item={item} size={size} />;
+  if (item.category === "faces") return <FacePreview item={item} size={size} />;
+  if (item.category === "hair") return <HairPreview item={item} size={size} />;
+  if (item.category === "accessories") return <AccessoryPreview item={item} size={size} />;
+  if (item.category === "back") return <BackAccessoryPreview item={item} size={size} />;
+  return <GenericPreview item={item} size={size} />;
 }

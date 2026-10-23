@@ -25,9 +25,7 @@ import Avatar from "../components/Avatar";
 import AccountBadge from "../components/AccountBadge";
 import NavLink from "../components/NavLink";
 import ItemPreview from "../components/ItemPreview";
-import VoxelioLogo from "../components/VoxelioLogo";
-import { getHats, getShirts, getAccessories, getFaces, getHair, type Item } from "../../lib/items";
-import { loadCommunityShirts, findCommunityShirt, subscribeCommunityShirts } from "../../lib/communityShirts";
+import { getHats, getShirts, getAccessories, getFaces, getHair, getItemsByCategory, type Item } from "../../lib/items";
 
 const SKIN_TONES = ["#F5C6A5", "#E8B08A", "#D69B71", "#B87A54", "#8B5A3C", "#5C3A23", "#3B2314"];
 
@@ -57,9 +55,6 @@ export default function AvatarEditorPage() {
   const [savedFlash, setSavedFlash] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [advancedSlot, setAdvancedSlot] = useState<BodyPartSlot>("head");
-
-  // 👇 NEW: state for community shirts cache
-  const [communityShirts, setCommunityShirts] = useState<Item[]>([]);
 
   const sceneRef = useRef<THREE.Scene | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -109,22 +104,6 @@ export default function AvatarEditorPage() {
       window.removeEventListener("pageshow", refreshFromStorage);
     };
   }, [refreshFromStorage]);
-
-  // 👇 NEW: Load community shirts and listen for cache updates
-  useEffect(() => {
-    loadCommunityShirts();
-    const unsub = subscribeCommunityShirts(() => {
-      // The cache has been refreshed — re-import from the module
-      import("../../lib/communityShirts").then(({ getCachedCommunityShirts }) => {
-        setCommunityShirts(getCachedCommunityShirts());
-      });
-    });
-    // Also seed from cache immediately in case it's already loaded
-    import("../../lib/communityShirts").then(({ getCachedCommunityShirts }) => {
-      setCommunityShirts(getCachedCommunityShirts());
-    });
-    return unsub;
-  }, []);
 
   const handleSignOut = async () => {
     await signOut();
@@ -222,18 +201,12 @@ export default function AvatarEditorPage() {
   };
 
   const owned = user?.ownedItems || [];
-
   const ownedHats = getHats().filter((h) => owned.includes(h.id));
-
-  // 👇 NEW: merge static shirts with community shirts
-  const ownedShirts = [
-    ...getShirts(),
-    ...communityShirts,
-  ].filter((s) => owned.includes(s.id));
-
+  const ownedShirts = getShirts().filter((s) => owned.includes(s.id));
   const ownedAccessories = getAccessories().filter((a) => owned.includes(a.id));
   const ownedFaces = getFaces().filter((f) => owned.includes(f.id));
   const ownedHair = getHair().filter((h) => owned.includes(h.id));
+  const ownedBack = getItemsByCategory("back").filter((b) => owned.includes(b.id));
 
   const unreadCount = user ? getUnreadCount(user.id) : 0;
   const isOwner = isOwnerAccount(user?.username);
@@ -263,7 +236,7 @@ export default function AvatarEditorPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans theme-container">
+    <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans">
 
       {savedFlash && (
         <div className="fixed top-4 right-4 z-[60] bg-green-500 text-white text-sm font-bold px-4 py-2 rounded shadow-lg">
@@ -304,7 +277,9 @@ export default function AvatarEditorPage() {
 
       <header className="bg-gradient-to-b from-[#6C3CE0] to-[#5A2FC7] border-b-4 border-[#4A1FA8]">
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
-          <VoxelioLogo />
+          <Link href="/" className="flex items-center gap-2">
+            <img src="/voxelio-logo.png" alt="Voxelio" className="h-14 w-auto object-contain bg-white rounded px-4 py-1.5 shadow-md" />
+          </Link>
         </div>
       </header>
 
@@ -680,6 +655,31 @@ export default function AvatarEditorPage() {
                       ))}
                     </div>
                   </Section>
+
+                  <Section title="🎒 Back Accessories">
+                    {ownedBack.length === 0 && (
+                      <p className="text-xs text-[#888] mb-3 italic">
+                        No back accessories owned.{" "}
+                        <Link href="/catalog" className="text-[#6C3CE0] hover:underline font-bold">Visit the Catalog →</Link>
+                      </p>
+                    )}
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                      <ItemTile
+                        emoji="🚫"
+                        name="None"
+                        selected={(config.backAccessory || "") === ""}
+                        onSelect={() => update("backAccessory", "")}
+                      />
+                      {ownedBack.map((item) => (
+                        <ItemPreviewTile
+                          key={item.id}
+                          item={item}
+                          selected={config.backAccessory === item.id}
+                          onSelect={() => update("backAccessory", item.id)}
+                        />
+                      ))}
+                    </div>
+                  </Section>
                 </>
               )}
             </div>
@@ -695,10 +695,6 @@ export default function AvatarEditorPage() {
     </div>
   );
 }
-
-// ============================================================
-// TILES
-// ============================================================
 
 function ItemTile({
   emoji,

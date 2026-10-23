@@ -10,7 +10,8 @@ export type ItemCategory =
   | "faces"
   | "outfits"
   | "accessories"
-  | "hair";
+  | "hair"
+  | "back";
 
 export type Item = {
   id: string;
@@ -22,7 +23,6 @@ export type Item = {
   previewEmoji: string;
   creator: string;
 
-  // If false, item can't be purchased (still ownable via redeem/admin)
   forSale?: boolean;
 
   modelPath?: string;
@@ -44,8 +44,7 @@ export const ITEMS: Item[] = [
   {
     id: "hat-vox-cooks",
     name: "Vox Cooks Skater Cap",
-    description:
-      "The first item ever created for Voxelio. Rock the original Vox Cooks cap and represent the community.",
+    description: "The first item ever created for Voxelio. Rock the original Vox Cooks cap and represent the community.",
     price: 20,
     category: "hats",
     rarity: "legendary",
@@ -55,8 +54,7 @@ export const ITEMS: Item[] = [
   {
     id: "hat-vox-sign",
     name: "Vox Cooks Wooden Sign",
-    description:
-      "A rustic wooden sign that sits on top of your head. Clearly marks you as a Vox Cooks enthusiast.",
+    description: "A rustic wooden sign that sits on top of your head. Clearly marks you as a Vox Cooks enthusiast.",
     price: 25,
     category: "hats",
     rarity: "rare",
@@ -66,8 +64,7 @@ export const ITEMS: Item[] = [
   {
     id: "hat-vox-cooks-beanie",
     name: "Vox Cooks Beanie",
-    description:
-      "A snug black ribbed beanie with the Vox Cooks logo stitched across the fold in purple. Warm, cosy, and iconic.",
+    description: "A snug black ribbed beanie with the Vox Cooks logo stitched across the fold in purple. Warm, cosy, and iconic.",
     price: 55,
     category: "hats",
     rarity: "epic",
@@ -91,8 +88,7 @@ export const ITEMS: Item[] = [
   {
     id: "hat-mysterious-pumpkin",
     name: "Mysterious Pumpkin",
-    description:
-      "A strange, glowing pumpkin that sits upon your head. Perfect for spooky season.",
+    description: "A strange, glowing pumpkin that sits upon your head. Perfect for spooky season.",
     price: 5000,
     category: "hats",
     rarity: "legendary",
@@ -100,7 +96,7 @@ export const ITEMS: Item[] = [
     creator: "Voxelio",
     modelPath: "/models/Mysterious_Pumpkin.glb",
     modelScale: 1.0,                
-    modelOffset: [0, -0.85, 0],      // Moved down a little bit more
+    modelOffset: [0, -0.85, 0],      
     modelRotation: [0, 0, 0],
   },
 
@@ -108,8 +104,7 @@ export const ITEMS: Item[] = [
   {
     id: "head-round",
     name: "Round Head",
-    description:
-      "A smooth, circular head. Free to claim — unlocks the Round Head in your avatar editor.",
+    description: "A smooth, circular head. Free to claim — unlocks the Round Head in your avatar editor.",
     price: 0,
     category: "heads",
     rarity: "common",
@@ -119,8 +114,7 @@ export const ITEMS: Item[] = [
   {
     id: "head-headless",
     name: "Headless Head",
-    description:
-      "No head at all. Your hat floats mysteriously in mid-air. Yours for 150k.",
+    description: "No head at all. Your hat floats mysteriously in mid-air. Yours for 150k.",
     price: 150000,
     category: "heads",
     rarity: "rare",
@@ -132,8 +126,7 @@ export const ITEMS: Item[] = [
   {
     id: "shirt-vox-cooks",
     name: "Vox Cooks Tee",
-    description:
-      "A black tee with the Vox Cooks logo in purple, sitting in the top-right corner. Represent the community.",
+    description: "A black tee with the Vox Cooks logo in purple, sitting in the top-right corner. Represent the community.",
     price: 5,
     category: "outfits",
     rarity: "rare",
@@ -144,8 +137,7 @@ export const ITEMS: Item[] = [
   {
     id: "shirt-suit",
     name: "Business Suit",
-    description:
-      "A sharp dark suit with a crisp white shirt and a bold red tie. Look the part.",
+    description: "A sharp dark suit with a crisp white shirt and a bold red tie. Look the part.",
     price: 0,
     category: "outfits",
     rarity: "epic",
@@ -156,8 +148,7 @@ export const ITEMS: Item[] = [
   {
     id: "shirt-i-love-vox",
     name: "I HEART VOX",
-    description:
-      "A clean white shirt with \"I HEART VOX\" printed across the chest. Show the world you love Voxelio.",
+    description: "A clean white shirt with \"I HEART VOX\" printed across the chest. Show the world you love Voxelio.",
     price: 50,
     category: "outfits",
     rarity: "rare",
@@ -175,13 +166,28 @@ export const ITEMS: Item[] = [
   {
     id: "accessory-vox-sword",
     name: "Vox Sword",
-    description:
-      "A classic voxel sword — silver blade, gold guard, and a sturdy wooden grip. Yours to wield.",
+    description: "A classic voxel sword — silver blade, gold guard, and a sturdy wooden grip. Yours to wield.",
     price: 75,
     category: "accessories",
     rarity: "rare",
     previewEmoji: "⚔️",
     creator: "Voxelio",
+  },
+
+  // ===== BACK ACCESSORIES =====
+  {
+    id: "back-vox-cape",
+    name: "Vox Hero Cape",
+    description: "A flowing cape for true heroes of Voxelio.",
+    price: 500,
+    category: "back",
+    rarity: "epic",
+    previewEmoji: "🦸",
+    creator: "Voxelio",
+    modelPath: "/models/Vox_Cape.glb", // Placeholder - update when you have a model
+    modelScale: 1,
+    modelOffset: [0, 0, 0],
+    modelRotation: [0, 0, 0],
   },
 
   // ===== FACES =====
@@ -210,8 +216,7 @@ export const ITEMS: Item[] = [
   {
     id: "face-golden-times",
     name: "Face of Golden Times",
-    description:
-      "A radiant golden face that glows with nostalgia. For those who remember the golden era of Voxelio. This item is no longer for sale.",
+    description: "A radiant golden face that glows with nostalgia. For those who remember the golden era of Voxelio. This item is no longer for sale.",
     price: 250,
     category: "faces",
     rarity: "epic",
@@ -223,8 +228,7 @@ export const ITEMS: Item[] = [
   {
     id: "face-yellow-sparkle-times",
     name: "Face of Yellow Sparkle Times",
-    description:
-      "A cheerful yellow face covered in sparkles. Bright, happy, and impossible to miss.",
+    description: "A cheerful yellow face covered in sparkles. Bright, happy, and impossible to miss.",
     price: 250,
     category: "faces",
     rarity: "epic",
@@ -235,8 +239,7 @@ export const ITEMS: Item[] = [
   {
     id: "face-radioactive-power",
     name: "Radioactive Face of Power",
-    description:
-      "A glowing radioactive face crackling with pure power. Not available for purchase — obtain it by redeeming a special code! Only 25 codes will ever be available.",
+    description: "A glowing radioactive face crackling with pure power. Not available for purchase — obtain it by redeeming a special code! Only 25 codes will ever be available.",
     price: 0,
     category: "faces",
     rarity: "legendary",
@@ -248,8 +251,7 @@ export const ITEMS: Item[] = [
   {
     id: "face-ruby-anger",
     name: "Ruby Anger Face",
-    description:
-      "A furious ruby-red face that radiates pure rage. Created by CrazyVox. Not available for purchase.",
+    description: "A furious ruby-red face that radiates pure rage. Created by CrazyVox. Not available for purchase.",
     price: 0,
     category: "faces",
     rarity: "legendary",
@@ -264,12 +266,8 @@ export function getItem(id: string): Item | undefined {
   return ITEMS.find((i) => i.id === id);
 }
 
-// ============ SLUG HELPERS ============
 export function slugify(name: string): string {
-  return name
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-zA-Z0-9-]/g, "");
+  return name.trim().replace(/\s+/g, "-").replace(/[^a-zA-Z0-9-]/g, "");
 }
 
 export function getItemBySlug(slug: string): Item | undefined {
@@ -283,40 +281,17 @@ export function getItemsByCategory(category: string): Item[] {
   return ITEMS.filter((i) => i.category === category);
 }
 
-export function getHats(): Item[] {
-  return ITEMS.filter((i) => i.category === "hats");
-}
-
-export function getShirts(): Item[] {
-  return ITEMS.filter((i) => i.category === "outfits");
-}
-
-export function getHeads(): Item[] {
-  return ITEMS.filter((i) => i.category === "heads");
-}
-
-export function getAccessories(): Item[] {
-  return ITEMS.filter((i) => i.category === "accessories");
-}
-
-export function getFaces(): Item[] {
-  return ITEMS.filter((i) => i.category === "faces");
-}
-
-export function getHair(): Item[] {
-  return ITEMS.filter((i) => i.category === "hair");
-}
+export function getHats(): Item[] { return ITEMS.filter((i) => i.category === "hats"); }
+export function getShirts(): Item[] { return ITEMS.filter((i) => i.category === "outfits"); }
+export function getHeads(): Item[] { return ITEMS.filter((i) => i.category === "heads"); }
+export function getAccessories(): Item[] { return ITEMS.filter((i) => i.category === "accessories"); }
+export function getFaces(): Item[] { return ITEMS.filter((i) => i.category === "faces"); }
+export function getHair(): Item[] { return ITEMS.filter((i) => i.category === "hair"); }
 
 export const RARITY_LABELS: Record<ItemRarity, string> = {
-  common: "Common",
-  rare: "Rare",
-  epic: "Epic",
-  legendary: "Legendary",
+  common: "Common", rare: "Rare", epic: "Epic", legendary: "Legendary",
 };
 
 export const RARITY_COLORS: Record<ItemRarity, string> = {
-  common: "#9CA3AF",
-  rare: "#3B82F6",
-  epic: "#A855F7",
-  legendary: "#F59E0B",
+  common: "#9CA3AF", rare: "#3B82F6", epic: "#A855F7", legendary: "#F59E0B",
 };

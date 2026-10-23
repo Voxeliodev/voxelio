@@ -36,6 +36,7 @@ const CATEGORIES: Category[] = [
   { id: "outfits", name: "Outfits", emoji: "👕" },
   { id: "accessories", name: "Accessories", emoji: "✨" },
   { id: "hair", name: "Hair", emoji: "💇" },
+  { id: "back", name: "Back Accessories", emoji: "🎒" },
 ];
 
 const SORT_OPTIONS = [
