@@ -286,6 +286,7 @@ export default function AvatarEditorPage() {
               alt="Voxelio" 
               className="h-14 w-auto object-contain bg-white rounded px-4 py-1.5 shadow-md" 
               onError={(e) => {
+                console.error("Could not find the Halloween logo! Make sure it's named exactly 'voxelio-logo-halloween.png' and is in the public folder.");
                 (e.target as HTMLImageElement).src = "/voxelio-logo.png";
               }}
             />

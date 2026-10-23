@@ -187,7 +187,7 @@ export default function CatalogPage() {
               alt="Voxelio" 
               className="h-14 w-auto object-contain bg-white rounded px-4 py-1.5 shadow-md" 
               onError={(e) => {
-                // If the halloween logo is missing, fallback to the default so it never breaks
+                console.error("Could not find the Halloween logo! Make sure it's named exactly 'voxelio-logo-halloween.png' and is in the public folder.");
                 (e.target as HTMLImageElement).src = "/voxelio-logo.png";
               }}
             />
