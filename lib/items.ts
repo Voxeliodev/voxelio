@@ -176,17 +176,6 @@ export const ITEMS: Item[] = [
 
   // ===== BACK ACCESSORIES =====
   {
-    id: "back-vox-cape",
-    name: "Vox Hero Cape",
-    description: "A flowing cape for true heroes of Voxelio.",
-    price: 500,
-    category: "back",
-    rarity: "epic",
-    previewEmoji: "🦸",
-    creator: "Voxelio",
-    // modelPath: "/models/Vox_Cape.glb", 
-  },
-  {
     id: "back-crazyvox-backpack",
     name: "CrazyVox's Backpack",
     description: "A custom backpack designed by CrazyVox. Perfect for carrying all your loot.",
