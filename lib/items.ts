@@ -109,8 +109,8 @@ export const ITEMS: Item[] = [
     previewEmoji: "🧊",
     creator: "Voxelio",
     modelPath: "/models/Frozen_Shard_Horns.glb",
-    modelScale: 0.7,
-    modelOffset: [0, 0.6, 0],
+    modelScale: 0.6,
+    modelOffset: [0, 0.15, 0],
     modelRotation: [0, 0, 0],
   },
 
