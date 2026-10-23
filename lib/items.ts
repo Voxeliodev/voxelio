@@ -196,8 +196,8 @@ export const ITEMS: Item[] = [
     previewEmoji: "🎒",
     creator: "Voxelio",
     modelPath: "/models/CrazyVox_Backpack.glb",
-    modelScale: 1,
-    modelOffset: [0, 0, 0],
+    modelScale: 0.6,                 // Scaled down
+    modelOffset: [0, -0.1, -0.3],    // Pushed back (negative Z) and slightly down
     modelRotation: [0, 0, 0],
   },
 
