@@ -1,14 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useCallback } from "react";
-import { supabase } from "../../lib/supabase";
-import {
-  getCurrentUser,
-  subscribeAuth,
-  hydrateAuth,
-  type User,
-} from "../../lib/auth";
+import { useEffect, useState } from "react";
+import { getCurrentUser, subscribeAuth, type User } from "../../lib/auth";
 import {
   getItem,
   RARITY_COLORS,
@@ -17,7 +11,6 @@ import {
   type ItemCategory,
 } from "../../lib/items";
 import ItemPreview from "../components/ItemPreview";
-import VoxelioLogo from "../components/VoxelioLogo"; // 👈 NEW IMPORT
 
 const CATEGORY_LABELS: Record<ItemCategory, string> = {
   hats: "Hats",
@@ -26,6 +19,7 @@ const CATEGORY_LABELS: Record<ItemCategory, string> = {
   outfits: "Outfits",
   accessories: "Accessories",
   hair: "Hair",
+  back: "Back Accessories", // <-- ADDED
 };
 
 const CATEGORY_EMOJI: Record<ItemCategory, string> = {
@@ -35,6 +29,7 @@ const CATEGORY_EMOJI: Record<ItemCategory, string> = {
   outfits: "👕",
   accessories: "✨",
   hair: "💇",
+  back: "🎒", // <-- ADDED
 };
 
 const CATEGORY_ORDER: ItemCategory[] = [
@@ -44,63 +39,23 @@ const CATEGORY_ORDER: ItemCategory[] = [
   "outfits",
   "accessories",
   "hair",
+  "back", // <-- ADDED
 ];
 
 export default function InventoryPage() {
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
 
-  // Force a fresh pull from Supabase every time this page is shown
-  const refresh = useCallback(async () => {
-    await hydrateAuth();
-
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) {
-      setUser(null);
-      setReady(true);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", session.user.id)
-      .single();
-
-    if (!error && data) {
-      const fresh = getCurrentUser();
-      if (fresh) setUser(fresh);
-      else setUser(null);
-    } else {
-      setUser(getCurrentUser());
-    }
-    setReady(true);
-  }, []);
-
   useEffect(() => {
-    refresh();
-
-    const unsub = subscribeAuth(() => {
-      setUser(getCurrentUser());
-    });
-
-    const onFocus = () => refresh();
-    window.addEventListener("focus", onFocus);
-
-    const onPopState = () => refresh();
-    window.addEventListener("popstate", onPopState);
-
-    return () => {
-      unsub();
-      window.removeEventListener("focus", onFocus);
-      window.removeEventListener("popstate", onPopState);
-    };
-  }, [refresh]);
+    setUser(getCurrentUser());
+    setReady(true);
+    const unsub = subscribeAuth(() => setUser(getCurrentUser()));
+    return () => unsub();
+  }, []);
 
   if (!ready) {
     return (
-      // 👇 Added theme-container so the loading screen also goes dark
-      <div className="min-h-screen bg-[#EEF0F7] flex items-center justify-center text-[#666] theme-container">
+      <div className="min-h-screen bg-[#EEF0F7] flex items-center justify-center text-[#666]">
         Loading…
       </div>
     );
@@ -108,8 +63,7 @@ export default function InventoryPage() {
 
   if (!user) {
     return (
-      // 👇 Added theme-container so the sign-in prompt also goes dark
-      <div className="min-h-screen bg-[#EEF0F7] flex flex-col items-center justify-center p-8 text-center theme-container">
+      <div className="min-h-screen bg-[#EEF0F7] flex flex-col items-center justify-center p-8 text-center">
         <div className="bg-white border-2 border-[#C5C8D6] rounded p-8 max-w-md">
           <p className="mb-4 text-[#1A1A2E] font-bold">
             You need to sign in to see your inventory.
@@ -135,12 +89,17 @@ export default function InventoryPage() {
   })).filter((g) => g.items.length > 0);
 
   return (
-    // 👇 Added theme-container for Halloween dark mode
-    <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans theme-container">
+    <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans">
+
       <header className="bg-gradient-to-b from-[#6C3CE0] to-[#5A2FC7] border-b-4 border-[#4A1FA8]">
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
-          {/* 👇 New logo component */}
-          <VoxelioLogo />
+          <Link href="/" className="flex items-center gap-2">
+            <img
+              src="/voxelio-logo.png"
+              alt="Voxelio"
+              className="h-14 w-auto object-contain bg-white rounded px-4 py-1.5 shadow-md"
+            />
+          </Link>
         </div>
       </header>
 

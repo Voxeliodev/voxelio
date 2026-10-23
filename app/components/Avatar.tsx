@@ -133,10 +133,14 @@ export function Character({
   config,
   hideAccessory = false,
   walking = false,
+  chopSwingRef,
+  rightHandContent,
 }: {
   config: AvatarConfig;
   hideAccessory?: boolean;
   walking?: boolean;
+  chopSwingRef?: React.RefObject<number>;
+  rightHandContent?: React.ReactNode;
 }) {
   const skin = config.skinTone;
   const pants = config.pantsColor;
@@ -184,7 +188,12 @@ export function Character({
       walkPhaseRef.current += delta * 10;
     }
 
-    const swing = Math.sin(walkPhaseRef.current) * 0.75 * walkAmountRef.current;
+    let swing = Math.sin(walkPhaseRef.current) * 0.75 * walkAmountRef.current;
+
+    // Apply custom chop swing if provided
+    if (chopSwingRef && chopSwingRef.current !== undefined) {
+      swing = chopSwingRef.current;
+    }
 
     if (leftArmRef.current) leftArmRef.current.rotation.x = leftArmBaseX + swing;
     if (rightArmRef.current) rightArmRef.current.rotation.x = rightArmBaseX - swing;
@@ -207,7 +216,7 @@ export function Character({
         />
       )}
 
-      {/* BACK ACCESSORY RENDERED BEHIND TORSO */}
+      {/* BACK ACCESSORY */}
       {config.backAccessory && (
         <BackAccessory3D backAccessoryId={config.backAccessory} />
       )}
@@ -269,6 +278,13 @@ export function Character({
           >
             <meshStandardMaterial color={rightHandColor} roughness={0.6} />
           </RoundedBox>
+
+          {/* CUSTOM RIGHT HAND CONTENT (e.g. Axe) */}
+          {rightHandContent && (
+            <group position={[0, -1.15, 0]}>
+              {rightHandContent}
+            </group>
+          )}
 
           {!hideAccessory && config.accessory && (
             <group
