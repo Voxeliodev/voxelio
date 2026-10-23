@@ -188,18 +188,21 @@ export function Character({
       walkPhaseRef.current += delta * 10;
     }
 
-    // Base swing animation
-    let swing = Math.sin(walkPhaseRef.current) * 0.75 * walkAmountRef.current;
-
-    // Override with custom chop swing ONLY if the game passes it (like Lumberyard)
+    // Base swing for walking
+    const walkSwing = Math.sin(walkPhaseRef.current) * 0.75 * walkAmountRef.current;
+    
+    // Arms can be overridden by custom swing (like an axe chop)
+    let armSwing = walkSwing;
     if (chopSwingRef && chopSwingRef.current !== undefined) {
-      swing = chopSwingRef.current;
+      armSwing = chopSwingRef.current;
     }
 
-    if (leftArmRef.current) leftArmRef.current.rotation.x = leftArmBaseX + swing;
-    if (rightArmRef.current) rightArmRef.current.rotation.x = rightArmBaseX - swing;
-    if (leftLegRef.current) leftLegRef.current.rotation.x = -swing;
-    if (rightLegRef.current) rightLegRef.current.rotation.x = swing;
+    if (leftArmRef.current) leftArmRef.current.rotation.x = leftArmBaseX + armSwing;
+    if (rightArmRef.current) rightArmRef.current.rotation.x = rightArmBaseX - armSwing;
+    
+    // Legs ALWAYS use the normal walking animation, even if arms are chopping
+    if (leftLegRef.current) leftLegRef.current.rotation.x = -walkSwing;
+    if (rightLegRef.current) rightLegRef.current.rotation.x = walkSwing;
   });
 
   return (
