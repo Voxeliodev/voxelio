@@ -108,9 +108,9 @@ export const ITEMS: Item[] = [
     rarity: "epic",
     previewEmoji: "🧊",
     creator: "Voxelio",
-   modelPath: "/models/Frozen_Shard_Horns.glb",
-    modelScale: 1.0,                
-    modelOffset: [0, -0.85, 0],      
+    modelPath: "/models/Frozen_Shard_Horns.glb",
+    modelScale: 0.7,
+    modelOffset: [0, 0.6, 0],
     modelRotation: [0, 0, 0],
   },
 
