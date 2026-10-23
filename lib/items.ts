@@ -108,11 +108,10 @@ export const ITEMS: Item[] = [
     rarity: "epic",
     previewEmoji: "🧊",
     creator: "Voxelio",
-    // COMMENTED OUT UNTIL THE FILE IS UPLOADED:
-    // modelPath: "/models/Frozen_Shard_Horns.glb",
-    // modelScale: 1,
-    // modelOffset: [0, 0, 0],
-    // modelRotation: [0, 0, 0],
+   modelPath: "/models/Frozen_Shard_Horns.glb",
+    modelScale: 1.0,                
+    modelOffset: [0, -0.85, 0],      
+    modelRotation: [0, 0, 0],
   },
 
   // ===== HEADS =====
