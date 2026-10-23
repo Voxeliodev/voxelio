@@ -188,21 +188,23 @@ export function Character({
       walkPhaseRef.current += delta * 10;
     }
 
-    // Base swing for walking
     const walkSwing = Math.sin(walkPhaseRef.current) * 0.75 * walkAmountRef.current;
     
-    // Arms can be overridden by custom swing (like an axe chop)
-    let armSwing = walkSwing;
-    if (chopSwingRef && chopSwingRef.current !== undefined) {
-      armSwing = chopSwingRef.current;
-    }
-
-    if (leftArmRef.current) leftArmRef.current.rotation.x = leftArmBaseX + armSwing;
-    if (rightArmRef.current) rightArmRef.current.rotation.x = rightArmBaseX - armSwing;
-    
-    // Legs ALWAYS use the normal walking animation, even if arms are chopping
+    // Legs always swing normally
     if (leftLegRef.current) leftLegRef.current.rotation.x = -walkSwing;
     if (rightLegRef.current) rightLegRef.current.rotation.x = walkSwing;
+
+    // Left arm always swings normally
+    if (leftArmRef.current) leftArmRef.current.rotation.x = leftArmBaseX + walkSwing;
+
+    // Right arm: use custom chop if it's actively swinging (not 0), otherwise use normal walk swing
+    if (rightArmRef.current) {
+      if (chopSwingRef && chopSwingRef.current !== undefined && chopSwingRef.current !== 0) {
+        rightArmRef.current.rotation.x = rightArmBaseX - chopSwingRef.current;
+      } else {
+        rightArmRef.current.rotation.x = rightArmBaseX - walkSwing;
+      }
+    }
   });
 
   return (
