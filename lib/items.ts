@@ -197,7 +197,7 @@ export const ITEMS: Item[] = [
     creator: "Voxelio",
     modelPath: "/models/CrazyVox_Backpack.glb",
     modelScale: 0.45,
-    modelOffset: [0, -0.3, -0.15],
+    modelOffset: [0, -0.45, -0.15],
     modelRotation: [0, Math.PI, 0],
   },
 
