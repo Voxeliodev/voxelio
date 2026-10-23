@@ -99,6 +99,20 @@ export const ITEMS: Item[] = [
     modelOffset: [0, -0.85, 0],      
     modelRotation: [0, 0, 0],
   },
+  {
+    id: "hat-frozen-shard-horns",
+    name: "Frozen Shard Horns",
+    description: "Piercing horns made of pure, frozen crystal. They radiate a chilling aura.",
+    price: 1500,
+    category: "hats",
+    rarity: "epic",
+    previewEmoji: "🧊",
+    creator: "Voxelio",
+    modelPath: "/models/Frozen_Shard_Horns.glb",
+    modelScale: 1,
+    modelOffset: [0, 0, 0],
+    modelRotation: [0, 0, 0],
+  },
 
   // ===== HEADS =====
   {

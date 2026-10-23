@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useGLTF } from "@react-three/drei";
+import { useGLTF, Float, Sparkles } from "@react-three/drei";
 import * as THREE from "three";
 import { getItem, type Item } from "../../lib/items";
 
@@ -19,6 +19,40 @@ function ModelHat({ item }: { item: Item }) {
   const offset = item.modelOffset ?? [0, 0, 0];
   const rotation = item.modelRotation ?? [0, 0, 0];
 
+  // ============================================================
+  // FROZEN SHARD HORNS SPECIAL EFFECT
+  // ============================================================
+  if (item.id === "hat-frozen-shard-horns") {
+    return (
+      <group position={[0, 0, 0]}>
+        <Float speed={2.5} rotationIntensity={0.2} floatIntensity={0.4}>
+          <primitive
+            object={scene}
+            scale={scale}
+            position={offset}
+            rotation={rotation}
+            castShadow
+          />
+          {/* Chilling blue light glow */}
+          <pointLight color="#00D4FF" intensity={2} distance={3} position={[0, 0.5, 0]} />
+          
+          {/* Floating ice particle shards */}
+          <Sparkles
+            count={35}
+            scale={1.2}
+            size={4}
+            speed={0.4}
+            color="#aaeaff"
+            opacity={0.8}
+          />
+        </Float>
+      </group>
+    );
+  }
+
+  // ============================================================
+  // STANDARD GLB HATS (Pumpkin, Halloween, etc.)
+  // ============================================================
   return (
     <primitive
       object={scene}
