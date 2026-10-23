@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { getCurrentUser, buyItem, formatVoxbux, type User } from "../../lib/auth";
-import ItemPreview3D from "./ItemPreview3D";
+import ItemPreview from "./ItemPreview";
 import { RARITY_LABELS, RARITY_COLORS, type Item } from "../../lib/items";
 
 export default function ItemModal({
@@ -44,7 +44,7 @@ export default function ItemModal({
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleBuy = () => {
+  const handleBuy = async () => {
     if (!currentUser) {
       showToast("error", "Sign in to buy items.");
       return;
@@ -53,7 +53,9 @@ export default function ItemModal({
       showToast("error", "This item is no longer for sale.");
       return;
     }
-    const result = buyItem(currentUser.id, item.id, item.price);
+    
+    const result = await buyItem(currentUser.id, item.id, item.price);
+    
     if (result.success) {
       showToast("success", `Purchased ${item.name}! You now have ${formatVoxbux(result.newBalance ?? 0)}.`);
       refreshUser();
@@ -100,7 +102,7 @@ export default function ItemModal({
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 p-4">
           <div className="lg:col-span-3">
             <div className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden">
-              <ItemPreview3D item={item} size={420} />
+              <ItemPreview item={item} size={380} />
             </div>
           </div>
 

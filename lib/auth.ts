@@ -16,7 +16,7 @@ export type AvatarConfig = {
   accessory?: string;
   face?: string;
   hair?: string;
-  backAccessory?: string; // Added
+  backAccessory?: string;
   bodyParts: Record<BodyPartSlot, string>; partColors: BodyPartColors;
 };
 
@@ -58,6 +58,9 @@ export type Message = {
   id: string; fromId: string; toId: string; text: string; sentAt: number; read: boolean;
 };
 
+// ============================================================
+// DATE FORMATTER
+// ============================================================
 export function formatJoinDate(input: string | number | Date | null | undefined): string {
   if (!input) return "";
   const d = input instanceof Date ? input : new Date(input);
@@ -73,6 +76,9 @@ export function formatJoinDate(input: string | number | Date | null | undefined)
   return `${day}${suffix} ${month} ${d.getFullYear()}`;
 }
 
+// ============================================================
+// CACHE + HYDRATE
+// ============================================================
 let usersCache: User[] = [];
 let currentUserCache: User | null = null;
 let messagesCache: Message[] = [];
@@ -196,6 +202,9 @@ export async function hydrateAuth(): Promise<void> {
   }
 }
 
+// ============================================================
+// ROW CONVERSION
+// ============================================================
 function normalizeAvatarConfig(raw: any): AvatarConfig {
   const bodyParts = { ...DEFAULT_BODY_PARTS };
   if (raw?.bodyParts && typeof raw.bodyParts === "object") {
@@ -282,6 +291,9 @@ function rowToMessage(row: any): Message {
   };
 }
 
+// ============================================================
+// INDEV / BAN HELPERS
+// ============================================================
 export function isIndevMember(user: User | null | undefined): boolean {
   if (!user || !user.indevClub) return false;
   return user.indevClub.expiresAt > Date.now();
@@ -304,6 +316,9 @@ export function getBanStatusLabel(user: User): { text: string; tone: "ok" | "war
   return { text: `Banned until ${new Date(user.bannedUntil!).toLocaleString()}`, tone: "warn" };
 }
 
+// ============================================================
+// READ
+// ============================================================
 export function getUsers(): User[] {
   return usersCache.map((u) => {
     const online = typeof u.lastSeen === "number" && Date.now() - u.lastSeen < 60000;
@@ -341,6 +356,9 @@ export function isEmailTaken(email: string): boolean {
 export function getUsedUsernames(): string[] { return getUsers().map((u) => u.username.toLowerCase()); }
 export function getUsedEmails(): string[] { return getUsers().map((u) => u.email.toLowerCase()); }
 
+// ============================================================
+// WRITE
+// ============================================================
 export function updateUser(updatedUser: User): void {
   const idx = usersCache.findIndex((u) => u.id === updatedUser.id);
   if (idx >= 0) usersCache[idx] = updatedUser; else usersCache.push(updatedUser);
@@ -366,6 +384,9 @@ export function saveUsers(users: User[]): void {
   notify();
 }
 
+// ============================================================
+// CREATE / LOGIN / SIGNOUT
+// ============================================================
 export async function createUser(data: { username: string; email: string; password: string; birthday: string }):
   Promise<{ success: boolean; error?: string; user?: User }> {
   if (isUsernameTaken(data.username)) return { success: false, error: "That username is already taken." };
@@ -445,6 +466,9 @@ export async function signOut(): Promise<void> {
   notify();
 }
 
+// ============================================================
+// DAILY BONUS
+// ============================================================
 export async function claimDailyBonus(userId: string): Promise<{
   success: boolean;
   amount?: number;
@@ -484,6 +508,9 @@ export async function claimDailyBonus(userId: string): Promise<{
   return { success: true, amount: DAILY_BONUS_AMOUNT };
 }
 
+// ============================================================
+// PLAYED WITH OWNER BADGE
+// ============================================================
 export async function awardPlayedWithOwner(userId: string): Promise<{
   success: boolean;
   already?: boolean;
@@ -513,6 +540,9 @@ export async function awardPlayedWithOwner(userId: string): Promise<{
   return { success: true, already: Boolean(data.already) };
 }
 
+// ============================================================
+// ITEM SALES COUNTERS
+// ============================================================
 export async function fetchItemSales(): Promise<Record<string, number>> {
   const { data, error } = await supabase.from("item_sales").select("item_id, sales");
   if (error || !data) return {};
@@ -525,10 +555,14 @@ async function bumpItemSale(itemId: string): Promise<void> {
   await supabase.rpc("increment_item_sale", { p_item_id: itemId });
 }
 
+// ============================================================
+// SHOP / INDEV
+// ============================================================
 export function ownsItem(userId: string, itemId: string): boolean {
   return findUserById(userId)?.ownedItems.includes(itemId) || false;
 }
-export function buyItem(userId: string, itemId: string, price: number): { success: boolean; error?: string; newBalance?: number } {
+
+export async function buyItem(userId: string, itemId: string, price: number): Promise<{ success: boolean; error?: string; newBalance?: number }> {
   const user = findUserById(userId);
   if (!user) return { success: false, error: "You must be signed in." };
   if (isUserBanned(user)) return { success: false, error: "This account is banned." };
@@ -538,13 +572,32 @@ export function buyItem(userId: string, itemId: string, price: number): { succes
   if (item && item.forSale === false) {
     return { success: false, error: "This item is no longer for sale." };
   }
-
+  
   if (user.voxbux < price) return { success: false, error: `Not enough Voxbux. You need ${price - user.voxbux} more.` };
-  const updated: User = { ...user, voxbux: user.voxbux - price, ownedItems: [...user.ownedItems, itemId] };
-  updateUser(updated);
+
+  // Use the secure SQL RPC instead of overwriting the whole array
+  const { data, error } = await supabase.rpc("buy_item", {
+    p_user_id: userId,
+    p_item_id: itemId,
+    p_price: price,
+  });
+
+  if (error) return { success: false, error: error.message };
+  if (!data?.success) return { success: false, error: data?.error || "Purchase failed." };
+
+  // Update local cache safely
+  const cached = usersCache.find((u) => u.id === userId);
+  if (cached) {
+    cached.voxbux = data.newBalance;
+    cached.ownedItems = [...cached.ownedItems, itemId];
+    if (currentUserCache?.id === userId) currentUserCache = cached;
+    notify();
+  }
+  
   bumpItemSale(itemId);
-  return { success: true, newBalance: updated.voxbux };
+  return { success: true, newBalance: data.newBalance };
 }
+
 export function subscribeIndev(userId: string, tier: IndevTier): { success: boolean; error?: string; newBalance?: number; expiresAt?: number } {
   const user = findUserById(userId);
   if (!user) return { success: false, error: "You must be signed in." };
@@ -564,6 +617,9 @@ export function cancelIndev(userId: string): { success: boolean; error?: string 
   return { success: true };
 }
 
+// ============================================================
+// DEV — GRANT / REVOKE ITEMS (atomic via Supabase RPC)
+// ============================================================
 export async function grantItem(userId: string, itemId: string): Promise<{ success: boolean; error?: string }> {
   const item = getItem(itemId);
   if (!item) return { success: false, error: "Item not found." };
@@ -610,6 +666,9 @@ export async function revokeItem(userId: string, itemId: string): Promise<{ succ
   return { success: true };
 }
 
+// ============================================================
+// FRIENDS
+// ============================================================
 export function areFriends(a: string, b: string): boolean {
   return findUserById(a)?.friendIds.includes(b) || false;
 }
@@ -682,6 +741,9 @@ export function getOutgoingRequests(userId: string): User[] {
   return user.outgoingRequests.map((id) => findUserById(id)).filter((u): u is User => Boolean(u));
 }
 
+// ============================================================
+// MESSAGES — Supabase-backed
+// ============================================================
 export function getMessages(): Message[] {
   return [...messagesCache];
 }
@@ -782,6 +844,9 @@ export function markConversationRead(userId: string, otherId: string): void {
   }
 }
 
+// ============================================================
+// REDEEM CODES
+// ============================================================
 export async function redeemCode(inputCode: string): Promise<{
   success: boolean;
   error?: string;
@@ -846,6 +911,9 @@ export async function redeemCode(inputCode: string): Promise<{
   return { success: true, rewardType, rewardText };
 }
 
+// ============================================================
+// DEV TOOLS
+// ============================================================
 export function giftVoxbux(userId: string, amount: number): { success: boolean; error?: string; newBalance?: number } {
   const u = findUserById(userId);
   if (!u) return { success: false, error: "User not found." };
@@ -893,6 +961,9 @@ export function terminateUser(userId: string): { success: boolean; error?: strin
   return { success: true };
 }
 
+// ============================================================
+// RE-EXPORTS + FORMATTERS
+// ============================================================
 export { getAccountBadge, isOwnerAccount, isAdminAccount, isModeratorAccount, getBadgeLabel } from "./badges";
 export type { BadgeType } from "./badges";
 

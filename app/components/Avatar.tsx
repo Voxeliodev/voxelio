@@ -188,9 +188,10 @@ export function Character({
       walkPhaseRef.current += delta * 10;
     }
 
+    // Base swing animation
     let swing = Math.sin(walkPhaseRef.current) * 0.75 * walkAmountRef.current;
 
-    // Apply custom chop swing if provided
+    // Override with custom chop swing ONLY if the game passes it (like Lumberyard)
     if (chopSwingRef && chopSwingRef.current !== undefined) {
       swing = chopSwingRef.current;
     }
@@ -216,7 +217,6 @@ export function Character({
         />
       )}
 
-      {/* BACK ACCESSORY */}
       {config.backAccessory && (
         <BackAccessory3D backAccessoryId={config.backAccessory} />
       )}
@@ -279,7 +279,6 @@ export function Character({
             <meshStandardMaterial color={rightHandColor} roughness={0.6} />
           </RoundedBox>
 
-          {/* CUSTOM RIGHT HAND CONTENT (e.g. Axe) */}
           {rightHandContent && (
             <group position={[0, -1.15, 0]}>
               {rightHandContent}
