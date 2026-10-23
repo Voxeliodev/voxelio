@@ -12,7 +12,7 @@ import {
   type User,
 } from "../../../lib/auth";
 import { isOwnerAccount } from "../../../lib/badges";
-import { SITE_THEME } from "../../../lib/theme-config"; // <-- IMPORTED HERE
+import { SITE_THEME } from "../../../lib/theme-config";
 import AccountBadge from "../../components/AccountBadge";
 import ItemPreview from "../../components/ItemPreview";
 import ItemModal from "../../components/ItemModal";
@@ -64,7 +64,6 @@ export default function CatalogPage() {
 
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
 
-  // DYNAMIC LOGO
   const logoSrc = SITE_THEME === "halloween" ? "/voxelio-logo-halloween.png" : "/voxelio-logo.png";
 
   const refreshUser = () => setCurrentUser(getCurrentUser());
@@ -187,6 +186,10 @@ export default function CatalogPage() {
               src={logoSrc} 
               alt="Voxelio" 
               className="h-14 w-auto object-contain bg-white rounded px-4 py-1.5 shadow-md" 
+              onError={(e) => {
+                // If the halloween logo is missing, fallback to the default so it never breaks
+                (e.target as HTMLImageElement).src = "/voxelio-logo.png";
+              }}
             />
           </Link>
           <div className="hidden md:flex items-center gap-2 bg-white/10 rounded px-3 py-1.5 border border-white/20">
