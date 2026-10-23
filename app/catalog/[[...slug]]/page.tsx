@@ -64,7 +64,8 @@ export default function CatalogPage() {
 
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
 
-  const logoSrc = SITE_THEME === "halloween" ? "/voxelio-logo-halloween.png" : "/voxelio-logo.png";
+  // CORRECTED FILE NAME
+  const logoSrc = SITE_THEME === "halloween" ? "/voxelio-halloween.png" : "/voxelio-logo.png";
 
   const refreshUser = () => setCurrentUser(getCurrentUser());
 
@@ -186,10 +187,6 @@ export default function CatalogPage() {
               src={logoSrc} 
               alt="Voxelio" 
               className="h-14 w-auto object-contain bg-white rounded px-4 py-1.5 shadow-md" 
-              onError={(e) => {
-                console.error("Could not find the Halloween logo! Make sure it's named exactly 'voxelio-logo-halloween.png' and is in the public folder.");
-                (e.target as HTMLImageElement).src = "/voxelio-logo.png";
-              }}
             />
           </Link>
           <div className="hidden md:flex items-center gap-2 bg-white/10 rounded px-3 py-1.5 border border-white/20">

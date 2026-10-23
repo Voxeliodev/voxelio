@@ -60,7 +60,8 @@ export default function AvatarEditorPage() {
   const sceneRef = useRef<THREE.Scene | null>(null);
   const [exporting, setExporting] = useState(false);
 
-  const logoSrc = SITE_THEME === "halloween" ? "/voxelio-logo-halloween.png" : "/voxelio-logo.png";
+  // CORRECTED FILE NAME
+  const logoSrc = SITE_THEME === "halloween" ? "/voxelio-halloween.png" : "/voxelio-logo.png";
 
   const refreshFromStorage = useCallback(() => {
     const fresh = getCurrentUser();
@@ -285,10 +286,6 @@ export default function AvatarEditorPage() {
               src={logoSrc} 
               alt="Voxelio" 
               className="h-14 w-auto object-contain bg-white rounded px-4 py-1.5 shadow-md" 
-              onError={(e) => {
-                console.error("Could not find the Halloween logo! Make sure it's named exactly 'voxelio-logo-halloween.png' and is in the public folder.");
-                (e.target as HTMLImageElement).src = "/voxelio-logo.png";
-              }}
             />
           </Link>
         </div>
