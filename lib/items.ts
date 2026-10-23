@@ -36,7 +36,7 @@ export type Item = {
   shirtTextSegments?: { text: string; color: string }[];
 
   faceImageUrl?: string;
-  imageUrl?: string; // <-- ADDED THIS to fix the build errors
+  imageUrl?: string; 
 };
 
 export const ITEMS: Item[] = [
@@ -99,8 +99,8 @@ export const ITEMS: Item[] = [
     previewEmoji: "🎃",
     creator: "Voxelio",
     modelPath: "/models/Mysterious_Pumpkin.glb",
-    modelScale: 1,
-    modelOffset: [0, 0, 0],
+    modelScale: 1.3,                // Adjust this if it needs to be wider
+    modelOffset: [0, -0.4, 0],      // Adjust the middle number to move it up/down
     modelRotation: [0, 0, 0],
   },
 
