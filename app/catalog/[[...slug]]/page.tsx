@@ -64,7 +64,6 @@ export default function CatalogPage() {
 
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
 
-  // CORRECTED FILE NAME
   const logoSrc = SITE_THEME === "halloween" ? "/voxelio-halloween.png" : "/voxelio-logo.png";
 
   const refreshUser = () => setCurrentUser(getCurrentUser());
@@ -183,10 +182,11 @@ export default function CatalogPage() {
       <header className="bg-gradient-to-b from-[#6C3CE0] to-[#5A2FC7] border-b-4 border-[#4A1FA8]">
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
+            {/* Removed the white background padding to match homepage */}
             <img 
               src={logoSrc} 
               alt="Voxelio" 
-              className="h-14 w-auto object-contain bg-white rounded px-4 py-1.5 shadow-md" 
+              className="h-14 md:h-16 w-auto object-contain drop-shadow-md" 
             />
           </Link>
           <div className="hidden md:flex items-center gap-2 bg-white/10 rounded px-3 py-1.5 border border-white/20">
