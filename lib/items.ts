@@ -99,8 +99,8 @@ export const ITEMS: Item[] = [
     previewEmoji: "🎃",
     creator: "Voxelio",
     modelPath: "/models/Mysterious_Pumpkin.glb",
-    modelScale: 0.9,                // <-- Scaled down
-    modelOffset: [0, -0.65, 0],     // <-- Pushed further down over the head
+    modelScale: 1.0,                // Scaled up a little bit
+    modelOffset: [0, -0.7, 0],      // Nudged slightly lower to stay over the face
     modelRotation: [0, 0, 0],
   },
 
