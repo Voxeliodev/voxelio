@@ -276,6 +276,19 @@ export const ITEMS: Item[] = [
     forSale: false,
     faceImageUrl: "/faces/ruby-anger-face.png",
   },
+  // --- NEW INFERNO PUMPKIN FACE ---
+  {
+    id: "face-inferno-pumpkin",
+    name: "Inferno Pumpkin",
+    description: "A blazing pumpkin face wreathed in eternal flames. A rare artifact exclusively from the 2026 Halloween event.",
+    price: 0,
+    category: "faces",
+    rarity: "legendary",
+    previewEmoji: "🎃",
+    creator: "Voxelio",
+    forSale: false,
+    faceImageUrl: "/faces/inferno-pumpkin.png",
+  },
 ];
 
 export function getItem(id: string): Item | undefined {
