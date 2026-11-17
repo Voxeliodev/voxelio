@@ -6,4 +6,4 @@
 //   "default"    → Normal Voxelio theme for everyone
 // ============================================================
 
-export const SITE_THEME: "default" | "halloween" = "halloween";
+export const SITE_THEME: "default" | "halloween" = "default";
