@@ -55,12 +55,17 @@ function getSlugFromUrl(): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+const ITEMS_PER_PAGE = 9;
+
 export default function CatalogPage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [sort, setSort] = useState("relevance");
   const [sales, setSales] = useState<Record<string, number>>({});
+  
+  // --- PAGINATION STATE ---
+  const [currentPage, setCurrentPage] = useState(1);
 
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
 
@@ -108,15 +113,50 @@ export default function CatalogPage() {
     window.history.pushState({}, "", "/catalog");
   };
 
+  // Reset to page 1 when category or search changes
+  const handleCategoryChange = (newCategory: string) => {
+    setCategory(newCategory);
+    setCurrentPage(1);
+  };
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearch(e.target.value);
+    setCurrentPage(1);
+  };
+
   const activeCategory = CATEGORIES.find((c) => c.id === category);
 
+  // 1. Get Items
   let items = getItemsByCategory(category);
+  
+  // 2. Filter by Search
   if (search.trim()) {
     const q = search.toLowerCase();
     items = items.filter(
       (i) => i.name.toLowerCase().includes(q) || i.description.toLowerCase().includes(q)
     );
   }
+
+  // 3. Sort Items
+  items = [...items].sort((a, b) => {
+    if (sort === "price-low") return a.price - b.price;
+    if (sort === "price-high") return b.price - a.price;
+    if (sort === "popular") return (sales[b.id] || 0) - (sales[a.id] || 0); // Sort by sales count
+    return 0; // "relevance" & "newest" default to original array order
+  });
+
+  // 4. Pagination Logic
+  const totalPages = Math.max(1, Math.ceil(items.length / ITEMS_PER_PAGE));
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const paginatedItems = items.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) setCurrentPage((prev) => prev + 1);
+  };
+
+  const handlePrevPage = () => {
+    if (currentPage > 1) setCurrentPage((prev) => prev - 1);
+  };
 
   const unreadCount = currentUser ? getUnreadCount(currentUser.id) : 0;
   const isOwner = isOwnerAccount(currentUser?.username);
@@ -182,7 +222,6 @@ export default function CatalogPage() {
       <header className="bg-gradient-to-b from-[#6C3CE0] to-[#5A2FC7] border-b-4 border-[#4A1FA8]">
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
-            {/* Removed the white background padding to match homepage */}
             <img 
               src={logoSrc} 
               alt="Voxelio" 
@@ -239,7 +278,7 @@ export default function CatalogPage() {
                 {CATEGORIES.map((cat) => (
                   <li key={cat.id}>
                     <button
-                      onClick={() => setCategory(cat.id)}
+                      onClick={() => handleCategoryChange(cat.id)}
                       className={`w-full text-left px-3 py-2 rounded text-sm font-bold transition flex items-center gap-2 ${
                         category === cat.id
                           ? "bg-[#6C3CE0] text-white"
@@ -311,11 +350,11 @@ export default function CatalogPage() {
                   type="text"
                   placeholder="Search catalog..."
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={handleSearchChange}
                   className="bg-transparent outline-none text-sm flex-1 text-[#1A1A2E]"
                 />
                 {search && (
-                  <button onClick={() => setSearch("")} className="text-[#666] hover:text-[#6C3CE0] text-sm">✕</button>
+                  <button onClick={() => { setSearch(""); setCurrentPage(1); }} className="text-[#666] hover:text-[#6C3CE0] text-sm">✕</button>
                 )}
               </div>
               <div className="flex items-center gap-2">
@@ -333,86 +372,120 @@ export default function CatalogPage() {
             </div>
 
             {items.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {items.map((item) => {
-                  const owned = currentUser?.ownedItems.includes(item.id) || false;
-                  const offSale = item.forSale === false;
-                  const soldCount = sales[item.id] || 0;
+              <>
+                {/* 3x3 Grid (9 items max per page) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {paginatedItems.map((item) => {
+                    const owned = currentUser?.ownedItems.includes(item.id) || false;
+                    const offSale = item.forSale === false;
+                    const soldCount = sales[item.id] || 0;
 
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => openItem(item)}
-                      className={`bg-white border-2 rounded overflow-hidden transition cursor-pointer ${
-                        owned
-                          ? "border-green-400 hover:border-green-500"
-                          : offSale
-                          ? "border-red-300 hover:border-red-400"
-                          : "border-[#C5C8D6] hover:border-[#6C3CE0]"
-                      }`}
-                    >
-                      <div className="pointer-events-none">
-                        <ItemPreview item={item} size={160} />
-                      </div>
-
-                      <div className="p-3">
-                        <div className="flex items-start justify-between gap-2 mb-2">
-                          <h3 className="font-black text-sm text-[#1A1A2E] leading-tight">
-                            {item.name}
-                          </h3>
-                          <span
-                            className="text-[9px] font-bold px-2 py-0.5 rounded text-white uppercase flex-shrink-0"
-                            style={{ backgroundColor: RARITY_COLORS[item.rarity] }}
-                          >
-                            {RARITY_LABELS[item.rarity]}
-                          </span>
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => openItem(item)}
+                        className={`bg-white border-2 rounded overflow-hidden transition cursor-pointer ${
+                          owned
+                            ? "border-green-400 hover:border-green-500"
+                            : offSale
+                            ? "border-red-300 hover:border-red-400"
+                            : "border-[#C5C8D6] hover:border-[#6C3CE0]"
+                        }`}
+                      >
+                        <div className="pointer-events-none">
+                          <ItemPreview item={item} size={160} />
                         </div>
-                        <p className="text-[10px] text-[#888] mb-2 flex items-center gap-2 flex-wrap">
-                          <span>by <strong className="text-[#4A1FA8]">{item.creator}</strong></span>
-                          <span className="text-[#FF6B6B] font-bold">
-                            🔥 {soldCount.toLocaleString()} sold
-                          </span>
-                        </p>
-                        <p className="text-xs text-[#666] mb-3 line-clamp-2" style={{ minHeight: "32px" }}>
-                          {item.description}
-                        </p>
 
-                        <div className="flex items-center justify-between gap-2 border-t border-[#E5E7F0] pt-2">
-                          <span
-                            className={`font-black text-sm ${
-                              offSale ? "text-red-500" : "text-[#FFD700]"
-                            }`}
-                          >
-                            {offSale
-                              ? "Off Sale"
-                              : item.price === 0
-                              ? "FREE"
-                              : `${item.price} V$`}
-                          </span>
-
-                          {offSale && !owned ? (
-                            <span className="text-xs font-bold py-1.5 px-3 rounded border bg-[#EEF0F7] text-[#999] border-[#C5C8D6] cursor-not-allowed">
-                              Unavailable
-                            </span>
-                          ) : owned ? (
-                            <a
-                              href="/avatar"
-                              onClick={(e) => e.stopPropagation()}
-                              className="text-xs font-bold py-1.5 px-3 rounded border bg-green-500 text-white border-green-700 hover:bg-green-600 transition"
+                        <div className="p-3">
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <h3 className="font-black text-sm text-[#1A1A2E] leading-tight">
+                              {item.name}
+                            </h3>
+                            <span
+                              className="text-[9px] font-bold px-2 py-0.5 rounded text-white uppercase flex-shrink-0"
+                              style={{ backgroundColor: RARITY_COLORS[item.rarity] }}
                             >
-                              ✓ Equip →
-                            </a>
-                          ) : (
-                            <span className="text-xs font-bold py-1.5 px-3 rounded border bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white border-[#4A1FA8]">
-                              {item.price === 0 ? "Get" : "Buy"}
+                              {RARITY_LABELS[item.rarity]}
                             </span>
-                          )}
+                          </div>
+                          <p className="text-[10px] text-[#888] mb-2 flex items-center gap-2 flex-wrap">
+                            <span>by <strong className="text-[#4A1FA8]">{item.creator}</strong></span>
+                            <span className="text-[#FF6B6B] font-bold">
+                              🔥 {soldCount.toLocaleString()} sold
+                            </span>
+                          </p>
+                          <p className="text-xs text-[#666] mb-3 line-clamp-2" style={{ minHeight: "32px" }}>
+                            {item.description}
+                          </p>
+
+                          <div className="flex items-center justify-between gap-2 border-t border-[#E5E7F0] pt-2">
+                            <span
+                              className={`font-black text-sm ${
+                                offSale ? "text-red-500" : "text-[#FFD700]"
+                              }`}
+                            >
+                              {offSale
+                                ? "Off Sale"
+                                : item.price === 0
+                                ? "FREE"
+                                : `${item.price} V$`}
+                            </span>
+
+                            {offSale && !owned ? (
+                              <span className="text-xs font-bold py-1.5 px-3 rounded border bg-[#EEF0F7] text-[#999] border-[#C5C8D6] cursor-not-allowed">
+                                Unavailable
+                              </span>
+                            ) : owned ? (
+                              <a
+                                href="/avatar"
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-xs font-bold py-1.5 px-3 rounded border bg-green-500 text-white border-green-700 hover:bg-green-600 transition"
+                              >
+                                ✓ Equip →
+                              </a>
+                            ) : (
+                              <span className="text-xs font-bold py-1.5 px-3 rounded border bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white border-[#4A1FA8]">
+                                {item.price === 0 ? "Get" : "Buy"}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+
+                {/* Pagination Arrows */}
+                <div className="flex items-center justify-between mt-6 bg-white border-2 border-[#C5C8D6] rounded p-2 px-4 shadow-sm">
+                  <button
+                    onClick={handlePrevPage}
+                    disabled={currentPage === 1}
+                    className={`px-4 py-2 rounded font-bold text-sm border-2 transition flex items-center gap-2 ${
+                      currentPage === 1
+                        ? "bg-[#EEF0F7] text-[#999] border-[#C5C8D6] cursor-not-allowed"
+                        : "bg-[#4A1FA8] text-white border-[#2D1070] hover:bg-[#5A2FC7]"
+                    }`}
+                  >
+                    ← Prev
+                  </button>
+                  
+                  <span className="text-sm font-bold text-[#4A1FA8]">
+                    Page {currentPage} of {totalPages}
+                  </span>
+
+                  <button
+                    onClick={handleNextPage}
+                    disabled={currentPage === totalPages}
+                    className={`px-4 py-2 rounded font-bold text-sm border-2 transition flex items-center gap-2 ${
+                      currentPage === totalPages
+                        ? "bg-[#EEF0F7] text-[#999] border-[#C5C8D6] cursor-not-allowed"
+                        : "bg-[#4A1FA8] text-white border-[#2D1070] hover:bg-[#5A2FC7]"
+                    }`}
+                  >
+                    Next →
+                  </button>
+                </div>
+              </>
             ) : (
               <div className="bg-white border-2 border-dashed border-[#C5C8D6] rounded p-16 text-center">
                 <div className="text-7xl mb-4">🛒</div>
@@ -425,7 +498,7 @@ export default function CatalogPage() {
                     : "Check back soon — new items are on the way!"}
                 </p>
                 {search ? (
-                  <button onClick={() => setSearch("")} className="text-xs font-bold text-[#6C3CE0] hover:underline">
+                  <button onClick={() => { setSearch(""); setCurrentPage(1); }} className="text-xs font-bold text-[#6C3CE0] hover:underline">
                     Clear search
                   </button>
                 ) : (
