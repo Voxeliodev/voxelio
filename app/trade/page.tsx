@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { getCurrentUser, isIndevMember, type User, getUsers } from "../../lib/auth";
+import { getCurrentUser, isIndevMember, type User, getUsers, hydrateAuth } from "../../lib/auth";
 import { supabase } from "../../lib/supabase";
 import { ITEMS, type Item } from "../../lib/items";
 import VoxelioLogo from "../components/VoxelioLogo";
@@ -181,9 +181,14 @@ export default function TradePage() {
     } else {
       alert("Trade accepted! Your items have been swapped.");
       
-      // 🚨 THE FIX: Force a hard reload.
-      // This prevents the React cache from overwriting the database with old data.
-      window.location.href = "/trade";
+      // 🚨 THE FIX: Hydrate auth to pull fresh data from DB into the local cache
+      await hydrateAuth();
+      
+      setIncomingTrades(incomingTrades.filter(t => t.id !== tradeId));
+      setViewingTrade(null);
+      
+      // 🚨 Force reload to guarantee the UI shows the new items
+      window.location.reload();
     }
   };
 
