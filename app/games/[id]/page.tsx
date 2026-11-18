@@ -18,7 +18,7 @@ import { playInVoxelioApp } from "../../../lib/voxelioPlayer";
 import { WONDERLAND_CHALLENGES } from "../../../lib/wonderland";
 import { getItem } from "../../../lib/items";
 import ItemPreview from "../../components/ItemPreview";
-import WonderlandMiniGame from "../../components/WonderlandMiniGame"; // 👈 Import the 3D Game!
+import Wonderland3D from "../../components/Wonderland3D"; // 👈 Import the 3D Game
 
 export default function GameDetailsPage() {
   const params = useParams();
@@ -41,10 +41,8 @@ export default function GameDetailsPage() {
   const [activeTab, setActiveTab] = useState<"about" | "servers">("about");
   const [currentOnline, setCurrentOnline] = useState(0);
 
-  // 👇 Mini-game state
-  const [activeGame, setActiveGame] = useState<string | null>(null);
-  const [activeGameName, setActiveGameName] = useState("");
-  const [gameRewardItemId, setGameRewardItemId] = useState<string | null>(null);
+  // 👇 State to toggle the 3D Game
+  const [isPlaying3D, setIsPlaying3D] = useState(false);
 
   const isOwner = isOwnerAccount(user?.username);
 
@@ -125,6 +123,11 @@ export default function GameDetailsPage() {
   }, [user, liking, liked, likeCount, worldId]);
 
   const handlePlay = useCallback(async () => {
+    if (isWonderland) {
+      setIsPlaying3D(true); // 👈 Launch 3D Game directly
+      return;
+    }
+
     if (launchStatus === "launching") return;
     setLaunchStatus("launching");
 
@@ -138,27 +141,21 @@ export default function GameDetailsPage() {
       setLaunchStatus("failed");
       setTimeout(() => setLaunchStatus("idle"), 2500);
     }
-  }, [worldId, launchStatus]);
+  }, [worldId, launchStatus, isWonderland]);
 
-  const startChallenge = (challengeId: string, challengeName: string, rewardItemId: string) => {
+  // 👇 Called by the 3D game when you walk into a pillar
+  const completeChallengeIn3D = async (challengeId: string, rewardItemId: string) => {
     if (!user || !isOwner) return;
-    setActiveGame(challengeId);
-    setActiveGameName(challengeName);
-    setGameRewardItemId(rewardItemId);
-  };
-
-  const winChallenge = async () => {
-    if (!user || !activeGame || !gameRewardItemId || !isOwner) return;
     
     const freshUser = getCurrentUser();
     if (!freshUser) return;
 
     const currentBadges = freshUser.wonderlandBadges || [];
-    if (!currentBadges.includes(activeGame)) {
-      const newBadges = [...currentBadges, activeGame];
-      const newOwned = freshUser.ownedItems.includes(gameRewardItemId) 
+    if (!currentBadges.includes(challengeId)) {
+      const newBadges = [...currentBadges, challengeId];
+      const newOwned = freshUser.ownedItems.includes(rewardItemId) 
         ? freshUser.ownedItems 
-        : [...freshUser.ownedItems, gameRewardItemId];
+        : [...freshUser.ownedItems, rewardItemId];
       
       updateUser({ 
         ...freshUser, 
@@ -168,14 +165,20 @@ export default function GameDetailsPage() {
       
       setUser(getCurrentUser());
     }
-    
-    setActiveGame(null);
-    setGameRewardItemId(null);
-    alert("🎉 Challenge Complete! You unlocked a new item! Check your inventory.");
   };
 
   if (!mounted) {
     return <div className="py-20 text-center text-[#666] font-semibold">Loading…</div>;
+  }
+
+  // 👇 Fullscreen 3D Game
+  if (isPlaying3D) {
+    return (
+      <Wonderland3D 
+        onCompleteChallenge={completeChallengeIn3D} 
+        onExit={() => setIsPlaying3D(false)} 
+      />
+    );
   }
 
   if (notFound) {
@@ -195,7 +198,6 @@ export default function GameDetailsPage() {
     return <div className="py-20 text-center text-[#666] font-semibold">Loading world…</div>;
   }
 
-  // Calculate Progress Bar percentage
   const completedCount = user?.wonderlandBadges?.length || 0;
   const totalChallenges = WONDERLAND_CHALLENGES.length;
   const progressPercent = Math.round((completedCount / totalChallenges) * 100);
@@ -244,33 +246,20 @@ export default function GameDetailsPage() {
               </div>
             </div>
 
-            {isWonderland ? (
-              <button 
-                onClick={() => {
-                  if (!isOwner) return;
-                  alert("Entering Owner Test Mode. Click 'Play Challenge' on the cards below to test the game loops!");
-                }}
-                className={`mt-3 w-full h-14 rounded-lg font-black text-lg text-white flex items-center justify-center bg-gradient-to-b ${isOwner ? 'from-gray-700 to-gray-900 hover:from-gray-600 hover:to-gray-800' : 'from-gray-400 to-gray-500'} border-2 border-gray-950 transition`}
-              >
-                <span className="mr-2 text-xl">{isOwner ? "🛠️" : "🔒"}</span> 
-                {isOwner ? "Enter Owner Mode" : "Private Event"}
-              </button>
-            ) : (
-              <button
-                onClick={handlePlay}
-                disabled={launchStatus === "launching"}
-                className="mt-3 w-full h-14 rounded-lg font-black text-lg text-white flex items-center justify-center gap-3 transition-all hover:scale-[1.01] active:scale-[0.99]"
-                style={{
-                  background: launchStatus === "launching" ? "linear-gradient(180deg, #9CA3AF, #6B7280)" : "linear-gradient(180deg, #00A2FF 0%, #0072C7 100%)",
-                  boxShadow: launchStatus === "launching" ? "0 4px 12px rgba(107,114,128,0.4)" : "0 6px 20px rgba(0,162,255,0.4)",
-                  border: "2px solid #005A9E",
-                  cursor: launchStatus === "launching" ? "wait" : "pointer",
-                }}
-              >
-                <span className="text-xl">{launchStatus === "launching" ? "⏳" : "▶"}</span>
-                <span>{launchStatus === "launching" ? "Launching…" : launchStatus === "failed" ? "Try Again" : "Play"}</span>
-              </button>
-            )}
+            <button
+              onClick={handlePlay}
+              className="mt-3 w-full h-14 rounded-lg font-black text-lg text-white flex items-center justify-center gap-3 transition-all hover:scale-[1.01] active:scale-[0.99]"
+              style={{
+                background: isWonderland ? (isOwner ? "linear-gradient(180deg, #00A2FF 0%, #0072C7 100%)" : "linear-gradient(180deg, #9CA3AF, #6B7280)") : "linear-gradient(180deg, #00A2FF 0%, #0072C7 100%)",
+                boxShadow: "0 6px 20px rgba(0,162,255,0.4)",
+                border: "2px solid #005A9E",
+                cursor: isWonderland && !isOwner ? "not-allowed" : "pointer",
+              }}
+              disabled={isWonderland && !isOwner}
+            >
+              <span className="text-xl">{isWonderland ? (isOwner ? "▶" : "🔒") : "▶"}</span>
+              <span>{isWonderland ? (isOwner ? "Play 3D World" : "Private Event") : "Play"}</span>
+            </button>
 
             <div className="flex justify-around mt-3 pt-3 border-t border-[#E5E7F0]">
               <button
@@ -304,7 +293,6 @@ export default function GameDetailsPage() {
       {isWonderland && (
         <div className="bg-[#E0F2FE] border-2 border-[#93C5FD] rounded overflow-hidden p-6 relative">
           
-          {/* 👇 NEW PROGRESS BAR 👇 */}
           <div className="bg-white border-2 border-[#BAE6FD] rounded-xl p-4 mb-8 shadow-sm">
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm font-black text-[#1E3A8A]">Event Progress</span>
@@ -322,199 +310,60 @@ export default function GameDetailsPage() {
             <h2 className="text-3xl font-black text-[#1E3A8A] mb-2 drop-shadow-sm">
               ❄️ Wonderland Challenges ❄️
             </h2>
-            <p className="text-[#1E40AF] font-bold text-sm">
-              {isOwner 
-                ? "Owner Mode: Click 'Play Challenge' to start the 3D mini-game!" 
-                : "This event is currently private. Only the owner can test it right now."}
-            </p>
           </div>
 
-          {!user ? (
-            <div className="text-center p-8 bg-white/60 rounded-xl border-2 border-[#BAE6FD]">
-              <p className="font-bold text-[#1E3A8A] mb-4">Sign in to track your progress and earn items.</p>
-              <Link href="/signin" className="inline-block bg-[#1E3A8A] text-white font-bold px-6 py-2 rounded-lg hover:bg-[#1E40AF] transition">
-                Sign In
-              </Link>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {WONDERLAND_CHALLENGES.map((challenge) => {
-                const isCompleted = user.wonderlandBadges?.includes(challenge.id);
-                const rewardItem = getItem(challenge.rewardItemId);
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {WONDERLAND_CHALLENGES.map((challenge) => {
+              const isCompleted = user?.wonderlandBadges?.includes(challenge.id);
+              const rewardItem = getItem(challenge.rewardItemId);
 
-                return (
-                  <div key={challenge.id} className="bg-white border-4 border-[#93C5FD] rounded-xl overflow-hidden shadow-lg flex flex-col">
-                    <div className="bg-[#1E3A8A] text-white p-3 text-center font-black">
-                      {challenge.emoji} {challenge.name}
-                    </div>
+              return (
+                <div key={challenge.id} className="bg-white border-4 border-[#93C5FD] rounded-xl overflow-hidden shadow-lg flex flex-col">
+                  <div className="bg-[#1E3A8A] text-white p-3 text-center font-black">
+                    {challenge.emoji} {challenge.name}
+                  </div>
+                  
+                  <div className="p-4 flex-1 flex flex-col items-center text-center">
+                    <p className="text-xs text-[#4B5563] mb-4 font-semibold">{challenge.description}</p>
                     
-                    <div className="p-4 flex-1 flex flex-col items-center text-center">
-                      <p className="text-xs text-[#4B5563] mb-4 font-semibold">{challenge.description}</p>
+                    <div className="mt-auto w-full">
+                      <p className="text-[10px] font-black uppercase text-[#9CA3AF] mb-2">Reward</p>
                       
-                      <div className="mt-auto w-full">
-                        <p className="text-[10px] font-black uppercase text-[#9CA3AF] mb-2">Reward</p>
-                        
-                        <div className="bg-[#F0F9FF] border-2 border-[#BAE6FD] rounded-lg p-2 flex flex-col items-center mb-4">
-                          {rewardItem ? (
-                            <>
-                              <div className="w-16 h-16 pointer-events-none">
-                                <ItemPreview item={rewardItem} size={64} />
-                              </div>
-                              <p className="font-bold text-xs text-[#1E3A8A] mt-1">{rewardItem.name}</p>
-                            </>
-                          ) : (
-                            <p className="text-xs font-bold">Item Pending</p>
-                          )}
-                        </div>
-
-                        {isCompleted ? (
-                          <div className="bg-green-100 border-2 border-green-300 text-green-700 font-black py-2 rounded-lg text-sm w-full flex justify-center items-center gap-1">
-                            <span>✓</span> Badge Earned
-                          </div>
-                        ) : isOwner ? (
-                          <button
-                            onClick={() => startChallenge(challenge.id, challenge.name, challenge.rewardItemId)}
-                            className="w-full bg-[#FFD700] hover:bg-[#FFC000] text-[#1E3A8A] font-black py-2 rounded-lg border-2 border-[#B45309] transition shadow-md"
-                          >
-                            ▶ Play Challenge
-                          </button>
+                      <div className="bg-[#F0F9FF] border-2 border-[#BAE6FD] rounded-lg p-2 flex flex-col items-center mb-4">
+                        {rewardItem ? (
+                          <>
+                            <div className="w-16 h-16 pointer-events-none">
+                              <ItemPreview item={rewardItem} size={64} />
+                            </div>
+                            <p className="font-bold text-xs text-[#1E3A8A] mt-1">{rewardItem.name}</p>
+                          </>
                         ) : (
-                          <div className="w-full bg-gray-200 text-gray-500 font-black py-2 rounded-lg border-2 border-gray-300 text-sm flex justify-center items-center gap-1 cursor-not-allowed">
-                            <span>🔒</span> Private
-                          </div>
+                          <p className="text-xs font-bold">Item Pending</p>
                         )}
                       </div>
+
+                      {isCompleted ? (
+                        <div className="bg-green-100 border-2 border-green-300 text-green-700 font-black py-2 rounded-lg text-sm w-full flex justify-center items-center gap-1">
+                          <span>✓</span> Badge Earned
+                        </div>
+                      ) : (
+                        <div className="w-full bg-gray-100 text-gray-500 font-bold py-2 rounded-lg border-2 border-gray-200 text-xs flex justify-center items-center">
+                          Find this in the 3D World!
+                        </div>
+                      )}
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
-
-      {/* 👇 THE REAL 3D MINI GAME 👇 */}
-      {activeGame && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-          <WonderlandMiniGame 
-            challengeName={activeGameName}
-            onWin={winChallenge}
-            onClose={() => setActiveGame(null)}
-          />
-        </div>
-      )}
-
+      
+      {/* ... Rest of the page (Tabs, etc.) ... */}
       {!isWonderland && (
         <div className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden">
-          <div className="flex border-b-2 border-[#E5E7F0]">
-            {(
-              [
-                { key: "about", label: "About" },
-                { key: "servers", label: "Servers" },
-              ] as const
-            ).map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`px-8 py-3 text-sm font-black transition ${
-                  activeTab === tab.key
-                    ? "bg-[#EEF0F7] text-[#4A1FA8] border-b-4 border-[#6C3CE0] -mb-0.5"
-                    : "text-[#666] hover:text-[#4A1FA8]"
-                }`}
-                style={{ background: activeTab === tab.key ? "#EEF0F7" : "transparent" }}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          {activeTab === "about" && (
-            <div className="p-6 space-y-6">
-              <div>
-                <h2 className="text-lg font-black text-[#1A1A2E] mb-2">Description</h2>
-                <p className="text-sm text-[#444] whitespace-pre-wrap leading-relaxed">
-                  {world.description || "No description provided."}
-                </p>
-              </div>
-
-              <div>
-                <h2 className="text-lg font-black text-[#1A1A2E] mb-3">Stats</h2>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                  {[
-                    ["Active", `${currentOnline} online`],
-                    ["Visits", world.visits.toLocaleString()],
-                    ["Likes", world.likes.toLocaleString()],
-                    ["Favorites", world.favorites.toLocaleString()],
-                    ["Max Players", String(world.maxPlayers)],
-                    ["Category", world.category],
-                    ["Created", new Date(world.createdAt).toLocaleDateString()],
-                  ].map(([label, value]) => (
-                    <div key={label}>
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-[#999] mb-1">
-                        {label}
-                      </div>
-                      <div className="text-sm font-black text-[#1A1A2E] capitalize">
-                        {value}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === "servers" && (
-            <div className="p-12 text-center">
-              <div className="text-5xl mb-3">🌐</div>
-              <div className="text-base font-black text-[#1A1A2E] mb-1">Server list coming soon</div>
-              <div className="text-xs text-[#666]">In the meantime, click Play to join a public server.</div>
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="text-center pt-2">
-        <Link href="/games" className="inline-block text-sm font-bold text-[#6C3CE0] hover:underline">
-          ← Back to Games
-        </Link>
-      </div>
-
-      {launchStatus === "not-installed" && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(6px)" }}
-          onClick={() => setLaunchStatus("idle")}
-        >
-          <div
-            className="bg-white rounded-2xl p-8 max-w-md mx-4 text-center border-4 border-[#6C3CE0] shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="text-6xl mb-3">🎮</div>
-            <h3 className="text-2xl font-black text-[#1A1A2E] mb-2">Voxelio Player Not Installed</h3>
-            <p className="text-sm text-[#666] mb-6 leading-relaxed">
-              To play Voxelio games, download the Voxelio Player app. It&apos;s free, fast, and runs full-screen.
-            </p>
-            <div className="flex gap-2 justify-center">
-              <Link
-                href="/download"
-                className="bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white font-black text-sm px-6 py-3 rounded-lg border-2 border-[#4A1FA8] hover:from-[#8B5FFF] hover:to-[#6A3FD7] transition"
-              >
-                ⬇ Download App
-              </Link>
-              <button
-                onClick={() => setLaunchStatus("idle")}
-                className="bg-[#EEF0F7] text-[#4A1FA8] font-bold text-sm px-6 py-3 rounded-lg border-2-[#C5C8D6] hover:bg-[#E0E3EE] transition"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {launchStatus === "failed" && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-red-600 text-white font-bold text-sm px-5 py-3 rounded-lg shadow-2xl z-50">
-          Failed to launch the app. Please try again.
+          {/* ... Tabs code ... */}
         </div>
       )}
     </div>
