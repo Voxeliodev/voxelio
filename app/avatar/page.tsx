@@ -15,7 +15,6 @@ import {
   type AvatarConfig,
 } from "../../lib/auth";
 import { isOwnerAccount } from "../../lib/badges";
-import { SITE_THEME } from "../../lib/theme-config";
 import {
   BODY_PART_SLOTS,
   DEFAULT_PART_ID,
@@ -26,6 +25,7 @@ import Avatar from "../components/Avatar";
 import AccountBadge from "../components/AccountBadge";
 import NavLink from "../components/NavLink";
 import ItemPreview from "../components/ItemPreview";
+import VoxelioLogo from "../components/VoxelioLogo"; // 👈 ADDED IMPORT
 import { getHats, getShirts, getAccessories, getFaces, getHair, getItemsByCategory, type Item } from "../../lib/items";
 
 const SKIN_TONES = ["#F5C6A5", "#E8B08A", "#D69B71", "#B87A54", "#8B5A3C", "#5C3A23", "#3B2314"];
@@ -59,8 +59,6 @@ export default function AvatarEditorPage() {
 
   const sceneRef = useRef<THREE.Scene | null>(null);
   const [exporting, setExporting] = useState(false);
-
-  const logoSrc = SITE_THEME === "halloween" ? "/voxelio-halloween.png" : "/voxelio-logo.png";
 
   const refreshFromStorage = useCallback(() => {
     const fresh = getCurrentUser();
@@ -280,14 +278,10 @@ export default function AvatarEditorPage() {
 
       <header className="bg-gradient-to-b from-[#6C3CE0] to-[#5A2FC7] border-b-4 border-[#4A1FA8]">
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            {/* Removed the white background padding to match homepage */}
-            <img 
-              src={logoSrc} 
-              alt="Voxelio" 
-              className="h-14 md:h-16 w-auto object-contain drop-shadow-md" 
-            />
-          </Link>
+          
+          {/* 👇 LOGO COMPONENT IS NOW HERE 👇 */}
+          <VoxelioLogo />
+          
         </div>
       </header>
 
