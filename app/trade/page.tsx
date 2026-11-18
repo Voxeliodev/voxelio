@@ -34,6 +34,9 @@ export default function TradePage() {
   // State for incoming trades
   const [incomingTrades, setIncomingTrades] = useState<TradeOffer[]>([]);
   const [loadingTrades, setLoadingTrades] = useState(true);
+  
+  // State for the View Trade Modal
+  const [viewingTrade, setViewingTrade] = useState<TradeOffer | null>(null);
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -44,11 +47,9 @@ export default function TradePage() {
     setCurrentUser(u);
     
     if (u) {
-      // Get all other users (excluding yourself)
       const users = getUsers().filter(user => user.id !== u.id);
       setAllUsers(users);
 
-      // Fetch incoming pending trades from Supabase
       const fetchTrades = async () => {
         const { data, error } = await supabase
           .from("trades")
@@ -97,7 +98,6 @@ export default function TradePage() {
             <VoxelioLogo />
           </div>
         </header>
-        
         <nav className="bg-[#4A1FA8] border-b-2 border-[#2D1070]">
           <div className="max-w-6xl mx-auto px-3 flex flex-wrap">
             {navTabs.map((tab) => (
@@ -107,7 +107,6 @@ export default function TradePage() {
             ))}
           </div>
         </nav>
-
         <div className="flex flex-col items-center justify-center min-h-[60vh] p-4 text-center">
           <h1 className="text-4xl font-black mb-4 text-[#FFD700]" style={{ textShadow: "1px 1px 0 #000" }}>🔒 Trade Locked</h1>
           <p className="text-gray-600 mb-6 max-w-md font-semibold">
@@ -121,12 +120,10 @@ export default function TradePage() {
     );
   }
 
-  // Your limited items
   const myLimitedItems = currentUser.ownedItems
     .map((id) => ITEMS.find((i) => i.id === id))
     .filter((item): item is Item => item !== undefined && item.maxSupply !== undefined);
 
-  // ✅ FIXED: Their real limited items based on their actual inventory
   const theirLimitedItems = targetUser 
     ? targetUser.ownedItems
         .map((id) => ITEMS.find((i) => i.id === id))
@@ -137,7 +134,6 @@ export default function TradePage() {
         }))
     : [];
 
-  // Handlers
   const addToMyOffer = (item: Item) => {
     if (myOffer.some((o) => o.item.id === item.id)) return;
     const serial = currentUser.itemSerials?.[item.id] || 1;
@@ -181,6 +177,7 @@ export default function TradePage() {
     setIsSending(false);
   };
 
+  // Accept the trade from the Modal
   const handleAcceptTrade = async (tradeId: string) => {
     const { data, error } = await supabase.rpc("accept_trade", { p_trade_id: tradeId });
     if (error) alert("Error: " + error.message);
@@ -188,19 +185,103 @@ export default function TradePage() {
     else {
       alert("Trade accepted! Your items have been swapped.");
       setIncomingTrades(incomingTrades.filter(t => t.id !== tradeId));
+      setViewingTrade(null); // Close modal
       window.location.reload(); 
     }
   };
 
-  // Pagination Logic
+  // Decline the trade (we will just delete it from the database for simplicity)
+  const handleDeclineTrade = async (tradeId: string) => {
+    const { error } = await supabase.from("trades").delete().eq("id", tradeId);
+    if (error) alert("Error declining: " + error.message);
+    else {
+      setIncomingTrades(incomingTrades.filter(t => t.id !== tradeId));
+      setViewingTrade(null); // Close modal
+    }
+  };
+
   const indexOfLastUser = currentPage * usersPerPage;
   const indexOfFirstUser = indexOfLastUser - usersPerPage;
   const currentUsers = allUsers.slice(indexOfFirstUser, indexOfLastUser);
   const totalPages = Math.ceil(allUsers.length / usersPerPage);
 
   return (
-    <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans">
+    <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans relative">
       
+      {/* INCOMING TRADE MODAL */}
+      {viewingTrade && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setViewingTrade(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden border-2 border-[#C5C8D6]" onClick={e => e.stopPropagation()}>
+            <div className="bg-[#4A1FA8] text-white px-4 py-3 flex justify-between items-center">
+              <h2 className="font-black text-lg">Trade Offer from {viewingTrade.sender_username}</h2>
+              <button onClick={() => setViewingTrade(null)} className="text-white/80 hover:text-white text-2xl font-black">×</button>
+            </div>
+            
+            <div className="p-6">
+              <div className="grid grid-cols-2 gap-6 mb-6">
+                
+                {/* They Give */}
+                <div className="bg-[#EEF0F7] border-2 border-[#C5C8D6] rounded-lg p-4">
+                  <h3 className="text-sm font-black text-[#4A1FA8] mb-3 uppercase tracking-wider text-center border-b border-[#C5C8D6] pb-2">They Give You</h3>
+                  <div className="space-y-2">
+                    {viewingTrade.sender_items.map((i, idx) => {
+                      const item = ITEMS.find(it => it.id === i.itemId);
+                      return (
+                        <div key={idx} className="flex items-center gap-3 bg-white p-2 rounded border border-[#C5C8D6]">
+                          <div className="w-10 h-10 flex items-center justify-center text-xl bg-gray-50 rounded">{item?.previewEmoji || "❓"}</div>
+                          <div>
+                            <p className="text-sm font-bold text-[#1A1A2E]">{item?.name || i.itemId}</p>
+                            <p className="text-[10px] font-black text-[#B8860B]">Serial #{i.serial}</p>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* You Give */}
+                <div className="bg-[#EEF0F7] border-2 border-[#C5C8D6] rounded-lg p-4">
+                  <h3 className="text-sm font-black text-[#EF4444] mb-3 uppercase tracking-wider text-center border-b border-[#C5C8D6] pb-2">You Give Them</h3>
+                  <div className="space-y-2">
+                    {viewingTrade.receiver_items.length === 0 ? (
+                      <p className="text-xs text-gray-500 italic text-center py-4">Nothing (Free Item)</p>
+                    ) : (
+                      viewingTrade.receiver_items.map((i, idx) => {
+                        const item = ITEMS.find(it => it.id === i.itemId);
+                        return (
+                          <div key={idx} className="flex items-center gap-3 bg-white p-2 rounded border border-[#C5C8D6]">
+                            <div className="w-10 h-10 flex items-center justify-center text-xl bg-gray-50 rounded">{item?.previewEmoji || "❓"}</div>
+                            <div>
+                              <p className="text-sm font-bold text-[#1A1A2E]">{item?.name || i.itemId}</p>
+                              <p className="text-[10px] font-black text-[#B8860B]">Serial #{i.serial}</p>
+                            </div>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => handleDeclineTrade(viewingTrade.id)}
+                  className="flex-1 bg-[#EEF0F7] text-[#EF4444] border-2 border-[#C5C8D6] hover:bg-red-50 hover:border-red-300 font-black py-3 rounded-lg transition"
+                >
+                  Decline
+                </button>
+                <button 
+                  onClick={() => handleAcceptTrade(viewingTrade.id)}
+                  className="flex-1 bg-gradient-to-b from-[#22C55E] to-[#16A34A] text-white border-2 border-[#15803D] hover:from-[#4ADE80] hover:to-[#22C55E] font-black py-3 rounded-lg transition shadow-md"
+                >
+                  Accept Trade
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* HEADER */}
       <header className="bg-gradient-to-b from-[#6C3CE0] to-[#5A2FC7] border-b-4 border-[#4A1FA8]">
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
@@ -247,25 +328,19 @@ export default function TradePage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {incomingTrades.map((trade) => (
-                <div key={trade.id} className="bg-[#EEF0F7] border border-[#C5C8D6] rounded p-4 flex flex-col justify-between">
+                <div 
+                  key={trade.id} 
+                  className="bg-[#EEF0F7] border border-[#C5C8D6] hover:border-[#6C3CE0] rounded p-4 flex items-center justify-between cursor-pointer transition shadow-sm"
+                  onClick={() => setViewingTrade(trade)}
+                >
                   <div>
-                    <p className="text-sm font-bold mb-2">
+                    <p className="text-sm font-bold">
                       Trade from <span className="text-[#6C3CE0]">{trade.sender_username}</span>
                     </p>
-                    <div className="flex gap-2 text-xs mb-4">
-                      {trade.sender_items.map((i, idx) => {
-                        const item = ITEMS.find(it => it.id === i.itemId);
-                        return (
-                          <div key={idx} className="bg-white px-2 py-1 rounded border border-[#C5C8D6]">
-                            {item?.name || i.itemId} <span className="text-[#B8860B]">#{i.serial}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
+                    <p className="text-xs text-gray-500 mt-1">{trade.sender_items.length} items offered</p>
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => handleAcceptTrade(trade.id)} className="flex-1 bg-green-500 text-white font-bold py-2 rounded text-sm hover:bg-green-600 transition">Accept</button>
-                    <button className="flex-1 bg-red-500 text-white font-bold py-2 rounded text-sm hover:bg-red-600 transition">Decline</button>
+                  <div className="bg-white px-3 py-1.5 rounded text-xs font-bold text-[#4A1FA8] border border-[#C5C8D6]">
+                    View Details →
                   </div>
                 </div>
               ))}
@@ -278,7 +353,6 @@ export default function TradePage() {
           <div className="bg-white rounded-xl border-2 border-[#C5C8D6] p-6 shadow-sm">
             <h2 className="text-2xl font-black text-[#4A1FA8] mb-6 text-center">Select a Player to Trade With</h2>
             
-            {/* 3x3 Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               {currentUsers.map(user => (
                 <div 
@@ -295,7 +369,6 @@ export default function TradePage() {
               ))}
             </div>
 
-            {/* Pagination Controls */}
             {totalPages > 1 && (
               <div className="flex items-center justify-between border-t border-[#E5E7F0] pt-4">
                 <button 
@@ -319,7 +392,6 @@ export default function TradePage() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             
-            {/* LEFT: Your Inventory */}
             <div className="bg-white rounded-xl border-2 border-[#C5C8D6] p-4 h-[500px] flex flex-col">
               <h2 className="font-black text-lg mb-4 text-[#4A1FA8] border-b-2 border-[#EEF0F7] pb-2 text-center">Your Items</h2>
               <div className="flex-1 overflow-y-auto space-y-2 pr-2">
@@ -345,7 +417,6 @@ export default function TradePage() {
               </div>
             </div>
 
-            {/* THEIR INVENTORY */}
             <div className="bg-white rounded-xl border-2 border-[#C5C8D6] p-4 h-[500px] flex flex-col">
               <h2 className="font-black text-lg mb-4 text-[#EF4444] border-b-2 border-[#EEF0F7] pb-2 text-center">Their Items</h2>
               <div className="flex-1 overflow-y-auto space-y-2 pr-2">
@@ -371,12 +442,10 @@ export default function TradePage() {
               </div>
             </div>
 
-            {/* MIDDLE: The Trade Board */}
             <div className="lg:col-span-2 flex flex-col gap-4">
               
               <div className="grid grid-cols-2 gap-4 flex-1">
                 
-                {/* YOUR OFFER */}
                 <div className="bg-white rounded-xl border-2 border-[#22C55E] p-3 flex flex-col relative shadow-sm h-[350px]">
                   <div className="absolute top-0 left-0 w-full bg-[#22C55E]/10 text-[#22C55E] font-black text-center text-[10px] py-1 rounded-t-xl border-b border-[#22C55E]/20 uppercase tracking-wider">
                     You Give
@@ -400,7 +469,6 @@ export default function TradePage() {
                   </div>
                 </div>
 
-                {/* THEIR OFFER */}
                 <div className="bg-white rounded-xl border-2 border-[#EF4444] p-3 flex flex-col relative shadow-sm h-[350px]">
                   <div className="absolute top-0 left-0 w-full bg-[#EF4444]/10 text-[#EF4444] font-black text-center text-[10px] py-1 rounded-t-xl border-b border-[#EF4444]/20 uppercase tracking-wider truncate px-1">
                     You Receive
@@ -425,7 +493,6 @@ export default function TradePage() {
                 </div>
               </div>
 
-              {/* ACTIONS */}
               <div className="bg-white rounded-xl border-2 border-[#C5C8D6] p-4 flex items-center justify-between shadow-sm">
                 <button onClick={() => setTargetUser(null)} className="text-sm font-bold text-[#6C3CE0] hover:underline">
                   ← Back
