@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { getCurrentUser, updateUser, grantItem, type User } from "../../../lib/auth";
-import { isOwnerAccount } from "../../../lib/badges"; // 👈 Added Owner check
+import { getCurrentUser, updateUser, type User } from "../../../lib/auth";
+import { isOwnerAccount } from "../../../lib/badges";
 import { supabase } from "../../../lib/supabase";
 import {
   fetchWorldById,
@@ -40,7 +40,10 @@ export default function GameDetailsPage() {
   const [activeTab, setActiveTab] = useState<"about" | "servers">("about");
   const [currentOnline, setCurrentOnline] = useState(0);
 
-  // 👇 Check if current user is the owner
+  // 👇 State for the test mini-game
+  const [activeGame, setActiveGame] = useState<string | null>(null);
+  const [gameRewardItemId, setGameRewardItemId] = useState<string | null>(null);
+
   const isOwner = isOwnerAccount(user?.username);
 
   useEffect(() => {
@@ -64,7 +67,6 @@ export default function GameDetailsPage() {
     });
   }, [worldId]);
 
-  // ===== Online count =====
   useEffect(() => {
     if (!worldId) return;
     const observerKey = `details-${Math.random().toString(36).slice(2, 10)}`;
@@ -136,17 +138,29 @@ export default function GameDetailsPage() {
     }
   }, [worldId, launchStatus]);
 
-  const handleCompleteChallenge = async (challengeId: string, rewardItemId: string) => {
-    if (!user || !isOwner) return; 
+  const startChallenge = (challengeId: string, rewardItemId: string) => {
+    if (!user || !isOwner) return;
+    setActiveGame(challengeId);
+    setGameRewardItemId(rewardItemId);
+  };
+
+  // 👇 Directly update the user to guarantee item & badge save
+  const winChallenge = async () => {
+    if (!user || !activeGame || !gameRewardItemId || !isOwner) return;
     
     const currentBadges = user.wonderlandBadges || [];
-    if (currentBadges.includes(challengeId)) return;
-
-    const newBadges = [...currentBadges, challengeId];
-    await grantItem(user.id, rewardItemId);
-    updateUser({ ...user, wonderlandBadges: newBadges });
+    if (!currentBadges.includes(activeGame)) {
+      const newBadges = [...currentBadges, activeGame];
+      const newOwned = user.ownedItems.includes(gameRewardItemId) 
+        ? user.ownedItems 
+        : [...user.ownedItems, gameRewardItemId];
+      
+      updateUser({ ...user, ownedItems: newOwned, wonderlandBadges: newBadges });
+      setUser(getCurrentUser());
+    }
     
-    setUser(getCurrentUser());
+    setActiveGame(null);
+    setGameRewardItemId(null);
     alert("🎉 Challenge Complete! You unlocked a new item! Check your inventory.");
   };
 
@@ -216,10 +230,16 @@ export default function GameDetailsPage() {
             </div>
 
             {isWonderland ? (
-              <div className="mt-3 w-full h-14 rounded-lg font-black text-lg text-white flex items-center justify-center bg-gradient-to-b from-gray-700 to-gray-900 border-2 border-gray-950">
+              <button 
+                onClick={() => {
+                  if (!isOwner) return;
+                  alert("Entering Owner Test Mode. Click 'Play Challenge' on the cards below to test the game loops!");
+                }}
+                className={`mt-3 w-full h-14 rounded-lg font-black text-lg text-white flex items-center justify-center bg-gradient-to-b ${isOwner ? 'from-gray-700 to-gray-900 hover:from-gray-600 hover:to-gray-800' : 'from-gray-400 to-gray-500'} border-2 border-gray-950 transition`}
+              >
                 <span className="mr-2 text-xl">{isOwner ? "🛠️" : "🔒"}</span> 
-                {isOwner ? "Playing (Owner Mode)" : "Private Event"}
-              </div>
+                {isOwner ? "Enter Owner Mode" : "Private Event"}
+              </button>
             ) : (
               <button
                 onClick={handlePlay}
@@ -274,7 +294,7 @@ export default function GameDetailsPage() {
             </h2>
             <p className="text-[#1E40AF] font-bold text-sm">
               {isOwner 
-                ? "Owner Mode: You can test the challenges below!" 
+                ? "Owner Mode: Click 'Play Challenge' to start the mini-game!" 
                 : "This event is currently private. Only the owner can test it right now."}
             </p>
           </div>
@@ -323,10 +343,10 @@ export default function GameDetailsPage() {
                           </div>
                         ) : isOwner ? (
                           <button
-                            onClick={() => handleCompleteChallenge(challenge.id, challenge.rewardItemId)}
+                            onClick={() => startChallenge(challenge.id, challenge.rewardItemId)}
                             className="w-full bg-[#FFD700] hover:bg-[#FFC000] text-[#1E3A8A] font-black py-2 rounded-lg border-2 border-[#B45309] transition shadow-md"
                           >
-                            Complete Challenge
+                            ▶ Play Challenge
                           </button>
                         ) : (
                           <div className="w-full bg-gray-200 text-gray-500 font-black py-2 rounded-lg border-2 border-gray-300 text-sm flex justify-center items-center gap-1 cursor-not-allowed">
@@ -340,6 +360,29 @@ export default function GameDetailsPage() {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {activeGame && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full text-center border-4 border-[#FFD700] shadow-2xl">
+            <h2 className="text-2xl font-black text-[#1E3A8A] mb-2">Playing Test Game</h2>
+            <p className="text-sm text-gray-600 mb-6">
+              In the future, this will be a 3D mini-game. For now, click the button below to simulate winning!
+            </p>
+            <button
+              onClick={winChallenge}
+              className="w-full bg-green-500 hover:bg-green-600 text-white font-black py-3 rounded-lg border-2 border-green-700 transition shadow-lg text-lg mb-3"
+            >
+              🏆 I Won The Game!
+            </button>
+            <button
+              onClick={() => setActiveGame(null)}
+              className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 rounded-lg border-2 border-gray-300 transition"
+            >
+              Quit Game
+            </button>
+          </div>
         </div>
       )}
 

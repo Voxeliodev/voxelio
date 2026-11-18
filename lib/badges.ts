@@ -59,6 +59,7 @@ type BadgeUser = {
   ownedItems?: string[];
   indevClub?: { expiresAt: number } | null;
   playedWithOwner?: boolean;
+  wonderlandBadges?: string[]; // 👈 ADDED THIS
 };
 
 const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
@@ -168,6 +169,35 @@ export function getUserBadges(user: BadgeUser | null | undefined): ProfileBadge[
       emoji: "🎉",
       description: "Joined among the first 100 accounts.",
       color: "#8B5CF6",
+    });
+  }
+
+  // ---- 👇 WONDERLAND BADGES 👇 ----
+  if (user.wonderlandBadges?.includes("ch-1")) {
+    badges.push({
+      id: "ice-skater",
+      name: "Ice Skater",
+      emoji: "⛸️",
+      description: "Completed the Frozen Lake Slide challenge.",
+      color: "#00E5FF",
+    });
+  }
+  if (user.wonderlandBadges?.includes("ch-2")) {
+    badges.push({
+      id: "snowball-sniper",
+      name: "Snowball Sniper",
+      emoji: "❄️",
+      description: "Completed the Snowball Fight Champion challenge.",
+      color: "#3B82F6",
+    });
+  }
+  if (user.wonderlandBadges?.includes("ch-3")) {
+    badges.push({
+      id: "candy-hunter",
+      name: "Candy Hunter",
+      emoji: "🍭",
+      description: "Completed the Sweet Tooth challenge.",
+      color: "#EC4899",
     });
   }
 
