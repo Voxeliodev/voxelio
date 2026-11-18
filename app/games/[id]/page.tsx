@@ -18,6 +18,7 @@ import { playInVoxelioApp } from "../../../lib/voxelioPlayer";
 import { WONDERLAND_CHALLENGES } from "../../../lib/wonderland";
 import { getItem } from "../../../lib/items";
 import ItemPreview from "../../components/ItemPreview";
+import WonderlandMiniGame from "../../components/WonderlandMiniGame"; // 👈 Import the 3D Game!
 
 export default function GameDetailsPage() {
   const params = useParams();
@@ -40,7 +41,9 @@ export default function GameDetailsPage() {
   const [activeTab, setActiveTab] = useState<"about" | "servers">("about");
   const [currentOnline, setCurrentOnline] = useState(0);
 
+  // 👇 Mini-game state
   const [activeGame, setActiveGame] = useState<string | null>(null);
+  const [activeGameName, setActiveGameName] = useState("");
   const [gameRewardItemId, setGameRewardItemId] = useState<string | null>(null);
 
   const isOwner = isOwnerAccount(user?.username);
@@ -137,13 +140,13 @@ export default function GameDetailsPage() {
     }
   }, [worldId, launchStatus]);
 
-  const startChallenge = (challengeId: string, rewardItemId: string) => {
+  const startChallenge = (challengeId: string, challengeName: string, rewardItemId: string) => {
     if (!user || !isOwner) return;
     setActiveGame(challengeId);
+    setActiveGameName(challengeName);
     setGameRewardItemId(rewardItemId);
   };
 
-  // 👇 FIXED: Grabs the freshest user data to ensure items aren't overwritten
   const winChallenge = async () => {
     if (!user || !activeGame || !gameRewardItemId || !isOwner) return;
     
@@ -157,7 +160,6 @@ export default function GameDetailsPage() {
         ? freshUser.ownedItems 
         : [...freshUser.ownedItems, gameRewardItemId];
       
-      // Update both the items and the badges at the same time
       updateUser({ 
         ...freshUser, 
         ownedItems: newOwned, 
@@ -192,6 +194,11 @@ export default function GameDetailsPage() {
   if (!world) {
     return <div className="py-20 text-center text-[#666] font-semibold">Loading world…</div>;
   }
+
+  // Calculate Progress Bar percentage
+  const completedCount = user?.wonderlandBadges?.length || 0;
+  const totalChallenges = WONDERLAND_CHALLENGES.length;
+  const progressPercent = Math.round((completedCount / totalChallenges) * 100);
 
   return (
     <div className="space-y-4">
@@ -296,13 +303,28 @@ export default function GameDetailsPage() {
 
       {isWonderland && (
         <div className="bg-[#E0F2FE] border-2 border-[#93C5FD] rounded overflow-hidden p-6 relative">
+          
+          {/* 👇 NEW PROGRESS BAR 👇 */}
+          <div className="bg-white border-2 border-[#BAE6FD] rounded-xl p-4 mb-8 shadow-sm">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-black text-[#1E3A8A]">Event Progress</span>
+              <span className="text-sm font-black text-[#1E3A8A]">{completedCount} / {totalChallenges} Completed</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-4 border border-gray-300 overflow-hidden">
+              <div 
+                className="bg-gradient-to-r from-blue-400 to-green-400 h-full rounded-full transition-all duration-500"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+          </div>
+
           <div className="text-center mb-8">
             <h2 className="text-3xl font-black text-[#1E3A8A] mb-2 drop-shadow-sm">
               ❄️ Wonderland Challenges ❄️
             </h2>
             <p className="text-[#1E40AF] font-bold text-sm">
               {isOwner 
-                ? "Owner Mode: Click 'Play Challenge' to start the mini-game!" 
+                ? "Owner Mode: Click 'Play Challenge' to start the 3D mini-game!" 
                 : "This event is currently private. Only the owner can test it right now."}
             </p>
           </div>
@@ -351,7 +373,7 @@ export default function GameDetailsPage() {
                           </div>
                         ) : isOwner ? (
                           <button
-                            onClick={() => startChallenge(challenge.id, challenge.rewardItemId)}
+                            onClick={() => startChallenge(challenge.id, challenge.name, challenge.rewardItemId)}
                             className="w-full bg-[#FFD700] hover:bg-[#FFC000] text-[#1E3A8A] font-black py-2 rounded-lg border-2 border-[#B45309] transition shadow-md"
                           >
                             ▶ Play Challenge
@@ -371,26 +393,14 @@ export default function GameDetailsPage() {
         </div>
       )}
 
+      {/* 👇 THE REAL 3D MINI GAME 👇 */}
       {activeGame && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl p-8 max-w-md w-full text-center border-4 border-[#FFD700] shadow-2xl">
-            <h2 className="text-2xl font-black text-[#1E3A8A] mb-2">Playing Test Game</h2>
-            <p className="text-sm text-gray-600 mb-6">
-              In the future, this will be a 3D mini-game. For now, click the button below to simulate winning!
-            </p>
-            <button
-              onClick={winChallenge}
-              className="w-full bg-green-500 hover:bg-green-600 text-white font-black py-3 rounded-lg border-2 border-green-700 transition shadow-lg text-lg mb-3"
-            >
-              🏆 I Won The Game!
-            </button>
-            <button
-              onClick={() => setActiveGame(null)}
-              className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 rounded-lg border-2 border-gray-300 transition"
-            >
-              Quit Game
-            </button>
-          </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <WonderlandMiniGame 
+            challengeName={activeGameName}
+            onWin={winChallenge}
+            onClose={() => setActiveGame(null)}
+          />
         </div>
       )}
 
