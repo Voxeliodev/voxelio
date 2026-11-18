@@ -12,7 +12,7 @@ import ObbyGame from "../../components/obby/ObbyGame";
 import LumberyardGame from "../../components/lumberyard/LumberyardGameMain";
 import ChaosColiseumGameMain from "../../components/chaos-coliseum/ChaosColiseumGameMain";
 import PizzaEmpireGameMain from "../../components/tycoon/PizzaEmpireGameMain";
-import WonderlandGameMain from "../../components/WonderlandGameMain"; // 👈 IMPORTED WONDERLAND
+import WonderlandGameMain from "../../components/wonderland/WonderlandGameMain"; // 👈 ADDED WONDERLAND IMPORT
 
 // ============================================================
 // VOXELIO PLAYER — in-app game launcher page
@@ -394,6 +394,9 @@ function PlayerPageInner() {
     }
   };
 
+  // ============================================================
+  // RENDER — Exchange
+  // ============================================================
   if (status === "exchanging") {
     return (
       <div
@@ -430,6 +433,9 @@ function PlayerPageInner() {
     );
   }
 
+  // ============================================================
+  // RENDER — Loading world
+  // ============================================================
   if (status === "loading-world") {
     return (
       <div
@@ -454,6 +460,9 @@ function PlayerPageInner() {
     );
   }
 
+  // ============================================================
+  // RENDER — Error
+  // ============================================================
   if (status === "error") {
     return (
       <div
@@ -512,12 +521,14 @@ function PlayerPageInner() {
     );
   }
 
+  // ============================================================
+  // RENDER — Ready
+  // ============================================================
   if (!world || !user) return null;
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "black" }}>
-      
-      {/* 👇 ADDED WONDERLAND HERE 👇 */}
+      {/* Game canvas routing */}
       {world.layout === "obby" ? (
         <ObbyGame
           config={user.avatarConfig}
@@ -555,13 +566,9 @@ function PlayerPageInner() {
           isTouchDevice={isTouchDevice}
         />
       ) : world.layout === "wonderland" || world.id === "wonderland" ? (
+        /* 👇 ADDED WONDERLAND ROUTE HERE 👇 */
         <WonderlandGameMain
           config={user.avatarConfig}
-          userId={user.id}
-          username={user.username}
-          world={world}
-          inputDisabled={chatOpen}
-          isTouchDevice={isTouchDevice}
         />
       ) : (
         <div
@@ -579,8 +586,10 @@ function PlayerPageInner() {
         </div>
       )}
 
+      {/* Chat overlay */}
       <ChatOverlay messages={overlayMessages} />
 
+      {/* Exit button */}
       <button
         onClick={handleExit}
         style={{
@@ -612,6 +621,7 @@ function PlayerPageInner() {
         Exit
       </button>
 
+      {/* "Press T to chat" hint */}
       {!chatOpen && !isTouchDevice && (
         <div
           style={{
@@ -671,6 +681,7 @@ function PlayerPageInner() {
         </div>
       )}
 
+      {/* System message */}
       {systemMessage && (
         <div
           style={{
@@ -700,6 +711,7 @@ function PlayerPageInner() {
         </div>
       )}
 
+      {/* Chat input */}
       {chatOpen && (
         <div
           style={{
@@ -800,6 +812,9 @@ function PlayerPageInner() {
   );
 }
 
+// ============================================================
+// PAGE EXPORT
+// ============================================================
 export default function PlayerPage() {
   return (
     <Suspense
