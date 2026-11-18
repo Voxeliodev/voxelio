@@ -129,6 +129,7 @@ export default function FriendsPage() {
     { name: "Friends", href: "/friends", active: true },
     { name: "Messages", href: "/messages" },
     { name: "Avatar", href: "/avatar" },
+    { name: "Trading", href: "/trade" },
     { name: "INDEV Club", href: "/indev", special: true },
   ];
 

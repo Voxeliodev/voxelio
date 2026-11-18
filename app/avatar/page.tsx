@@ -221,6 +221,7 @@ export default function AvatarEditorPage() {
     { name: "Friends", href: "/friends" },
     { name: "Messages", href: "/messages" },
     { name: "Avatar", href: "/avatar", active: true },
+    { name: "Trading", href: "/trade" },
     { name: "INDEV Club", href: "/indev", special: true },
   ];
 

@@ -47,6 +47,7 @@ export default function MessagesPage() {
     { name: "Friends", href: "/friends" },
     { name: "Messages", href: "/messages", active: true },
     { name: "Avatar", href: "/avatar" },
+    { name: "Trading", href: "/trade" },
     { name: "INDEV Club", href: "/indev", special: true },
   ];
 
