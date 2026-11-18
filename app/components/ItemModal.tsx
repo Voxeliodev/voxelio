@@ -53,7 +53,10 @@ export default function ItemModal({
       showToast("error", "This item is no longer for sale.");
       return;
     }
-    if (item.maxSupply && item.currentSupply === 0) {
+    
+    // Check if sold out based on calculated remaining stock
+    const remaining = (item.maxSupply ?? 0) - (salesCount ?? 0);
+    if (item.maxSupply && remaining <= 0) {
       showToast("error", "This item is completely sold out!");
       return;
     }
@@ -61,14 +64,13 @@ export default function ItemModal({
     const result = await buyItem(currentUser.id, item.id, item.price);
     
     if (result.success) {
-      // 👇 Show serial number in toast if they got one
       if (result.serialNumber) {
         showToast("success", `Purchased ${item.name}! You got Serial #${result.serialNumber}.`);
       } else {
         showToast("success", `Purchased ${item.name}! You now have ${formatVoxbux(result.newBalance ?? 0)}.`);
       }
       refreshUser();
-      onPurchase();
+      onPurchase(); // This triggers the parent to refresh the salesCount!
     } else {
       showToast("error", result.error || "Purchase failed.");
     }
@@ -79,7 +81,17 @@ export default function ItemModal({
   const offSale = item.forSale === false;
   
   const isLimited = item.maxSupply !== undefined;
-  const isSoldOut = isLimited && item.currentSupply === 0;
+  
+  // FIXED MATH HERE:
+  // If we have a salesCount, calculate remaining as Total - Sold.
+  // If we don't have a salesCount yet, fallback to the item's currentSupply.
+  const total = item.maxSupply ?? 0;
+  const sold = salesCount ?? 0;
+  const remaining = item.currentSupply !== undefined 
+    ? Math.min(item.currentSupply, total - sold) // Use whichever is lower to be safe
+    : total - sold;
+
+  const isSoldOut = isLimited && remaining <= 0;
   const userSerial = currentUser?.itemSerials?.[item.id];
 
   return (
@@ -133,7 +145,6 @@ export default function ItemModal({
                     {item.category}
                   </span>
                   
-                  {/* 👇 LTD BADGE 👇 */}
                   {isLimited && (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#FFD700] text-[#1A1A2E] uppercase shadow-sm">
                       LTD
@@ -185,11 +196,11 @@ export default function ItemModal({
                   )}
                 </div>
 
-                {/* 👇 SUPPLY REMAINING BAR 👇 */}
+                {/* 👇 FIXED SUPPLY REMAINING BAR 👇 */}
                 {isLimited && (
                   <div className="bg-[#FFF8E7] border border-[#FFD700] rounded p-2 text-center">
                     <p className="text-xs font-bold text-[#B8860B]">
-                      ⏳ Only {item.currentSupply} of {item.maxSupply} remaining
+                      ⏳ Only {remaining} of {item.maxSupply} remaining
                     </p>
                   </div>
                 )}
@@ -199,7 +210,6 @@ export default function ItemModal({
                     <div className="bg-green-50 border-2 border-green-300 rounded p-2 text-center">
                       <p className="text-xs font-bold text-green-700">✓ You own this item</p>
                       
-                      {/* 👇 SERIAL NUMBER DISPLAY 👇 */}
                       {isLimited && userSerial && (
                         <p className="text-[11px] font-black text-green-800 mt-0.5">
                           Serial #{userSerial} of {item.maxSupply}
