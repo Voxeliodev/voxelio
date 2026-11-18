@@ -133,6 +133,7 @@ export const ITEMS: Item[] = [
     maxSupply: 100,
     currentSupply: 100,
     isResellable: true,
+    forSale: false,
   },
   // --- WONDERLAND EVENT HATS ---
   {
