@@ -24,7 +24,7 @@ export type World = {
   createdAt: string;
 };
 
-// 👇 NEW: The special Winter Event world that bypasses the database
+// 👇 The special Winter Event world that bypasses the database
 const WONDERLAND_EVENT: World = {
   id: "wonderland",
   name: "Voxelio's Wonderland",
@@ -34,7 +34,7 @@ const WONDERLAND_EVENT: World = {
   category: "event",
   layout: "plaza",
   creator: "Voxelio",
-  maxPlayers: 1,
+  maxPlayers: 20, // 👈 Fixed to 20!
   visits: 50000,
   likes: 9999,
   favorites: 0,
@@ -93,7 +93,6 @@ export async function fetchWorlds(opts?: {
   let results = (data || []).map(rowToWorld);
 
   // 👇 INJECT WONDERLAND EVENT INTO THE LIST 👇
-  // Only show it if searching for "all", "event", or if it matches the search text
   if (!opts?.category || opts.category === "all" || opts.category === "event") {
     const matchesSearch = !opts?.search || WONDERLAND_EVENT.name.toLowerCase().includes(opts.search.toLowerCase());
     if (matchesSearch) {
@@ -103,14 +102,13 @@ export async function fetchWorlds(opts?: {
 
   if (error) {
     console.error("fetchWorlds error:", error.message);
-    return [WONDERLAND_EVENT]; // Return at least the event if DB fails
+    return [WONDERLAND_EVENT]; 
   }
   
   return results;
 }
 
 export async function fetchWorldById(id: string): Promise<World | null> {
-  // If looking for the event, return the hardcoded one
   if (id === "wonderland") return WONDERLAND_EVENT;
 
   const { data, error } = await supabase
@@ -123,7 +121,7 @@ export async function fetchWorldById(id: string): Promise<World | null> {
 }
 
 export async function incrementWorldVisits(id: string): Promise<void> {
-  if (id === "wonderland") return; // Don't track visits for the static event
+  if (id === "wonderland") return; 
   await supabase.rpc("increment_world_visits", { world_id: id }).then(() => {});
 }
 
@@ -131,7 +129,6 @@ export async function incrementWorldVisits(id: string): Promise<void> {
 // LIKES
 // ============================================================
 
-/** Returns true if the signed-in user has liked this world. */
 export async function hasLikedWorld(worldId: string): Promise<boolean> {
   if (worldId === "wonderland") return false;
 
@@ -149,7 +146,6 @@ export async function hasLikedWorld(worldId: string): Promise<boolean> {
   return Boolean(data);
 }
 
-/** Insert a like row. Trigger updates worlds.likes. */
 export async function likeWorld(worldId: string): Promise<boolean> {
   if (worldId === "wonderland") return false;
 
@@ -167,7 +163,6 @@ export async function likeWorld(worldId: string): Promise<boolean> {
   return true;
 }
 
-/** Delete the like row. Trigger decrements worlds.likes. */
 export async function unlikeWorld(worldId: string): Promise<boolean> {
   if (worldId === "wonderland") return false;
 

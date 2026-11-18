@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { getCurrentUser, type User } from "../../../lib/auth";
+import { getCurrentUser, updateUser, grantItem, type User } from "../../../lib/auth";
+import { isOwnerAccount } from "../../../lib/badges"; // 👈 Added Owner check
 import { supabase } from "../../../lib/supabase";
 import {
   fetchWorldById,
@@ -17,10 +18,6 @@ import { playInVoxelioApp } from "../../../lib/voxelioPlayer";
 import { WONDERLAND_CHALLENGES } from "../../../lib/wonderland";
 import { getItem } from "../../../lib/items";
 import ItemPreview from "../../components/ItemPreview";
-
-// ============================================================
-// GAME DETAILS PAGE — /games/[id]
-// ============================================================
 
 export default function GameDetailsPage() {
   const params = useParams();
@@ -42,6 +39,9 @@ export default function GameDetailsPage() {
 
   const [activeTab, setActiveTab] = useState<"about" | "servers">("about");
   const [currentOnline, setCurrentOnline] = useState(0);
+
+  // 👇 Check if current user is the owner
+  const isOwner = isOwnerAccount(user?.username);
 
   useEffect(() => {
     const u = getCurrentUser();
@@ -136,6 +136,20 @@ export default function GameDetailsPage() {
     }
   }, [worldId, launchStatus]);
 
+  const handleCompleteChallenge = async (challengeId: string, rewardItemId: string) => {
+    if (!user || !isOwner) return; 
+    
+    const currentBadges = user.wonderlandBadges || [];
+    if (currentBadges.includes(challengeId)) return;
+
+    const newBadges = [...currentBadges, challengeId];
+    await grantItem(user.id, rewardItemId);
+    updateUser({ ...user, wonderlandBadges: newBadges });
+    
+    setUser(getCurrentUser());
+    alert("🎉 Challenge Complete! You unlocked a new item! Check your inventory.");
+  };
+
   if (!mounted) {
     return <div className="py-20 text-center text-[#666] font-semibold">Loading…</div>;
   }
@@ -159,13 +173,11 @@ export default function GameDetailsPage() {
 
   return (
     <div className="space-y-4">
-      {/* ===== BACK BUTTON ===== */}
       <Link href="/games" className="inline-flex items-center gap-2 text-sm font-bold text-[#4A1FA8] hover:text-[#6C3CE0] transition group">
         <span className="inline-block transition-transform group-hover:-translate-x-0.5">←</span>
         <span>Back to Games</span>
       </Link>
 
-      {/* ===== GAME HEADER ===== */}
       <div className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden">
         <div className="grid md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-0">
           
@@ -203,10 +215,10 @@ export default function GameDetailsPage() {
               </div>
             </div>
 
-            {/* 👇 WONDERLAND PRIVATE BANNER 👇 */}
             {isWonderland ? (
               <div className="mt-3 w-full h-14 rounded-lg font-black text-lg text-white flex items-center justify-center bg-gradient-to-b from-gray-700 to-gray-900 border-2 border-gray-950">
-                <span className="mr-2 text-xl">🔒</span> Private Event
+                <span className="mr-2 text-xl">{isOwner ? "🛠️" : "🔒"}</span> 
+                {isOwner ? "Playing (Owner Mode)" : "Private Event"}
               </div>
             ) : (
               <button
@@ -254,7 +266,6 @@ export default function GameDetailsPage() {
         </div>
       </div>
 
-      {/* 👇 WONDERLAND CHALLENGE BOARD 👇 */}
       {isWonderland && (
         <div className="bg-[#E0F2FE] border-2 border-[#93C5FD] rounded overflow-hidden p-6 relative">
           <div className="text-center mb-8">
@@ -262,7 +273,9 @@ export default function GameDetailsPage() {
               ❄️ Wonderland Challenges ❄️
             </h2>
             <p className="text-[#1E40AF] font-bold text-sm">
-              This event is currently private. Check back later to play!
+              {isOwner 
+                ? "Owner Mode: You can test the challenges below!" 
+                : "This event is currently private. Only the owner can test it right now."}
             </p>
           </div>
 
@@ -276,6 +289,7 @@ export default function GameDetailsPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {WONDERLAND_CHALLENGES.map((challenge) => {
+                const isCompleted = user.wonderlandBadges?.includes(challenge.id);
                 const rewardItem = getItem(challenge.rewardItemId);
 
                 return (
@@ -303,10 +317,22 @@ export default function GameDetailsPage() {
                           )}
                         </div>
 
-                        {/* 👇 ALWAYS PRIVATE LOCK 👇 */}
-                        <div className="w-full bg-gray-200 text-gray-500 font-black py-2 rounded-lg border-2 border-gray-300 text-sm flex justify-center items-center gap-1 cursor-not-allowed">
-                          <span>🔒</span> Private
-                        </div>
+                        {isCompleted ? (
+                          <div className="bg-green-100 border-2 border-green-300 text-green-700 font-black py-2 rounded-lg text-sm w-full flex justify-center items-center gap-1">
+                            <span>✓</span> Badge Earned
+                          </div>
+                        ) : isOwner ? (
+                          <button
+                            onClick={() => handleCompleteChallenge(challenge.id, challenge.rewardItemId)}
+                            className="w-full bg-[#FFD700] hover:bg-[#FFC000] text-[#1E3A8A] font-black py-2 rounded-lg border-2 border-[#B45309] transition shadow-md"
+                          >
+                            Complete Challenge
+                          </button>
+                        ) : (
+                          <div className="w-full bg-gray-200 text-gray-500 font-black py-2 rounded-lg border-2 border-gray-300 text-sm flex justify-center items-center gap-1 cursor-not-allowed">
+                            <span>🔒</span> Private
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -317,7 +343,6 @@ export default function GameDetailsPage() {
         </div>
       )}
 
-      {/* ===== TABS (HIDDEN ON WONDERLAND) ===== */}
       {!isWonderland && (
         <div className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden">
           <div className="flex border-b-2 border-[#E5E7F0]">
@@ -387,14 +412,12 @@ export default function GameDetailsPage() {
         </div>
       )}
 
-      {/* ===== BOTTOM BACK LINK ===== */}
       <div className="text-center pt-2">
         <Link href="/games" className="inline-block text-sm font-bold text-[#6C3CE0] hover:underline">
           ← Back to Games
         </Link>
       </div>
 
-      {/* ===== NOT-INSTALLED POPUP ===== */}
       {launchStatus === "not-installed" && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center"
@@ -428,7 +451,6 @@ export default function GameDetailsPage() {
         </div>
       )}
 
-      {/* ===== FAILED TOAST ===== */}
       {launchStatus === "failed" && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-red-600 text-white font-bold text-sm px-5 py-3 rounded-lg shadow-2xl z-50">
           Failed to launch the app. Please try again.
