@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { getCurrentUser, updateUser, type User } from "../../../lib/auth";
+import { getCurrentUser, type User } from "../../../lib/auth";
 import { isOwnerAccount } from "../../../lib/badges";
 import { supabase } from "../../../lib/supabase";
 import {
@@ -18,7 +18,6 @@ import { playInVoxelioApp } from "../../../lib/voxelioPlayer";
 import { WONDERLAND_CHALLENGES } from "../../../lib/wonderland";
 import { getItem } from "../../../lib/items";
 import ItemPreview from "../../components/ItemPreview";
-import Wonderland3D from "../../components/Wonderland3D"; // 👈 Import the 3D Game
 
 export default function GameDetailsPage() {
   const params = useParams();
@@ -40,9 +39,6 @@ export default function GameDetailsPage() {
 
   const [activeTab, setActiveTab] = useState<"about" | "servers">("about");
   const [currentOnline, setCurrentOnline] = useState(0);
-
-  // 👇 State to toggle the 3D Game
-  const [isPlaying3D, setIsPlaying3D] = useState(false);
 
   const isOwner = isOwnerAccount(user?.username);
 
@@ -67,6 +63,7 @@ export default function GameDetailsPage() {
     });
   }, [worldId]);
 
+  // ===== Online count =====
   useEffect(() => {
     if (!worldId) return;
     const observerKey = `details-${Math.random().toString(36).slice(2, 10)}`;
@@ -122,12 +119,8 @@ export default function GameDetailsPage() {
     setLiking(false);
   }, [user, liking, liked, likeCount, worldId]);
 
+  // 👇 RESTORED TO OPEN THE VOXELIO APP
   const handlePlay = useCallback(async () => {
-    if (isWonderland) {
-      setIsPlaying3D(true); // 👈 Launch 3D Game directly
-      return;
-    }
-
     if (launchStatus === "launching") return;
     setLaunchStatus("launching");
 
@@ -141,44 +134,10 @@ export default function GameDetailsPage() {
       setLaunchStatus("failed");
       setTimeout(() => setLaunchStatus("idle"), 2500);
     }
-  }, [worldId, launchStatus, isWonderland]);
-
-  // 👇 Called by the 3D game when you walk into a pillar
-  const completeChallengeIn3D = async (challengeId: string, rewardItemId: string) => {
-    if (!user || !isOwner) return;
-    
-    const freshUser = getCurrentUser();
-    if (!freshUser) return;
-
-    const currentBadges = freshUser.wonderlandBadges || [];
-    if (!currentBadges.includes(challengeId)) {
-      const newBadges = [...currentBadges, challengeId];
-      const newOwned = freshUser.ownedItems.includes(rewardItemId) 
-        ? freshUser.ownedItems 
-        : [...freshUser.ownedItems, rewardItemId];
-      
-      updateUser({ 
-        ...freshUser, 
-        ownedItems: newOwned, 
-        wonderlandBadges: newBadges 
-      });
-      
-      setUser(getCurrentUser());
-    }
-  };
+  }, [worldId, launchStatus]);
 
   if (!mounted) {
     return <div className="py-20 text-center text-[#666] font-semibold">Loading…</div>;
-  }
-
-  // 👇 Fullscreen 3D Game
-  if (isPlaying3D) {
-    return (
-      <Wonderland3D 
-        onCompleteChallenge={completeChallengeIn3D} 
-        onExit={() => setIsPlaying3D(false)} 
-      />
-    );
   }
 
   if (notFound) {
@@ -198,6 +157,7 @@ export default function GameDetailsPage() {
     return <div className="py-20 text-center text-[#666] font-semibold">Loading world…</div>;
   }
 
+  // Calculate progress
   const completedCount = user?.wonderlandBadges?.length || 0;
   const totalChallenges = WONDERLAND_CHALLENGES.length;
   const progressPercent = Math.round((completedCount / totalChallenges) * 100);
@@ -246,19 +206,34 @@ export default function GameDetailsPage() {
               </div>
             </div>
 
+            {/* 👇 PLAY BUTTON (LAUNCHES APP) 👇 */}
             <button
               onClick={handlePlay}
-              className="mt-3 w-full h-14 rounded-lg font-black text-lg text-white flex items-center justify-center gap-3 transition-all hover:scale-[1.01] active:scale-[0.99]"
+              className={`mt-3 w-full h-14 rounded-lg font-black text-lg text-white flex items-center justify-center gap-3 transition-all ${
+                isWonderland && !isOwner 
+                  ? "bg-gray-500 cursor-not-allowed border-2 border-gray-600" 
+                  : "hover:scale-[1.01] active:scale-[0.99]"
+              }`}
               style={{
-                background: isWonderland ? (isOwner ? "linear-gradient(180deg, #00A2FF 0%, #0072C7 100%)" : "linear-gradient(180deg, #9CA3AF, #6B7280)") : "linear-gradient(180deg, #00A2FF 0%, #0072C7 100%)",
-                boxShadow: "0 6px 20px rgba(0,162,255,0.4)",
-                border: "2px solid #005A9E",
-                cursor: isWonderland && !isOwner ? "not-allowed" : "pointer",
+                background: isWonderland && !isOwner 
+                  ? "" 
+                  : "linear-gradient(180deg, #00A2FF 0%, #0072C7 100%)",
+                boxShadow: isWonderland && !isOwner ? "none" : "0 6px 20px rgba(0,162,255,0.4)",
+                border: isWonderland && !isOwner ? "" : "2px solid #005A9E",
+                cursor: launchStatus === "launching" || (isWonderland && !isOwner) ? "wait" : "pointer",
               }}
-              disabled={isWonderland && !isOwner}
+              disabled={launchStatus === "launching" || (isWonderland && !isOwner)}
             >
-              <span className="text-xl">{isWonderland ? (isOwner ? "▶" : "🔒") : "▶"}</span>
-              <span>{isWonderland ? (isOwner ? "Play 3D World" : "Private Event") : "Play"}</span>
+              <span className="text-xl">
+                {launchStatus === "launching" ? "⏳" : (isWonderland && !isOwner ? "🔒" : "▶")}
+              </span>
+              <span>
+                {launchStatus === "launching" 
+                  ? "Launching…" 
+                  : launchStatus === "failed" 
+                  ? "Try Again" 
+                  : (isWonderland && !isOwner ? "Private Event" : "Play")}
+              </span>
             </button>
 
             <div className="flex justify-around mt-3 pt-3 border-t border-[#E5E7F0]">
@@ -290,6 +265,7 @@ export default function GameDetailsPage() {
         </div>
       </div>
 
+      {/* 👇 WONDERLAND PROGRESS BAR & CHALLENGES 👇 */}
       {isWonderland && (
         <div className="bg-[#E0F2FE] border-2 border-[#93C5FD] rounded overflow-hidden p-6 relative">
           
@@ -310,6 +286,11 @@ export default function GameDetailsPage() {
             <h2 className="text-3xl font-black text-[#1E3A8A] mb-2 drop-shadow-sm">
               ❄️ Wonderland Challenges ❄️
             </h2>
+            <p className="text-[#1E40AF] font-bold text-sm">
+              {isOwner 
+                ? "Enter the Voxelio App and jump across the ice platforms to find these rewards!" 
+                : "This event is currently private. Only the owner can test it right now."}
+            </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -348,7 +329,7 @@ export default function GameDetailsPage() {
                         </div>
                       ) : (
                         <div className="w-full bg-gray-100 text-gray-500 font-bold py-2 rounded-lg border-2 border-gray-200 text-xs flex justify-center items-center">
-                          Find this in the 3D World!
+                          Find this in the Voxelio App!
                         </div>
                       )}
                     </div>
@@ -359,11 +340,119 @@ export default function GameDetailsPage() {
           </div>
         </div>
       )}
-      
-      {/* ... Rest of the page (Tabs, etc.) ... */}
+
+      {/* ===== TABS (HIDDEN ON WONDERLAND) ===== */}
       {!isWonderland && (
         <div className="bg-white border-2 border-[#C5C8D6] rounded overflow-hidden">
-          {/* ... Tabs code ... */}
+          <div className="flex border-b-2 border-[#E5E7F0]">
+            {(
+              [
+                { key: "about", label: "About" },
+                { key: "servers", label: "Servers" },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`px-8 py-3 text-sm font-black transition ${
+                  activeTab === tab.key
+                    ? "bg-[#EEF0F7] text-[#4A1FA8] border-b-4 border-[#6C3CE0] -mb-0.5"
+                    : "text-[#666] hover:text-[#4A1FA8]"
+                }`}
+                style={{ background: activeTab === tab.key ? "#EEF0F7" : "transparent" }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {activeTab === "about" && (
+            <div className="p-6 space-y-6">
+              <div>
+                <h2 className="text-lg font-black text-[#1A1A2E] mb-2">Description</h2>
+                <p className="text-sm text-[#444] whitespace-pre-wrap leading-relaxed">
+                  {world.description || "No description provided."}
+                </p>
+              </div>
+
+              <div>
+                <h2 className="text-lg font-black text-[#1A1A2E] mb-3">Stats</h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                  {[
+                    ["Active", `${currentOnline} online`],
+                    ["Visits", world.visits.toLocaleString()],
+                    ["Likes", world.likes.toLocaleString()],
+                    ["Favorites", world.favorites.toLocaleString()],
+                    ["Max Players", String(world.maxPlayers)],
+                    ["Category", world.category],
+                    ["Created", new Date(world.createdAt).toLocaleDateString()],
+                  ].map(([label, value]) => (
+                    <div key={label}>
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-[#999] mb-1">
+                        {label}
+                      </div>
+                      <div className="text-sm font-black text-[#1A1A2E] capitalize">
+                        {value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "servers" && (
+            <div className="p-12 text-center">
+              <div className="text-5xl mb-3">🌐</div>
+              <div className="text-base font-black text-[#1A1A2E] mb-1">Server list coming soon</div>
+              <div className="text-xs text-[#666]">In the meantime, click Play to join a public server.</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="text-center pt-2">
+        <Link href="/games" className="inline-block text-sm font-bold text-[#6C3CE0] hover:underline">
+          ← Back to Games
+        </Link>
+      </div>
+
+      {launchStatus === "not-installed" && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(6px)" }}
+          onClick={() => setLaunchStatus("idle")}
+        >
+          <div
+            className="bg-white rounded-2xl p-8 max-w-md mx-4 text-center border-4 border-[#6C3CE0] shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-6xl mb-3">🎮</div>
+            <h3 className="text-2xl font-black text-[#1A1A2E] mb-2">Voxelio Player Not Installed</h3>
+            <p className="text-sm text-[#666] mb-6 leading-relaxed">
+              To play Voxelio games, download the Voxelio Player app. It&apos;s free, fast, and runs full-screen.
+            </p>
+            <div className="flex gap-2 justify-center">
+              <Link
+                href="/download"
+                className="bg-gradient-to-b from-[#7B4FF7] to-[#5A2FC7] text-white font-black text-sm px-6 py-3 rounded-lg border-2 border-[#4A1FA8] hover:from-[#8B5FFF] hover:to-[#6A3FD7] transition"
+              >
+                ⬇ Download App
+              </Link>
+              <button
+                onClick={() => setLaunchStatus("idle")}
+                className="bg-[#EEF0F7] text-[#4A1FA8] font-bold text-sm px-6 py-3 rounded-lg border-2 border-[#C5C8D6] hover:bg-[#E0E3EE] transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {launchStatus === "failed" && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-red-600 text-white font-bold text-sm px-5 py-3 rounded-lg shadow-2xl z-50">
+          Failed to launch the app. Please try again.
         </div>
       )}
     </div>
