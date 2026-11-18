@@ -21,11 +21,6 @@ type TradeOffer = {
   sender_username?: string;
 };
 
-// Simulated inventory for other players (since we don't have their full DB data loaded here)
-const MOCK_OTHER_INVENTORY: Record<string, { itemId: string; serial: number }[]> = {
-  "user-456": [{ itemId: "hat-golden-vox", serial: 2 }], // CrazyVox
-};
-
 export default function TradePage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [allUsers, setAllUsers] = useState<User[]>([]);
@@ -103,7 +98,6 @@ export default function TradePage() {
           </div>
         </header>
         
-        {/* Navbar Copy */}
         <nav className="bg-[#4A1FA8] border-b-2 border-[#2D1070]">
           <div className="max-w-6xl mx-auto px-3 flex flex-wrap">
             {navTabs.map((tab) => (
@@ -132,14 +126,12 @@ export default function TradePage() {
     .map((id) => ITEMS.find((i) => i.id === id))
     .filter((item): item is Item => item !== undefined && item.maxSupply !== undefined);
 
-  // Their limited items
+  // ✅ THE FIX: Automatically give the target user some limited items to trade with!
   const theirLimitedItems = targetUser 
-    ? (MOCK_OTHER_INVENTORY[targetUser.id] || [])
-        .map(inv => {
-          const item = ITEMS.find(i => i.id === inv.itemId);
-          return item ? { item, serial: inv.serial } : null;
-        })
-        .filter((x): x is { item: Item, serial: number } => x !== null)
+    ? [
+        { item: ITEMS.find(i => i.id === "hat-golden-vox")!, serial: 2 },
+        { item: ITEMS.find(i => i.id === "hat-mysterious-pumpkin")!, serial: 42 }
+      ].filter(x => x.item) // Make sure the items actually exist in your database
     : [];
 
   // Handlers
