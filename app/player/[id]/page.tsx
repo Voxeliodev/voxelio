@@ -12,6 +12,7 @@ import ObbyGame from "../../components/obby/ObbyGame";
 import LumberyardGame from "../../components/lumberyard/LumberyardGameMain";
 import ChaosColiseumGameMain from "../../components/chaos-coliseum/ChaosColiseumGameMain";
 import PizzaEmpireGameMain from "../../components/tycoon/PizzaEmpireGameMain";
+import WonderlandGameMain from "../../components/WonderlandGameMain"; // 👈 IMPORTED WONDERLAND
 
 // ============================================================
 // VOXELIO PLAYER — in-app game launcher page
@@ -139,7 +140,6 @@ function PlayerPageInner() {
     userRef.current = user;
   }, [user]);
 
-  // ===== Touch detection =====
   useEffect(() => {
     const touch =
       typeof window !== "undefined" &&
@@ -147,7 +147,6 @@ function PlayerPageInner() {
     setIsTouchDevice(touch);
   }, []);
 
-  // ===== Token exchange =====
   useEffect(() => {
     if (!token) {
       setStatus("error");
@@ -209,7 +208,6 @@ function PlayerPageInner() {
     })();
   }, [token, worldId]);
 
-  // ===== Join world-lobby presence =====
   useEffect(() => {
     if (!user || !worldId || status !== "ready") return;
 
@@ -237,7 +235,6 @@ function PlayerPageInner() {
     };
   }, [user, worldId, status]);
 
-  // ===== Chat channel subscription =====
   useEffect(() => {
     if (!user || !worldId || status !== "ready") return;
 
@@ -278,7 +275,6 @@ function PlayerPageInner() {
     };
   }, [user, worldId, status]);
 
-  // ===== Chat expiry =====
   useEffect(() => {
     const timer = setInterval(() => {
       const now = Date.now();
@@ -287,14 +283,12 @@ function PlayerPageInner() {
     return () => clearInterval(timer);
   }, []);
 
-  // ===== System message auto-clear =====
   useEffect(() => {
     if (!systemMessage) return;
     const t = setTimeout(() => setSystemMessage(null), 3000);
     return () => clearTimeout(t);
   }, [systemMessage]);
 
-  // ===== T key to open chat, Esc to close =====
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const active = document.activeElement as HTMLElement | null;
@@ -317,7 +311,6 @@ function PlayerPageInner() {
     if (chatOpen && inputRef.current) inputRef.current.focus();
   }, [chatOpen]);
 
-  // ===== Send chat =====
   const sendChat = useCallback(() => {
     const me = user;
     const text = draft.trim();
@@ -390,7 +383,6 @@ function PlayerPageInner() {
     setChatOpen(false);
   }, [draft, user]);
 
-  // ===== Exit =====
   const handleExit = () => {
     const w = window as any;
     if (w.voxelio?.requestExit) {
@@ -402,9 +394,6 @@ function PlayerPageInner() {
     }
   };
 
-  // ============================================================
-  // RENDER — Exchange
-  // ============================================================
   if (status === "exchanging") {
     return (
       <div
@@ -441,9 +430,6 @@ function PlayerPageInner() {
     );
   }
 
-  // ============================================================
-  // RENDER — Loading world
-  // ============================================================
   if (status === "loading-world") {
     return (
       <div
@@ -468,9 +454,6 @@ function PlayerPageInner() {
     );
   }
 
-  // ============================================================
-  // RENDER — Error
-  // ============================================================
   if (status === "error") {
     return (
       <div
@@ -529,14 +512,12 @@ function PlayerPageInner() {
     );
   }
 
-  // ============================================================
-  // RENDER — Ready
-  // ============================================================
   if (!world || !user) return null;
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "black" }}>
-      {/* Game canvas */}
+      
+      {/* 👇 ADDED WONDERLAND HERE 👇 */}
       {world.layout === "obby" ? (
         <ObbyGame
           config={user.avatarConfig}
@@ -573,6 +554,15 @@ function PlayerPageInner() {
           inputDisabled={chatOpen}
           isTouchDevice={isTouchDevice}
         />
+      ) : world.layout === "wonderland" || world.id === "wonderland" ? (
+        <WonderlandGameMain
+          config={user.avatarConfig}
+          userId={user.id}
+          username={user.username}
+          world={world}
+          inputDisabled={chatOpen}
+          isTouchDevice={isTouchDevice}
+        />
       ) : (
         <div
           style={{
@@ -589,10 +579,8 @@ function PlayerPageInner() {
         </div>
       )}
 
-      {/* Chat overlay */}
       <ChatOverlay messages={overlayMessages} />
 
-      {/* Exit button */}
       <button
         onClick={handleExit}
         style={{
@@ -624,7 +612,6 @@ function PlayerPageInner() {
         Exit
       </button>
 
-      {/* "Press T to chat" hint */}
       {!chatOpen && !isTouchDevice && (
         <div
           style={{
@@ -684,7 +671,6 @@ function PlayerPageInner() {
         </div>
       )}
 
-      {/* System message */}
       {systemMessage && (
         <div
           style={{
@@ -714,7 +700,6 @@ function PlayerPageInner() {
         </div>
       )}
 
-      {/* Chat input */}
       {chatOpen && (
         <div
           style={{
@@ -815,9 +800,6 @@ function PlayerPageInner() {
   );
 }
 
-// ============================================================
-// PAGE EXPORT
-// ============================================================
 export default function PlayerPage() {
   return (
     <Suspense
