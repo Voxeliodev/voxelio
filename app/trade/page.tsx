@@ -126,12 +126,15 @@ export default function TradePage() {
     .map((id) => ITEMS.find((i) => i.id === id))
     .filter((item): item is Item => item !== undefined && item.maxSupply !== undefined);
 
-  // ✅ THE FIX: Automatically give the target user some limited items to trade with!
+  // ✅ FIXED: Their real limited items based on their actual inventory
   const theirLimitedItems = targetUser 
-    ? [
-        { item: ITEMS.find(i => i.id === "hat-golden-vox")!, serial: 2 },
-        { item: ITEMS.find(i => i.id === "hat-mysterious-pumpkin")!, serial: 42 }
-      ].filter(x => x.item) // Make sure the items actually exist in your database
+    ? targetUser.ownedItems
+        .map((id) => ITEMS.find((i) => i.id === id))
+        .filter((item): item is Item => item !== undefined && item.maxSupply !== undefined)
+        .map(item => ({
+           item,
+           serial: targetUser.itemSerials?.[item.id] || 1
+        }))
     : [];
 
   // Handlers
