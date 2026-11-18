@@ -41,7 +41,8 @@ const CAPSULE_RADIUS = 0.35;
 const CAPSULE_TOTAL = CAPSULE_HALF_HEIGHT * 2 + CAPSULE_RADIUS * 2;
 
 const SPAWN_YAW = Math.PI;
-const VISUAL_FACING_OFFSET = Math.PI;
+// FIXED: was Math.PI (which made the character face backwards while walking forward)
+const VISUAL_FACING_OFFSET = 0;
 const VISUAL_OFFSET_Y = 0.65;
 
 // Challenge Positions
