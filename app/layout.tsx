@@ -61,15 +61,13 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
-  // 👇 Read the global theme flag on the server
-  const isHalloween = SITE_THEME === "halloween";
-
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-      // 👇 Server-rendered theme attribute — no JS, no flash, no toggle
-      data-theme={isHalloween ? "halloween" : undefined}
+      // 👇 Automatically sets data-theme="halloween" or "christmas"
+      // If it's "default", it removes the attribute entirely.
+      data-theme={SITE_THEME !== "default" ? SITE_THEME : undefined}
     >
       <body className="min-h-full flex flex-col">
         <AuthHydrator>{children}</AuthHydrator>

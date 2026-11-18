@@ -65,6 +65,63 @@ body {
   box-shadow: 0 0 20px rgba(255, 140, 0, 0.3);
 }
 
+/* ========================================= */
+/* 🎄 CHRISTMAS THEME STYLES 🎄              */
+/* ========================================= */
+
+[data-theme="christmas"] {
+  --background: #F8FAFC; /* Snowy White */
+  --foreground: #1A1A2E; 
+}
+
+/* 1. The main page background (Snowy soft blue/white) */
+[data-theme="christmas"] .theme-container {
+  background-color: #F8FAFC !important; 
+}
+
+/* 2. Turn the main Purple into Christmas Red */
+[data-theme="christmas"] .bg-\[\#6C3CE0\],
+[data-theme="christmas"] .from-\[\#6C3CE0\] {
+  background-color: #D32F2F !important;
+  --tw-gradient-from: #D32F2F !important;
+}
+
+/* 3. Turn the Dark Purple into Festive Green */
+[data-theme="christmas"] .bg-\[\#4A1FA8\],
+[data-theme="christmas"] .border-\[\#4A1FA8\],
+[data-theme="christmas"] .to-\[\#5A2FC7\] {
+  background-color: #1B5E20 !important;
+  border-color: #1B5E20 !important;
+  --tw-gradient-to: #1B5E20 !important;
+}
+
+/* 4. Text colors: Change purple text to Red or Green */
+[data-theme="christmas"] .text-\[\#4A1FA8\] {
+  color: #D32F2F !important;
+}
+
+/* 5. Change the light gray/blue backgrounds to a festive light green/white */
+[data-theme="christmas"] .bg-\[\#EEF0F7\] {
+  background-color: #F1F8E9 !important; /* Very soft green */
+  border-color: #C8E6C9 !important;
+}
+
+/* 6. Fix the header gradient */
+[data-theme="christmas"] header.bg-gradient-to-b {
+  background-image: linear-gradient(to bottom, #D32F2F, #B71C1C) !important;
+  border-bottom-color: #1B5E20 !important;
+}
+
+/* 7. Add a subtle green glow to the header */
+[data-theme="christmas"] header {
+  box-shadow: 0 0 20px rgba(27, 94, 32, 0.3);
+}
+
+/* Optional: Make the NavLink hover effect Green instead of Purple */
+[data-theme="christmas"] .hover\:bg-\[\#3A1580\]:hover {
+  background-color: #2E7D32 !important;
+}
+
 /* ============================================================ */
 /* 🚫 DISABLE TEXT SELECTION ON GAME UI                         */
 /* ============================================================ */
