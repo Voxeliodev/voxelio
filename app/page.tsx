@@ -86,6 +86,7 @@ export default function Home() {
     { name: "Friends", href: "/friends" },
     { name: "Messages", href: "/messages" },
     { name: "Avatar", href: "/avatar" },
+    { name: "Trading", href: "/trade" }, // 👈 ADDED TRADING HERE
     { name: "INDEV Club", href: "/indev", special: true },
   ];
 
