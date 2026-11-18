@@ -9,4 +9,4 @@
 
 export type SiteTheme = "default" | "halloween" | "christmas";
 
-export const SITE_THEME: SiteTheme = "christmas"; 
+export const SITE_THEME: SiteTheme = "default"; 
