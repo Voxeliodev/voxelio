@@ -132,7 +132,7 @@ export const ITEMS: Item[] = [
     creator: "Voxelio",
     modelPath: "/models/Golden_Crown_Vox.glb",
     modelScale: 0.5,                // ✅ Kept perfect scale
-    modelOffset: [0, 0.15, 0],      // ✅ Moved slightly up
+    modelOffset: [0, 0, 0],         // ✅ Centered on the head (no floating, no clipping)
     modelRotation: [0, 0, 0],
     maxSupply: 20,
     currentSupply: 20,
