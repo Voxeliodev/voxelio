@@ -131,8 +131,8 @@ export const ITEMS: Item[] = [
     previewEmoji: "👑",
     creator: "Voxelio",
     modelPath: "/models/Golden_Crown_Vox.glb",
-    modelScale: 0.5,                // ✅ FIXED: Scaled up from 0.4 to 0.5
-    modelOffset: [0, -0.1, 0],      // ✅ FIXED: Moved down from 0.1 to -0.1
+    modelScale: 0.5,                // ✅ Kept perfect scale
+    modelOffset: [0, 0.15, 0],      // ✅ Moved slightly up
     modelRotation: [0, 0, 0],
     maxSupply: 20,
     currentSupply: 20,
