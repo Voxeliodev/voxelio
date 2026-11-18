@@ -9,7 +9,6 @@ import VoxelioLogo from "../components/VoxelioLogo";
 import AccountBadge from "../components/AccountBadge";
 import Avatar from "../components/Avatar";
 
-// Types for our Supabase data
 type TradeOffer = {
   id: string;
   sender_id: string;
@@ -25,22 +24,36 @@ export default function TradePage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   
-  // State for the active trade
   const [targetUser, setTargetUser] = useState<User | null>(null);
   const [myOffer, setMyOffer] = useState<{ item: Item; serial: number }[]>([]);
   const [theirOffer, setTheirOffer] = useState<{ item: Item; serial: number }[]>([]);
   const [isSending, setIsSending] = useState(false);
   
-  // State for incoming trades
   const [incomingTrades, setIncomingTrades] = useState<TradeOffer[]>([]);
   const [loadingTrades, setLoadingTrades] = useState(true);
-  
-  // State for the View Trade Modal
   const [viewingTrade, setViewingTrade] = useState<TradeOffer | null>(null);
 
-  // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const usersPerPage = 9;
+
+  // Extract fetch function so we can call it to refresh after sending
+  const fetchIncomingTrades = async (userId: string) => {
+    setLoadingTrades(true);
+    const { data, error } = await supabase
+      .from("trades")
+      .select("*")
+      .eq("receiver_id", userId)
+      .eq("status", "pending");
+
+    if (!error && data) {
+      const tradesWithNames = data.map((trade: any) => {
+        const sender = getUsers().find(user => user.id === trade.sender_id);
+        return { ...trade, sender_username: sender?.username || "Unknown Player" };
+      });
+      setIncomingTrades(tradesWithNames);
+    }
+    setLoadingTrades(false);
+  };
 
   useEffect(() => {
     const u = getCurrentUser();
@@ -49,25 +62,7 @@ export default function TradePage() {
     if (u) {
       const users = getUsers().filter(user => user.id !== u.id);
       setAllUsers(users);
-
-      const fetchTrades = async () => {
-        const { data, error } = await supabase
-          .from("trades")
-          .select("*")
-          .eq("receiver_id", u.id)
-          .eq("status", "pending");
-
-        if (!error && data) {
-          const tradesWithNames = data.map((trade: any) => {
-            const sender = getUsers().find(user => user.id === trade.sender_id);
-            return { ...trade, sender_username: sender?.username || "Unknown Player" };
-          });
-          setIncomingTrades(tradesWithNames);
-        }
-        setLoadingTrades(false);
-      };
-      
-      fetchTrades();
+      fetchIncomingTrades(u.id);
     }
   }, []);
 
@@ -173,11 +168,12 @@ export default function TradePage() {
       setMyOffer([]);
       setTheirOffer([]);
       setTargetUser(null);
+      // Refresh incoming trades just in case they are trading themselves
+      fetchIncomingTrades(currentUser.id);
     }
     setIsSending(false);
   };
 
-  // Accept the trade from the Modal
   const handleAcceptTrade = async (tradeId: string) => {
     const { data, error } = await supabase.rpc("accept_trade", { p_trade_id: tradeId });
     if (error) alert("Error: " + error.message);
@@ -185,18 +181,17 @@ export default function TradePage() {
     else {
       alert("Trade accepted! Your items have been swapped.");
       setIncomingTrades(incomingTrades.filter(t => t.id !== tradeId));
-      setViewingTrade(null); // Close modal
+      setViewingTrade(null);
       window.location.reload(); 
     }
   };
 
-  // Decline the trade (we will just delete it from the database for simplicity)
   const handleDeclineTrade = async (tradeId: string) => {
     const { error } = await supabase.from("trades").delete().eq("id", tradeId);
     if (error) alert("Error declining: " + error.message);
     else {
       setIncomingTrades(incomingTrades.filter(t => t.id !== tradeId));
-      setViewingTrade(null); // Close modal
+      setViewingTrade(null);
     }
   };
 
@@ -208,7 +203,6 @@ export default function TradePage() {
   return (
     <div className="min-h-screen bg-[#EEF0F7] text-[#1A1A2E] font-sans relative">
       
-      {/* INCOMING TRADE MODAL */}
       {viewingTrade && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setViewingTrade(null)}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden border-2 border-[#C5C8D6]" onClick={e => e.stopPropagation()}>
@@ -219,8 +213,6 @@ export default function TradePage() {
             
             <div className="p-6">
               <div className="grid grid-cols-2 gap-6 mb-6">
-                
-                {/* They Give */}
                 <div className="bg-[#EEF0F7] border-2 border-[#C5C8D6] rounded-lg p-4">
                   <h3 className="text-sm font-black text-[#4A1FA8] mb-3 uppercase tracking-wider text-center border-b border-[#C5C8D6] pb-2">They Give You</h3>
                   <div className="space-y-2">
@@ -239,7 +231,6 @@ export default function TradePage() {
                   </div>
                 </div>
 
-                {/* You Give */}
                 <div className="bg-[#EEF0F7] border-2 border-[#C5C8D6] rounded-lg p-4">
                   <h3 className="text-sm font-black text-[#EF4444] mb-3 uppercase tracking-wider text-center border-b border-[#C5C8D6] pb-2">You Give Them</h3>
                   <div className="space-y-2">
@@ -282,7 +273,6 @@ export default function TradePage() {
         </div>
       )}
 
-      {/* HEADER */}
       <header className="bg-gradient-to-b from-[#6C3CE0] to-[#5A2FC7] border-b-4 border-[#4A1FA8]">
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
           <VoxelioLogo />
@@ -292,7 +282,6 @@ export default function TradePage() {
         </div>
       </header>
 
-      {/* NAV */}
       <nav className="bg-[#4A1FA8] border-b-2 border-[#2D1070]">
         <div className="max-w-6xl mx-auto px-3 flex flex-wrap">
           {navTabs.map((tab) => (
@@ -317,9 +306,13 @@ export default function TradePage() {
 
       <main className="max-w-6xl mx-auto px-3 py-8">
         
-        {/* INCOMING TRADES SECTION */}
         <div className="mb-8 bg-white rounded-xl border-2 border-[#C5C8D6] p-4 shadow-sm">
-          <h2 className="font-black text-lg text-[#4A1FA8] mb-4 border-b-2 border-[#EEF0F7] pb-2">Incoming Trade Offers</h2>
+          <h2 className="font-black text-lg text-[#4A1FA8] mb-4 border-b-2 border-[#EEF0F7] pb-2 flex justify-between items-center">
+            Incoming Trade Offers
+            <button onClick={() => fetchIncomingTrades(currentUser.id)} className="text-xs font-bold text-[#6C3CE0] hover:underline">
+              Refresh
+            </button>
+          </h2>
           
           {loadingTrades ? (
             <p className="text-sm text-gray-500">Loading offers...</p>
@@ -348,7 +341,6 @@ export default function TradePage() {
           )}
         </div>
 
-        {/* SELECT PLAYER OR TRADE */}
         {!targetUser ? (
           <div className="bg-white rounded-xl border-2 border-[#C5C8D6] p-6 shadow-sm">
             <h2 className="text-2xl font-black text-[#4A1FA8] mb-6 text-center">Select a Player to Trade With</h2>
@@ -443,9 +435,7 @@ export default function TradePage() {
             </div>
 
             <div className="lg:col-span-2 flex flex-col gap-4">
-              
               <div className="grid grid-cols-2 gap-4 flex-1">
-                
                 <div className="bg-white rounded-xl border-2 border-[#22C55E] p-3 flex flex-col relative shadow-sm h-[350px]">
                   <div className="absolute top-0 left-0 w-full bg-[#22C55E]/10 text-[#22C55E] font-black text-center text-[10px] py-1 rounded-t-xl border-b border-[#22C55E]/20 uppercase tracking-wider">
                     You Give
