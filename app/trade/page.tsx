@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { getCurrentUser, isIndevMember, type User, getUsers } from "../../lib/auth";
+import { getCurrentUser, isIndevMember, type User, getUsers, hydrateAuth } from "../../lib/auth"; // 👈 Added hydrateAuth
 import { supabase } from "../../lib/supabase";
 import { ITEMS, type Item } from "../../lib/items";
 import VoxelioLogo from "../components/VoxelioLogo";
@@ -36,7 +36,6 @@ export default function TradePage() {
   const [currentPage, setCurrentPage] = useState(1);
   const usersPerPage = 9;
 
-  // Extract fetch function so we can call it to refresh after sending
   const fetchIncomingTrades = async (userId: string) => {
     setLoadingTrades(true);
     const { data, error } = await supabase
@@ -168,7 +167,6 @@ export default function TradePage() {
       setMyOffer([]);
       setTheirOffer([]);
       setTargetUser(null);
-      // Refresh incoming trades just in case they are trading themselves
       fetchIncomingTrades(currentUser.id);
     }
     setIsSending(false);
@@ -176,10 +174,16 @@ export default function TradePage() {
 
   const handleAcceptTrade = async (tradeId: string) => {
     const { data, error } = await supabase.rpc("accept_trade", { p_trade_id: tradeId });
-    if (error) alert("Error: " + error.message);
-    else if (!data.success) alert("Trade failed: " + data.error);
-    else {
+    if (error) {
+      alert("Error: " + error.message);
+    } else if (!data.success) {
+      alert("Trade failed: " + data.error);
+    } else {
       alert("Trade accepted! Your items have been swapped.");
+      
+      // 🚨 THE FIX: Force the app to pull fresh data from Supabase BEFORE reloading
+      await hydrateAuth(); 
+      
       setIncomingTrades(incomingTrades.filter(t => t.id !== tradeId));
       setViewingTrade(null);
       window.location.reload(); 
