@@ -566,9 +566,14 @@ function PlayerPageInner() {
           isTouchDevice={isTouchDevice}
         />
       ) : world.layout === "wonderland" || world.id === "wonderland" ? (
-        /* 👇 ADDED WONDERLAND ROUTE HERE 👇 */
+        /* 👇 FIXED: pass full prop set to match the WonderlandGameMain contract 👇 */
         <WonderlandGameMain
           config={user.avatarConfig}
+          userId={user.id}
+          username={user.username}
+          world={world}
+          inputDisabled={chatOpen}
+          isTouchDevice={isTouchDevice}
         />
       ) : (
         <div
