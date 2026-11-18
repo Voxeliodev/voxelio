@@ -48,7 +48,8 @@ export type User = {
   avatarConfig: AvatarConfig; friends: number; friendIds: string[];
   incomingRequests: string[]; outgoingRequests: string[]; voxbux: number;
   ownedItems: string[];
-  itemSerials?: Record<string, number>; // 👈 NEW: Tracks Serial Numbers (e.g., { "hat-golden-vox": 42 })
+  itemSerials?: Record<string, number>;
+  wonderlandBadges?: string[]; // 👈 Tracks Wonderland Game Badges
   bannedUntil?: number | null; banReason?: string;
   indevClub?: IndevClub | null; lastSeen?: number;
   lastDailyBonus?: number;
@@ -252,7 +253,8 @@ function rowToUser(row: any): User {
     outgoingRequests: Array.isArray(d.outgoingRequests) ? d.outgoingRequests : [],
     voxbux: typeof d.voxbux === "number" ? d.voxbux : DEFAULT_VOXBUX,
     ownedItems: Array.isArray(d.ownedItems) ? d.ownedItems : [],
-    itemSerials: d.itemSerials && typeof d.itemSerials === "object" ? d.itemSerials : {}, // 👈 Load serials
+    itemSerials: d.itemSerials && typeof d.itemSerials === "object" ? d.itemSerials : {},
+    wonderlandBadges: Array.isArray(d.wonderlandBadges) ? d.wonderlandBadges : [], // 👈 Load badges
     bannedUntil: typeof d.bannedUntil === "number" ? d.bannedUntil : null,
     banReason: typeof d.banReason === "string" ? d.banReason : undefined,
     indevClub: d.indevClub && typeof d.indevClub === "object" ? d.indevClub : null,
@@ -275,7 +277,8 @@ function userToRow(u: User) {
       friendIds: u.friendIds, incomingRequests: u.incomingRequests,
       outgoingRequests: u.outgoingRequests, voxbux: u.voxbux,
       ownedItems: u.ownedItems,
-      itemSerials: u.itemSerials || {}, // 👈 Save serials
+      itemSerials: u.itemSerials || {},
+      wonderlandBadges: u.wonderlandBadges || [], // 👈 Save badges
       bannedUntil: u.bannedUntil,
       banReason: u.banReason, indevClub: u.indevClub,
       lastSeen: u.lastSeen ?? Date.now(),
@@ -413,7 +416,7 @@ export async function createUser(data: { username: string; email: string; passwo
     avatar: avatars[Math.floor(Math.random() * avatars.length)],
     avatarConfig: { ...DEFAULT_AVATAR_CONFIG, bodyParts: { ...DEFAULT_BODY_PARTS }, partColors: {} },
     friends: 0, friendIds: [], incomingRequests: [], outgoingRequests: [],
-    voxbux: DEFAULT_VOXBUX, ownedItems: [], itemSerials: {}, bannedUntil: null, indevClub: null,
+    voxbux: DEFAULT_VOXBUX, ownedItems: [], itemSerials: {}, wonderlandBadges: [], bannedUntil: null, indevClub: null,
     lastSeen: Date.now(), lastDailyBonus: 0, playedWithOwner: false,
   };
 
@@ -583,7 +586,6 @@ export async function buyItem(userId: string, itemId: string, price: number): Pr
   
   if (user.voxbux < price) return { success: false, error: `Not enough Voxbux. You need ${price - user.voxbux} more.` };
 
-  // Note: Your SQL RPC needs to return { success: true, newBalance: number, serialNumber: number }
   const { data, error } = await supabase.rpc("buy_item", {
     p_user_id: userId,
     p_item_id: itemId,
@@ -593,13 +595,11 @@ export async function buyItem(userId: string, itemId: string, price: number): Pr
   if (error) return { success: false, error: error.message };
   if (!data?.success) return { success: false, error: data?.error || "Purchase failed." };
 
-  // Update local cache safely
   const cached = usersCache.find((u) => u.id === userId);
   if (cached) {
     cached.voxbux = data.newBalance;
     cached.ownedItems = [...cached.ownedItems, itemId];
     
-    // 👇 Save the assigned serial number to the user
     if (data.serialNumber) {
       if (!cached.itemSerials) cached.itemSerials = {};
       cached.itemSerials[itemId] = data.serialNumber;
@@ -609,7 +609,6 @@ export async function buyItem(userId: string, itemId: string, price: number): Pr
     notify();
   }
   
-  // Decrease local supply so the UI updates immediately
   if (item && item.currentSupply !== undefined) {
     item.currentSupply -= 1;
   }

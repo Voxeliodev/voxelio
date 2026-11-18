@@ -24,6 +24,24 @@ export type World = {
   createdAt: string;
 };
 
+// 👇 NEW: The special Winter Event world that bypasses the database
+const WONDERLAND_EVENT: World = {
+  id: "wonderland",
+  name: "Voxelio's Wonderland",
+  description: "Complete winter challenges to earn exclusive badges and rare festive accessories!",
+  thumbnailEmoji: "❄️",
+  thumbnailColor: "#1E3A8A", // Winter Blue
+  category: "event",
+  layout: "plaza",
+  creator: "Voxelio",
+  maxPlayers: 1,
+  visits: 50000,
+  likes: 9999,
+  favorites: 0,
+  featured: true,
+  createdAt: new Date().toISOString(),
+};
+
 function rowToWorld(row: any): World {
   return {
     id: row.id,
@@ -71,14 +89,30 @@ export async function fetchWorlds(opts?: {
   query = query.limit(60);
 
   const { data, error } = await query;
+  
+  let results = (data || []).map(rowToWorld);
+
+  // 👇 INJECT WONDERLAND EVENT INTO THE LIST 👇
+  // Only show it if searching for "all", "event", or if it matches the search text
+  if (!opts?.category || opts.category === "all" || opts.category === "event") {
+    const matchesSearch = !opts?.search || WONDERLAND_EVENT.name.toLowerCase().includes(opts.search.toLowerCase());
+    if (matchesSearch) {
+      results = [WONDERLAND_EVENT, ...results];
+    }
+  }
+
   if (error) {
     console.error("fetchWorlds error:", error.message);
-    return [];
+    return [WONDERLAND_EVENT]; // Return at least the event if DB fails
   }
-  return (data || []).map(rowToWorld);
+  
+  return results;
 }
 
 export async function fetchWorldById(id: string): Promise<World | null> {
+  // If looking for the event, return the hardcoded one
+  if (id === "wonderland") return WONDERLAND_EVENT;
+
   const { data, error } = await supabase
     .from("worlds")
     .select("*")
@@ -89,6 +123,7 @@ export async function fetchWorldById(id: string): Promise<World | null> {
 }
 
 export async function incrementWorldVisits(id: string): Promise<void> {
+  if (id === "wonderland") return; // Don't track visits for the static event
   await supabase.rpc("increment_world_visits", { world_id: id }).then(() => {});
 }
 
@@ -98,6 +133,8 @@ export async function incrementWorldVisits(id: string): Promise<void> {
 
 /** Returns true if the signed-in user has liked this world. */
 export async function hasLikedWorld(worldId: string): Promise<boolean> {
+  if (worldId === "wonderland") return false;
+
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.user) return false;
 
@@ -114,6 +151,8 @@ export async function hasLikedWorld(worldId: string): Promise<boolean> {
 
 /** Insert a like row. Trigger updates worlds.likes. */
 export async function likeWorld(worldId: string): Promise<boolean> {
+  if (worldId === "wonderland") return false;
+
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.user) return false;
 
@@ -130,6 +169,8 @@ export async function likeWorld(worldId: string): Promise<boolean> {
 
 /** Delete the like row. Trigger decrements worlds.likes. */
 export async function unlikeWorld(worldId: string): Promise<boolean> {
+  if (worldId === "wonderland") return false;
+
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.user) return false;
 

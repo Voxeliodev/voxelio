@@ -134,6 +134,29 @@ export const ITEMS: Item[] = [
     currentSupply: 100,
     isResellable: true,
   },
+  // --- WONDERLAND EVENT HATS ---
+  {
+    id: "acc-santa-hat",
+    name: "Santa's Classic Hat",
+    description: "A jolly red hat with a fluffy white pompom. Awarded to those who complete the Wonderland challenges.",
+    price: 0,
+    category: "hats",
+    rarity: "legendary",
+    previewEmoji: "🎅",
+    creator: "Voxelio", // 👈 Changed to Voxelio
+    forSale: false,
+  },
+  {
+    id: "acc-ice-crown",
+    name: "Crown of the Snow Queen",
+    description: "A crown made of unmelting ice. It sparkles with a wintery chill.",
+    price: 0,
+    category: "hats",
+    rarity: "epic",
+    previewEmoji: "👑",
+    creator: "Voxelio", // 👈 Changed to Voxelio
+    forSale: false,
+  },
 
   // ===== HEADS =====
   {
@@ -207,6 +230,18 @@ export const ITEMS: Item[] = [
     rarity: "rare",
     previewEmoji: "⚔️",
     creator: "Voxelio",
+  },
+  // --- WONDERLAND EVENT ACCESSORY ---
+  {
+    id: "acc-candy-cane-sword",
+    name: "Candy Cane Sword",
+    description: "A sharp, minty weapon. Surprisingly effective against snowmen.",
+    price: 0,
+    category: "accessories",
+    rarity: "rare",
+    previewEmoji: "🍬",
+    creator: "Voxelio", // 👈 Changed to Voxelio
+    forSale: false,
   },
 
   // ===== BACK ACCESSORIES =====
