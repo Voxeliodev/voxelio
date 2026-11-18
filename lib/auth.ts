@@ -580,16 +580,15 @@ export async function buyItem(userId: string, itemId: string, price: number): Pr
   if (item && item.forSale === false) {
     return { success: false, error: "This item is no longer for sale." };
   }
-  if (item && item.maxSupply !== undefined && (item.currentSupply ?? 0) <= 0) {
-    return { success: false, error: "This item is sold out!" };
-  }
   
   if (user.voxbux < price) return { success: false, error: `Not enough Voxbux. You need ${price - user.voxbux} more.` };
 
+  // 🚨 THE FIX: Pass the p_max_supply argument so the DB picks the right function
   const { data, error } = await supabase.rpc("buy_item", {
     p_user_id: userId,
     p_item_id: itemId,
     p_price: price,
+    p_max_supply: item?.maxSupply || null,
   });
 
   if (error) return { success: false, error: error.message };
