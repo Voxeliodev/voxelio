@@ -47,7 +47,9 @@ export type User = {
   joined: string; status: "online" | "offline"; bio: string; avatar: string;
   avatarConfig: AvatarConfig; friends: number; friendIds: string[];
   incomingRequests: string[]; outgoingRequests: string[]; voxbux: number;
-  ownedItems: string[]; bannedUntil?: number | null; banReason?: string;
+  ownedItems: string[];
+  itemSerials?: Record<string, number>; // 👈 NEW: Tracks Serial Numbers (e.g., { "hat-golden-vox": 42 })
+  bannedUntil?: number | null; banReason?: string;
   indevClub?: IndevClub | null; lastSeen?: number;
   lastDailyBonus?: number;
   joinedAtMs?: number;
@@ -250,6 +252,7 @@ function rowToUser(row: any): User {
     outgoingRequests: Array.isArray(d.outgoingRequests) ? d.outgoingRequests : [],
     voxbux: typeof d.voxbux === "number" ? d.voxbux : DEFAULT_VOXBUX,
     ownedItems: Array.isArray(d.ownedItems) ? d.ownedItems : [],
+    itemSerials: d.itemSerials && typeof d.itemSerials === "object" ? d.itemSerials : {}, // 👈 Load serials
     bannedUntil: typeof d.bannedUntil === "number" ? d.bannedUntil : null,
     banReason: typeof d.banReason === "string" ? d.banReason : undefined,
     indevClub: d.indevClub && typeof d.indevClub === "object" ? d.indevClub : null,
@@ -271,7 +274,9 @@ function userToRow(u: User) {
       avatar: u.avatar, avatarConfig: u.avatarConfig,
       friendIds: u.friendIds, incomingRequests: u.incomingRequests,
       outgoingRequests: u.outgoingRequests, voxbux: u.voxbux,
-      ownedItems: u.ownedItems, bannedUntil: u.bannedUntil,
+      ownedItems: u.ownedItems,
+      itemSerials: u.itemSerials || {}, // 👈 Save serials
+      bannedUntil: u.bannedUntil,
       banReason: u.banReason, indevClub: u.indevClub,
       lastSeen: u.lastSeen ?? Date.now(),
       lastDailyBonus: u.lastDailyBonus ?? 0,
@@ -408,7 +413,7 @@ export async function createUser(data: { username: string; email: string; passwo
     avatar: avatars[Math.floor(Math.random() * avatars.length)],
     avatarConfig: { ...DEFAULT_AVATAR_CONFIG, bodyParts: { ...DEFAULT_BODY_PARTS }, partColors: {} },
     friends: 0, friendIds: [], incomingRequests: [], outgoingRequests: [],
-    voxbux: DEFAULT_VOXBUX, ownedItems: [], bannedUntil: null, indevClub: null,
+    voxbux: DEFAULT_VOXBUX, ownedItems: [], itemSerials: {}, bannedUntil: null, indevClub: null,
     lastSeen: Date.now(), lastDailyBonus: 0, playedWithOwner: false,
   };
 
@@ -562,7 +567,7 @@ export function ownsItem(userId: string, itemId: string): boolean {
   return findUserById(userId)?.ownedItems.includes(itemId) || false;
 }
 
-export async function buyItem(userId: string, itemId: string, price: number): Promise<{ success: boolean; error?: string; newBalance?: number }> {
+export async function buyItem(userId: string, itemId: string, price: number): Promise<{ success: boolean; error?: string; newBalance?: number; serialNumber?: number }> {
   const user = findUserById(userId);
   if (!user) return { success: false, error: "You must be signed in." };
   if (isUserBanned(user)) return { success: false, error: "This account is banned." };
@@ -572,10 +577,13 @@ export async function buyItem(userId: string, itemId: string, price: number): Pr
   if (item && item.forSale === false) {
     return { success: false, error: "This item is no longer for sale." };
   }
+  if (item && item.maxSupply !== undefined && (item.currentSupply ?? 0) <= 0) {
+    return { success: false, error: "This item is sold out!" };
+  }
   
   if (user.voxbux < price) return { success: false, error: `Not enough Voxbux. You need ${price - user.voxbux} more.` };
 
-  // Use the secure SQL RPC instead of overwriting the whole array
+  // Note: Your SQL RPC needs to return { success: true, newBalance: number, serialNumber: number }
   const { data, error } = await supabase.rpc("buy_item", {
     p_user_id: userId,
     p_item_id: itemId,
@@ -590,12 +598,24 @@ export async function buyItem(userId: string, itemId: string, price: number): Pr
   if (cached) {
     cached.voxbux = data.newBalance;
     cached.ownedItems = [...cached.ownedItems, itemId];
+    
+    // 👇 Save the assigned serial number to the user
+    if (data.serialNumber) {
+      if (!cached.itemSerials) cached.itemSerials = {};
+      cached.itemSerials[itemId] = data.serialNumber;
+    }
+
     if (currentUserCache?.id === userId) currentUserCache = cached;
     notify();
   }
   
+  // Decrease local supply so the UI updates immediately
+  if (item && item.currentSupply !== undefined) {
+    item.currentSupply -= 1;
+  }
+
   bumpItemSale(itemId);
-  return { success: true, newBalance: data.newBalance };
+  return { success: true, newBalance: data.newBalance, serialNumber: data.serialNumber };
 }
 
 export function subscribeIndev(userId: string, tier: IndevTier): { success: boolean; error?: string; newBalance?: number; expiresAt?: number } {

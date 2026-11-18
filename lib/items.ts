@@ -25,6 +25,11 @@ export type Item = {
 
   forSale?: boolean;
 
+  // --- SERIALIZED (LIMITED) ITEM PROPERTIES ---
+  maxSupply?: number;      // The total number of this item that will ever exist
+  currentSupply?: number;  // How many are left to buy right now
+  isResellable?: boolean;  // Can players trade/sell this later?
+
   modelPath?: string;
   modelScale?: number;
   modelOffset?: [number, number, number];
@@ -114,6 +119,20 @@ export const ITEMS: Item[] = [
     modelScale: 0.6,
     modelOffset: [0, 0.15, 0],
     modelRotation: [0, 0, 0],
+  },
+  // --- NEW SERIALIZED ITEM ---
+  {
+    id: "hat-golden-vox",
+    name: "The Golden Vox",
+    description: "A crown forged for the very first creators of Voxelio. Once they're gone, they're gone forever.",
+    price: 50000,
+    category: "hats",
+    rarity: "legendary",
+    previewEmoji: "👑",
+    creator: "Voxelio",
+    maxSupply: 100,
+    currentSupply: 100,
+    isResellable: true,
   },
 
   // ===== HEADS =====
@@ -276,7 +295,6 @@ export const ITEMS: Item[] = [
     forSale: false,
     faceImageUrl: "/faces/ruby-anger-face.png",
   },
-  // --- NEW INFERNO PUMPKIN FACE ---
   {
     id: "face-inferno-pumpkin",
     name: "Inferno Pumpkin",

@@ -53,11 +53,20 @@ export default function ItemModal({
       showToast("error", "This item is no longer for sale.");
       return;
     }
+    if (item.maxSupply && item.currentSupply === 0) {
+      showToast("error", "This item is completely sold out!");
+      return;
+    }
     
     const result = await buyItem(currentUser.id, item.id, item.price);
     
     if (result.success) {
-      showToast("success", `Purchased ${item.name}! You now have ${formatVoxbux(result.newBalance ?? 0)}.`);
+      // 👇 Show serial number in toast if they got one
+      if (result.serialNumber) {
+        showToast("success", `Purchased ${item.name}! You got Serial #${result.serialNumber}.`);
+      } else {
+        showToast("success", `Purchased ${item.name}! You now have ${formatVoxbux(result.newBalance ?? 0)}.`);
+      }
       refreshUser();
       onPurchase();
     } else {
@@ -68,6 +77,10 @@ export default function ItemModal({
   const owned = currentUser?.ownedItems.includes(item.id) || false;
   const canAfford = (currentUser?.voxbux ?? 0) >= item.price;
   const offSale = item.forSale === false;
+  
+  const isLimited = item.maxSupply !== undefined;
+  const isSoldOut = isLimited && item.currentSupply === 0;
+  const userSerial = currentUser?.itemSerials?.[item.id];
 
   return (
     <div
@@ -119,6 +132,14 @@ export default function ItemModal({
                   <span className="text-[10px] font-bold text-[#666] uppercase">
                     {item.category}
                   </span>
+                  
+                  {/* 👇 LTD BADGE 👇 */}
+                  {isLimited && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#FFD700] text-[#1A1A2E] uppercase shadow-sm">
+                      LTD
+                    </span>
+                  )}
+
                   {offSale && (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-red-500 text-white uppercase">
                       Off Sale
@@ -148,26 +169,42 @@ export default function ItemModal({
                   <p className="text-[10px] text-[#888] uppercase font-bold mb-1">Price</p>
                   <p
                     className={`text-3xl font-black ${
-                      offSale ? "text-red-500" : "text-[#FFD700]"
+                      offSale || isSoldOut ? "text-red-500" : "text-[#FFD700]"
                     }`}
                   >
-                    {offSale
-                      ? "Off Sale"
+                    {offSale || isSoldOut
+                      ? isSoldOut ? "SOLD OUT" : "Off Sale"
                       : item.price === 0
                       ? "FREE"
                       : `${item.price} V$`}
                   </p>
-                  {currentUser && !offSale && (
+                  {currentUser && !offSale && !isSoldOut && (
                     <p className="text-xs text-[#666] mt-1">
                       Your balance: <strong className="text-[#4A1FA8]">{formatVoxbux(currentUser.voxbux)}</strong>
                     </p>
                   )}
                 </div>
 
+                {/* 👇 SUPPLY REMAINING BAR 👇 */}
+                {isLimited && (
+                  <div className="bg-[#FFF8E7] border border-[#FFD700] rounded p-2 text-center">
+                    <p className="text-xs font-bold text-[#B8860B]">
+                      ⏳ Only {item.currentSupply} of {item.maxSupply} remaining
+                    </p>
+                  </div>
+                )}
+
                 {owned ? (
                   <div className="space-y-2">
                     <div className="bg-green-50 border-2 border-green-300 rounded p-2 text-center">
                       <p className="text-xs font-bold text-green-700">✓ You own this item</p>
+                      
+                      {/* 👇 SERIAL NUMBER DISPLAY 👇 */}
+                      {isLimited && userSerial && (
+                        <p className="text-[11px] font-black text-green-800 mt-0.5">
+                          Serial #{userSerial} of {item.maxSupply}
+                        </p>
+                      )}
                     </div>
                     <Link
                       href="/avatar"
@@ -176,10 +213,10 @@ export default function ItemModal({
                       🎨 Equip
                     </Link>
                   </div>
-                ) : offSale ? (
+                ) : offSale || isSoldOut ? (
                   <div className="bg-red-50 border-2 border-red-300 rounded p-3 text-center">
                     <p className="text-xs font-bold text-red-700">
-                      🚫 This item is no longer available for purchase.
+                      {isSoldOut ? "🛑 This item is completely sold out." : "🚫 This item is no longer available for purchase."}
                     </p>
                   </div>
                 ) : !currentUser ? (
@@ -225,9 +262,15 @@ export default function ItemModal({
                   <span>✅</span>
                   <span>Created by <strong className="text-[#4A1FA8]">{item.creator}</strong></span>
                 </li>
+                {isLimited && (
+                  <li className="flex items-start gap-2 text-[#B8860B] font-bold">
+                    <span>💎</span>
+                    <span>Serialized Item (Limited Supply)</span>
+                  </li>
+                )}
                 <li className="flex items-start gap-2">
-                  <span>{offSale ? "🚫" : "🔒"}</span>
-                  <span>{offSale ? "No longer available for purchase" : "Yours forever after purchase"}</span>
+                  <span>{offSale || isSoldOut ? "🚫" : "🔒"}</span>
+                  <span>{offSale || isSoldOut ? "No longer available for purchase" : "Yours forever after purchase"}</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span>🎨</span>

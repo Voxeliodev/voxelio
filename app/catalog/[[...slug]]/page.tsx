@@ -16,7 +16,7 @@ import AccountBadge from "../../components/AccountBadge";
 import ItemPreview from "../../components/ItemPreview";
 import ItemModal from "../../components/ItemModal";
 import NavLink from "../../components/NavLink";
-import VoxelioLogo from "../../components/VoxelioLogo"; // 👈 ADDED IMPORT HERE
+import VoxelioLogo from "../../components/VoxelioLogo";
 import {
   getItemsByCategory,
   getItemBySlug,
@@ -64,9 +64,7 @@ export default function CatalogPage() {
   const [sort, setSort] = useState("relevance");
   const [sales, setSales] = useState<Record<string, number>>({});
   
-  // --- PAGINATION STATE ---
   const [currentPage, setCurrentPage] = useState(1);
-
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
 
   const refreshUser = () => setCurrentUser(getCurrentUser());
@@ -111,7 +109,6 @@ export default function CatalogPage() {
     window.history.pushState({}, "", "/catalog");
   };
 
-  // Reset to page 1 when category or search changes
   const handleCategoryChange = (newCategory: string) => {
     setCategory(newCategory);
     setCurrentPage(1);
@@ -124,10 +121,8 @@ export default function CatalogPage() {
 
   const activeCategory = CATEGORIES.find((c) => c.id === category);
 
-  // 1. Get Items
   let items = getItemsByCategory(category);
   
-  // 2. Filter by Search
   if (search.trim()) {
     const q = search.toLowerCase();
     items = items.filter(
@@ -135,15 +130,13 @@ export default function CatalogPage() {
     );
   }
 
-  // 3. Sort Items
   items = [...items].sort((a, b) => {
     if (sort === "price-low") return a.price - b.price;
     if (sort === "price-high") return b.price - a.price;
-    if (sort === "popular") return (sales[b.id] || 0) - (sales[a.id] || 0); // Sort by sales count
-    return 0; // "relevance" & "newest" default to original array order
+    if (sort === "popular") return (sales[b.id] || 0) - (sales[a.id] || 0);
+    return 0;
   });
 
-  // 4. Pagination Logic
   const totalPages = Math.max(1, Math.ceil(items.length / ITEMS_PER_PAGE));
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const paginatedItems = items.slice(startIndex, startIndex + ITEMS_PER_PAGE);
@@ -219,10 +212,7 @@ export default function CatalogPage() {
 
       <header className="bg-gradient-to-b from-[#6C3CE0] to-[#5A2FC7] border-b-4 border-[#4A1FA8]">
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
-          
-          {/* 👇 LOGO COMPONENT IS NOW HERE 👇 */}
           <VoxelioLogo />
-          
           <div className="hidden md:flex items-center gap-2 bg-white/10 rounded px-3 py-1.5 border border-white/20">
             <input
               type="text"
@@ -368,7 +358,6 @@ export default function CatalogPage() {
 
             {items.length > 0 ? (
               <>
-                {/* 3x3 Grid (9 items max per page) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {paginatedItems.map((item) => {
                     const owned = currentUser?.ownedItems.includes(item.id) || false;
@@ -393,15 +382,24 @@ export default function CatalogPage() {
 
                         <div className="p-3">
                           <div className="flex items-start justify-between gap-2 mb-2">
-                            <h3 className="font-black text-sm text-[#1A1A2E] leading-tight">
+                            <h3 className="font-black text-sm text-[#1A1A2E] leading-tight mt-0.5">
                               {item.name}
                             </h3>
-                            <span
-                              className="text-[9px] font-bold px-2 py-0.5 rounded text-white uppercase flex-shrink-0"
-                              style={{ backgroundColor: RARITY_COLORS[item.rarity] }}
-                            >
-                              {RARITY_LABELS[item.rarity]}
-                            </span>
+                            
+                            {/* 👇 LTD BADGE ON THE CARD 👇 */}
+                            <div className="flex flex-col gap-1 items-end flex-shrink-0">
+                              <span
+                                className="text-[9px] font-bold px-2 py-0.5 rounded text-white uppercase"
+                                style={{ backgroundColor: RARITY_COLORS[item.rarity] }}
+                              >
+                                {RARITY_LABELS[item.rarity]}
+                              </span>
+                              {item.maxSupply && (
+                                <span className="text-[9px] font-bold px-2 py-0.5 rounded text-[#1A1A2E] bg-[#FFD700] uppercase shadow-sm">
+                                  LTD
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <p className="text-[10px] text-[#888] mb-2 flex items-center gap-2 flex-wrap">
                             <span>by <strong className="text-[#4A1FA8]">{item.creator}</strong></span>
@@ -450,7 +448,6 @@ export default function CatalogPage() {
                   })}
                 </div>
 
-                {/* Pagination Arrows */}
                 <div className="flex items-center justify-between mt-6 bg-white border-2 border-[#C5C8D6] rounded p-2 px-4 shadow-sm">
                   <button
                     onClick={handlePrevPage}

@@ -11,6 +11,7 @@ import {
   type ItemCategory,
 } from "../../lib/items";
 import ItemPreview from "../components/ItemPreview";
+import VoxelioLogo from "../components/VoxelioLogo"; // 👈 ADDED IMPORT
 
 const CATEGORY_LABELS: Record<ItemCategory, string> = {
   hats: "Hats",
@@ -19,7 +20,7 @@ const CATEGORY_LABELS: Record<ItemCategory, string> = {
   outfits: "Outfits",
   accessories: "Accessories",
   hair: "Hair",
-  back: "Back Accessories", // <-- ADDED
+  back: "Back Accessories",
 };
 
 const CATEGORY_EMOJI: Record<ItemCategory, string> = {
@@ -29,7 +30,7 @@ const CATEGORY_EMOJI: Record<ItemCategory, string> = {
   outfits: "👕",
   accessories: "✨",
   hair: "💇",
-  back: "🎒", // <-- ADDED
+  back: "🎒",
 };
 
 const CATEGORY_ORDER: ItemCategory[] = [
@@ -39,7 +40,7 @@ const CATEGORY_ORDER: ItemCategory[] = [
   "outfits",
   "accessories",
   "hair",
-  "back", // <-- ADDED
+  "back",
 ];
 
 export default function InventoryPage() {
@@ -93,13 +94,10 @@ export default function InventoryPage() {
 
       <header className="bg-gradient-to-b from-[#6C3CE0] to-[#5A2FC7] border-b-4 border-[#4A1FA8]">
         <div className="max-w-6xl mx-auto px-3 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <img
-              src="/voxelio-logo.png"
-              alt="Voxelio"
-              className="h-14 w-auto object-contain bg-white rounded px-4 py-1.5 shadow-md"
-            />
-          </Link>
+          
+          {/* 👇 SWAPPED TO VOXELIO LOGO COMPONENT 👇 */}
+          <VoxelioLogo />
+          
         </div>
       </header>
 
@@ -149,7 +147,7 @@ export default function InventoryPage() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
                     {group.items.map((item) => (
-                      <ItemTile key={item.id} item={item} />
+                      <ItemTile key={item.id} item={item} user={user} />
                     ))}
                   </div>
                 </div>
@@ -162,7 +160,11 @@ export default function InventoryPage() {
   );
 }
 
-function ItemTile({ item }: { item: Item }) {
+function ItemTile({ item, user }: { item: Item; user: User }) {
+  // 👇 GET THE SERIAL NUMBER FOR THIS ITEM 👇
+  const serial = user.itemSerials?.[item.id];
+  const isLimited = item.maxSupply !== undefined;
+
   return (
     <Link
       href={`/catalog/${encodeURIComponent(
@@ -176,20 +178,38 @@ function ItemTile({ item }: { item: Item }) {
 
       <div className="p-3">
         <div className="flex items-start justify-between gap-2 mb-2">
-          <h3 className="font-black text-sm text-[#1A1A2E] leading-tight">
+          <h3 className="font-black text-sm text-[#1A1A2E] leading-tight mt-0.5">
             {item.name}
           </h3>
-          <span
-            className="text-[9px] font-bold px-2 py-0.5 rounded text-white uppercase flex-shrink-0"
-            style={{ backgroundColor: RARITY_COLORS[item.rarity] }}
-          >
-            {RARITY_LABELS[item.rarity]}
-          </span>
+          
+          {/* 👇 ADDED LTD BADGE HERE 👇 */}
+          <div className="flex flex-col gap-1 items-end flex-shrink-0">
+            <span
+              className="text-[9px] font-bold px-2 py-0.5 rounded text-white uppercase"
+              style={{ backgroundColor: RARITY_COLORS[item.rarity] }}
+            >
+              {RARITY_LABELS[item.rarity]}
+            </span>
+            {isLimited && (
+              <span className="text-[9px] font-bold px-2 py-0.5 rounded text-[#1A1A2E] bg-[#FFD700] uppercase shadow-sm">
+                LTD
+              </span>
+            )}
+          </div>
         </div>
 
         <p className="text-[10px] text-[#888] mb-2">
           by <strong className="text-[#4A1FA8]">{item.creator}</strong>
         </p>
+
+        {/* 👇 ADDED SERIAL NUMBER HERE 👇 */}
+        {isLimited && serial && (
+          <div className="bg-[#FFF8E7] border border-[#FFD700] rounded mb-2 px-2 py-1 inline-block w-full">
+            <p className="text-[10px] font-black text-[#B8860B]">
+              💎 Serial #{serial} of {item.maxSupply}
+            </p>
+          </div>
+        )}
 
         <div className="flex items-center justify-between gap-2 border-t border-[#E5E7F0] pt-2">
           <span className="text-xs font-bold text-green-600">✓ Owned</span>
