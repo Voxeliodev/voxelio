@@ -40,7 +40,6 @@ export default function GameDetailsPage() {
   const [activeTab, setActiveTab] = useState<"about" | "servers">("about");
   const [currentOnline, setCurrentOnline] = useState(0);
 
-  // 👇 State for the test mini-game
   const [activeGame, setActiveGame] = useState<string | null>(null);
   const [gameRewardItemId, setGameRewardItemId] = useState<string | null>(null);
 
@@ -144,18 +143,27 @@ export default function GameDetailsPage() {
     setGameRewardItemId(rewardItemId);
   };
 
-  // 👇 Directly update the user to guarantee item & badge save
+  // 👇 FIXED: Grabs the freshest user data to ensure items aren't overwritten
   const winChallenge = async () => {
     if (!user || !activeGame || !gameRewardItemId || !isOwner) return;
     
-    const currentBadges = user.wonderlandBadges || [];
+    const freshUser = getCurrentUser();
+    if (!freshUser) return;
+
+    const currentBadges = freshUser.wonderlandBadges || [];
     if (!currentBadges.includes(activeGame)) {
       const newBadges = [...currentBadges, activeGame];
-      const newOwned = user.ownedItems.includes(gameRewardItemId) 
-        ? user.ownedItems 
-        : [...user.ownedItems, gameRewardItemId];
+      const newOwned = freshUser.ownedItems.includes(gameRewardItemId) 
+        ? freshUser.ownedItems 
+        : [...freshUser.ownedItems, gameRewardItemId];
       
-      updateUser({ ...user, ownedItems: newOwned, wonderlandBadges: newBadges });
+      // Update both the items and the badges at the same time
+      updateUser({ 
+        ...freshUser, 
+        ownedItems: newOwned, 
+        wonderlandBadges: newBadges 
+      });
+      
       setUser(getCurrentUser());
     }
     
@@ -485,7 +493,7 @@ export default function GameDetailsPage() {
               </Link>
               <button
                 onClick={() => setLaunchStatus("idle")}
-                className="bg-[#EEF0F7] text-[#4A1FA8] font-bold text-sm px-6 py-3 rounded-lg border-2 border-[#C5C8D6] hover:bg-[#E0E3EE] transition"
+                className="bg-[#EEF0F7] text-[#4A1FA8] font-bold text-sm px-6 py-3 rounded-lg border-2-[#C5C8D6] hover:bg-[#E0E3EE] transition"
               >
                 Cancel
               </button>
