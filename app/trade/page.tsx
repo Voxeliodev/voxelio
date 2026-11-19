@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { getCurrentUser, isIndevMember, type User, getUsers } from "../../lib/auth";
+import { getCurrentUser, isIndevMember, type User, getUsers, setTradingStatus } from "../../lib/auth"; // 👈 Imported setTradingStatus
 import { supabase } from "../../lib/supabase";
 import { ITEMS, type Item } from "../../lib/items";
 import VoxelioLogo from "../components/VoxelioLogo";
@@ -186,12 +186,17 @@ export default function TradePage() {
   };
 
   const handleAcceptTrade = async (tradeId: string) => {
+    // 🚨 THE FINAL FIX: Pause the auth system so it doesn't overwrite the DB
+    setTradingStatus(true);
+
     const { data, error } = await supabase.rpc("accept_trade", { p_trade_id: tradeId });
     
     if (error) {
       alert("Error: " + error.message);
+      setTradingStatus(false); // Unpause on fail
     } else if (!data.success) {
       alert("Trade failed: " + data.error);
+      setTradingStatus(false); // Unpause on fail
     } else {
       alert("Trade accepted! Your items have been swapped.");
       window.location.reload(); 

@@ -86,6 +86,13 @@ let usersCache: User[] = [];
 let currentUserCache: User | null = null;
 let messagesCache: Message[] = [];
 let hydrated = false;
+
+// 🚨 THE FIX: This flag stops the background auto-save during a trade
+export let isTrading = false;
+export function setTradingStatus(status: boolean) {
+  isTrading = status;
+}
+
 const listeners = new Set<() => void>();
 function notify() { for (const fn of listeners) fn(); }
 
@@ -146,8 +153,9 @@ export async function hydrateAuth(): Promise<void> {
     notify();
   });
 
+  // 🚨 THE FIX: Only auto-save lastSeen if we are NOT currently trading
   setInterval(() => {
-    if (currentUserCache) {
+    if (currentUserCache && !isTrading) {
       updateUser({ ...currentUserCache, lastSeen: Date.now() });
     }
   }, 20000);
@@ -368,6 +376,9 @@ export function getUsedEmails(): string[] { return getUsers().map((u) => u.email
 // WRITE
 // ============================================================
 export function updateUser(updatedUser: User): void {
+  // 🚨 THE FIX: If we are trading, DO NOT overwrite the database with old cache data.
+  if (isTrading) return;
+
   const idx = usersCache.findIndex((u) => u.id === updatedUser.id);
   if (idx >= 0) usersCache[idx] = updatedUser; else usersCache.push(updatedUser);
   if (currentUserCache?.id === updatedUser.id) currentUserCache = updatedUser;
