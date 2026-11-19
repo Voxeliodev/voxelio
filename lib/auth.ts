@@ -127,7 +127,6 @@ export async function hydrateAuth(): Promise<void> {
     }
   }
 
-  // Clear the freeze flag now that fresh data is in memory
   if (wasTrading) {
     sessionStorage.removeItem("is_trading");
   }
@@ -152,7 +151,6 @@ export async function hydrateAuth(): Promise<void> {
     notify();
   });
 
-  // 🚨 REMOVED the 20-second auto-save interval to prevent overwrites
   supabase
     .channel("profiles-realtime")
     .on(
