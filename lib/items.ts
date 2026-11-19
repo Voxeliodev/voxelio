@@ -161,6 +161,10 @@ export const ITEMS: Item[] = [
     previewEmoji: "👑",
     creator: "Voxelio", // 👈 Changed to Voxelio
     forSale: false,
+    modelPath: "/models/ice_crown_wonderland.glb",
+    modelScale: 0.5,                // ✅ Kept perfect scale
+    modelOffset: [0, 0, 0],         // ✅ Centered on the head (no floating, no clipping)
+    modelRotation: [0, 0, 0],
   },
 
   // ===== HEADS =====
