@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { getCurrentUser, isIndevMember, type User, getUsers, hydrateAuth } from "../../lib/auth";
+import { getCurrentUser, isIndevMember, type User, getUsers } from "../../lib/auth";
 import { supabase } from "../../lib/supabase";
 import { ITEMS, type Item } from "../../lib/items";
 import VoxelioLogo from "../components/VoxelioLogo";
@@ -163,32 +163,38 @@ export default function TradePage() {
     if (error) {
       alert("Failed to send trade: " + error.message);
     } else {
+      // 🚨 CRITICAL FIX: Strip the items from localStorage instantly to prevent overwrite
+      try {
+        const existing = JSON.parse(localStorage.getItem("voxelio_user") || "{}");
+        if (existing.ownedItems) {
+          existing.ownedItems = existing.ownedItems.filter(
+            (id: string) => !myOffer.some(o => o.item.id === id)
+          );
+          if (existing.itemSerials) {
+            myOffer.forEach(o => delete existing.itemSerials[o.item.id]);
+          }
+          localStorage.setItem("voxelio_user", JSON.stringify(existing));
+        }
+      } catch (e) {
+        console.warn("Could not update local storage", e);
+      }
+
       alert(`Trade sent to ${targetUser.username}!`);
-      setMyOffer([]);
-      setTheirOffer([]);
-      setTargetUser(null);
-      fetchIncomingTrades(currentUser.id);
+      window.location.reload(); 
     }
     setIsSending(false);
   };
 
   const handleAcceptTrade = async (tradeId: string) => {
     const { data, error } = await supabase.rpc("accept_trade", { p_trade_id: tradeId });
+    
     if (error) {
       alert("Error: " + error.message);
     } else if (!data.success) {
       alert("Trade failed: " + data.error);
     } else {
       alert("Trade accepted! Your items have been swapped.");
-      
-      // 🚨 THE FIX: Hydrate auth to pull fresh data from DB into the local cache
-      await hydrateAuth();
-      
-      setIncomingTrades(incomingTrades.filter(t => t.id !== tradeId));
-      setViewingTrade(null);
-      
-      // 🚨 Force reload to guarantee the UI shows the new items
-      window.location.reload();
+      window.location.reload(); 
     }
   };
 
